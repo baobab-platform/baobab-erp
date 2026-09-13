@@ -7,7 +7,7 @@
 #   partial    - some of the decision is implemented and tested; a material gap remains
 #   planned    - decided in the ADR, not yet implemented
 schema_version: "1.0"
-updated: "2026-09-07"
+updated: "2026-09-13"
 adrs:
   - id: ADR-ERP-001
     title: iDempiere as an isolated, headless, multi-tenant Baobab ERP engine
@@ -339,9 +339,25 @@ adrs:
     status: partial
     evidence:
       - modules/provisioning/lifecycle.py
+      - modules/provisioning/model.py
+      - modules/provisioning/config.py
+      - modules/provisioning/validation.py
+      - modules/provisioning/planner.py
+      - modules/provisioning/service.py
+      - modules/provisioning/store.py
+      - db/migrations/0007_create_erp_provisioning.sql
+      - db/migrations/0008_add_control_plane_mapping_context.sql
+      - config/provisioning/zuribeans.production.template.json
       - tests/unit/test_provisioning_lifecycle.py
+      - tests/unit/test_provisioning_planner.py
+      - tests/unit/test_provisioning_service.py
       - migration/
-    gap: Lifecycle state machine only; no Control Plane wiring and no real migration source system.
+    gap: >
+      Desired-state validation, deterministic planning, idempotent step execution,
+      persisted audit evidence and readiness reconciliation now exist. The ZuriBeans
+      production template fails closed on unverified canonical, legal and financial
+      values. A live Control Plane client and concrete iDempiere provisioning adapter
+      remain required; no real migration source system exists.
 
   - id: ADR-ERP-020
     title: ERP production readiness, governance and architecture conformance

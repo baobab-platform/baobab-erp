@@ -91,6 +91,15 @@ class _FakeIdempiereHandler(BaseHTTPRequestHandler):
             self._require_auth_and_dispatch("POST", body)
             return
 
+        if self.path.startswith("/processes/"):
+            auth_header = self.headers.get("Authorization", "")
+            if not auth_header.startswith("Bearer token-"):
+                self._send_json(401, {"title": "Authenticate error", "status": 401, "detail": "missing/invalid token"})
+                return
+            self.state.last_request_body = body
+            self._send_json(200, {"summary": "Process completed", "isError": False})
+            return
+
         self._send_json(404, {"title": "Not Found", "status": 404, "detail": "no such route"})
 
     def do_GET(self):
@@ -182,6 +191,12 @@ class RestIdempiereClientTests(unittest.TestCase):
         client.update_record("c_bpartner", 119, {"Name": "Acme Updated"})
         self.assertEqual(self.state.records[("c_bpartner", 119)]["Name"], "Acme Updated")
         self.assertEqual(self.state.last_request_body, {"Name": "Acme Updated"})
+
+    def test_execute_process_uses_process_boundary(self):
+        client = self._client()
+        result = client.execute_process(104, {"record-id": 119})
+        self.assertEqual(result["summary"], "Process completed")
+        self.assertEqual(self.state.last_request_body, {"record-id": 119})
 
     def test_wrong_credentials_raise_authentication_error(self):
         client = self._client(password="wrong")
