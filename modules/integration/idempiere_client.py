@@ -58,6 +58,8 @@ class IdempiereClient(Protocol):
 
     def update_record(self, table: str, record_id: int, fields: dict[str, Any]) -> None: ...
 
+    def execute_process(self, process_id: int, parameters: dict[str, Any]) -> dict[str, Any]: ...
+
 
 @dataclass(frozen=True, slots=True)
 class IdempiereEndpoint:
@@ -79,6 +81,9 @@ class UnconfiguredIdempiereClient:
         raise IdempiereClientError(f"No iDempiere client wired for {self._endpoint.base_url}")
 
     def update_record(self, table: str, record_id: int, fields: dict[str, Any]) -> None:
+        raise IdempiereClientError(f"No iDempiere client wired for {self._endpoint.base_url}")
+
+    def execute_process(self, process_id: int, parameters: dict[str, Any]) -> dict[str, Any]:
         raise IdempiereClientError(f"No iDempiere client wired for {self._endpoint.base_url}")
 
 
@@ -125,6 +130,13 @@ class RestIdempiereClient:
 
     def update_record(self, table: str, record_id: int, fields: dict[str, Any]) -> None:
         self._call("PUT", f"/models/{table}/{record_id}", body=fields)
+
+    def execute_process(self, process_id: int, parameters: dict[str, Any]) -> dict[str, Any]:
+        """Execute an ERP business process rather than simulating document actions
+        with model updates. The REST plugin accepts process parameters as a JSON
+        object at this endpoint; callers remain responsible for using the process
+        appropriate to the pinned iDempiere release."""
+        return self._call("POST", f"/processes/{process_id}", body=parameters)
 
     def _call(self, method: str, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
         token = self._ensure_token()
