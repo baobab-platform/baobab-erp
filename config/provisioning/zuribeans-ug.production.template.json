@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "status": "draft-not-approved",
+  "provisioning_id": "zuribeans-ug-production-v1",
+  "idempotency_key": "zuribeans-ug-production-v1",
+  "tenant_id": "REQUIRED_CP_TENANT_ID_ZURIBEANS",
+  "legal_entity_id": "REQUIRED_CP_LEGAL_ENTITY_ID_ZURIBEANS_UG",
+  "legal_name": "REQUIRED_APPROVED_LEGAL_NAME_ZURIBEANS_UG",
+  "registration_identifier": "REQUIRED_VERIFIED_REGISTRATION_ID_ZURIBEANS_UG",
+  "jurisdiction_code": "UG",
+  "engine_instance_id": "REQUIRED_CP_ENGINE_INSTANCE_ID_ERP_AF_SOUTH_01",
+  "isolation_profile_id": "REQUIRED_CP_ISOLATION_PROFILE_ID_SHARED_INSTANCE_DEDICATED_CLIENT",
+  "capability_binding_id": "REQUIRED_CP_ERP_CAPABILITY_BINDING_ID_ZURIBEANS_UG",
+  "target_environment": "production",
+  "effective_date": "REQUIRED_APPROVED_EFFECTIVE_DATE",
+  "requested_capabilities": [
+    "erp.accounting",
+    "erp.accounts-payable",
+    "erp.accounts-receivable",
+    "erp.inventory",
+    "erp.procurement"
+  ],
+  "accounting": {
+    "functional_currency": "UGX",
+    "fiscal_year_start_month": 1,
+    "chart_of_accounts_template": "REQUIRED_VERSIONED_COA_TEMPLATE_UG",
+    "accounting_schema": "REQUIRED_ACCOUNTING_SCHEMA_ZURIBEANS_UG",
+    "tax_profile": "REQUIRED_CERTIFIED_TAX_PROFILE_UG",
+    "costing_method": "REQUIRED_FINANCE_APPROVED_COSTING_METHOD",
+    "approved_by": "REQUIRED_FINANCE_APPROVER",
+    "approved_at": "REQUIRED_APPROVAL_TIMESTAMP"
+  },
+  "markets": [
+    {
+      "market_id": "REQUIRED_CP_UG_MARKET_ID",
+      "country_code": "UG",
+      "participation_capabilities": ["sourcing", "procurement", "selling", "warehousing", "distribution", "importing", "exporting"],
+      "currencies": ["UGX", "USD"],
+      "localisation_profile": "REQUIRED_CERTIFIED_UG_ERP_LOCALISATION",
+      "warehouse_codes": ["REQUIRED_APPROVED_UG_WAREHOUSE"]
+    }
+  ]
+}

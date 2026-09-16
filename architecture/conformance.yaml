@@ -7,7 +7,7 @@
 #   partial    - some of the decision is implemented and tested; a material gap remains
 #   planned    - decided in the ADR, not yet implemented
 schema_version: "1.0"
-updated: "2026-09-13"
+updated: "2026-09-16"
 adrs:
   - id: ADR-ERP-001
     title: iDempiere as an isolated, headless, multi-tenant Baobab ERP engine
@@ -63,21 +63,37 @@ adrs:
       - idempiere/extensions/org.nabhold.baobab.erp.mapping/
       - idempiere/extensions/org.nabhold.baobab.erp.integration/
       - idempiere/extensions/org.nabhold.baobab.erp.events/
+      - idempiere/extensions/org.nabhold.baobab.erp.outbox/
       - idempiere/patches/README.md
     gap: >
-      4 of the 8 reserved namespaces have a bundle; the rest are unimplemented by
+      5 of the 8 reserved namespaces have a bundle; the rest are unimplemented by
       design until there is a real extension point to fill. `integration` is a
-      library bundle (no Activator, no published OSGi service) that `context` and
-      `mapping` both depend on for reaching baobab-app over HTTP -- a real,
-      inter-bundle OSGi dependency (Import/Export-Package), not just shared source.
-      `events` goes further: it's the first bundle that consumes other bundles'
-      OSGi *services* (context's ContextResolver and mapping's
-      CanonicalMappingResolver, each via a ServiceTracker) rather than just sharing
-      a library, and it registers a plain org.osgi.service.event.EventHandler for
-      iDempiere's own asynchronous adempiere/po/postCreate and postUpdate topics --
-      a real, working example of the "event handler" extension mechanism named
-      throughout this ADR, requiring no iDempiere Maven artifact at compile time
-      (see idempiere/README.md).
+      library bundle (no Activator, no published OSGi service) that `context`,
+      `mapping` and `outbox` all depend on for reaching baobab-app over HTTP -- a
+      real, inter-bundle OSGi dependency (Import/Export-Package), not just shared
+      source. `events` goes further: it's the first bundle that consumes other
+      bundles' OSGi *services* (context's ContextResolver, mapping's
+      CanonicalMappingResolver and, as of `outbox`, OutboxPublisher, each via a
+      ServiceTracker) rather than just sharing a library, and it registers a plain
+      org.osgi.service.event.EventHandler for iDempiere's own asynchronous
+      adempiere/po/postCreate and postUpdate topics -- a real, working example of
+      the "event handler" extension mechanism named throughout this ADR, requiring
+      no iDempiere Maven artifact at compile time (see idempiere/README.md). On a
+      resolved event, that handler now publishes a generic erp.*.synced.v1 fact via
+      OutboxPublisher (HTTP POST to baobab-app's /outbox/record, fire-after-commit
+      per INV-ERP-EXT-011, failures logged and swallowed rather than rethrown) --
+      the first time this repository's transactional-outbox pattern
+      (modules/outbox/, ADR-ERP-006) has been fed a real event from inside
+      iDempiere, rather than only ever being exercised with synthetic test data.
+      A first *command*-side bundle (invoking native iDempiere processes for
+      document completion/posting, e.g. Sales Order or Customer Invoice) was
+      planned but, on closer inspection, isn't buildable this way in this
+      environment either: it would need org.compiere.model classes this
+      environment has no Maven artifacts for at compile time, the same constraint
+      that already shapes `context`/`mapping`/`events`'s own reflection-based
+      design -- see modules/order_to_cash/ (ADR-ERP-016's evidence) for where that
+      command logic actually lives instead, outside iDempiere's JVM, against the
+      already-real RestIdempiereClient.
 
   - id: ADR-ERP-005
     title: Baobab ERP integration API architecture
@@ -199,9 +215,38 @@ adrs:
 
   - id: ADR-ERP-008
     title: ERP financial, accounting and multi-currency architecture
-    status: planned
-    evidence: []
-    gap: No LegalEntity accounting configuration (chart of accounts, fiscal calendar, tax setup) exists yet.
+    status: partial
+    evidence:
+      - modules/order_to_cash/model.py
+      - modules/order_to_cash/service.py
+      - modules/provisioning/idempiere_adapter.py
+      - config/provisioning/zuribeans-ug.production.template.json
+      - config/provisioning/zuribeans-za.production.template.json
+      - tests/unit/test_order_to_cash_service.py
+      - tests/integration/test_order_to_cash_http.py
+      - tests/unit/test_provisioning_idempiere_adapter.py
+      - docs/adr/ADR-ERP-021 — ZuriBeans Multi-Market AD_Client Topology.md
+    gap: >
+      LegalEntity accounting configuration now has a real code path: the
+      provisioning adapter's CONFIGURE_ACCOUNTING step creates a C_AcctSchema
+      record from the request's functional currency and costing method, and
+      order_to_cash.service implements the sell-side document lifecycle (Sales
+      Order -> Shipment -> Customer Invoice -> Payment -> Allocation) calling
+      RestIdempiereClient.execute_process for every completion/posting/allocation
+      step, never a direct field patch (INV-ERP-EXT-009/010) -- one functional
+      currency per AccountingSchema per LegalEntity, per section 14. ADR-ERP-021
+      records a real, previously-undecided topology choice this ADR required
+      (ZuriBeans Uganda and South Africa are two separate AD_Clients, each its own
+      LegalEntity/AccountingSchema, not one shared AD_Client) and its consequence
+      under this ADR's sections 92-97: no cross-client SQL, each entity represents
+      the other as its own C_BPartner for intercompany. What's still open: none of
+      this has run against a live iDempiere instance (same REST-plugin-install gap
+      as ADR-ERP-005/013); chart-of-accounts template, tax profile and Finance
+      sign-off for both ZuriBeans legal entities remain explicit REQUIRED_*
+      placeholders in the provisioning templates, pending a live Control Plane and
+      actual Finance approval; and the UG<->ZA intercompany elimination itself
+      (sections 92-97) is not built -- flagged as follow-up scope in ADR-ERP-021,
+      not silently dropped.
 
   - id: ADR-ERP-009
     title: ERP market localisation, jurisdiction and regulatory architecture
@@ -318,9 +363,40 @@ adrs:
 
   - id: ADR-ERP-016
     title: Commerce-ERP integration and order-to-cash architecture
-    status: planned
-    evidence: []
-    gap: Not started; depends on nabhold/baobab-trade integration work.
+    status: partial
+    evidence:
+      - modules/order_to_cash/model.py
+      - modules/order_to_cash/service.py
+      - modules/application/server.py
+      - idempiere/extensions/org.nabhold.baobab.erp.outbox/
+      - idempiere/extensions/org.nabhold.baobab.erp.events/
+      - tests/unit/test_order_to_cash_service.py
+      - tests/integration/test_order_to_cash_http.py
+    gap: >
+      The sell-side order-to-cash sequence (section 17) is implemented and tested
+      end-to-end over real HTTP and a real Postgres database, against a fake
+      iDempiere REST server standing in for a live instance: create/complete Sales
+      Order, create/complete Shipment, create/post Customer Invoice, create/
+      complete Payment, allocate Payment -- each completion/posting/allocation
+      step invokes a configurable native iDempiere process (never a direct
+      DocStatus patch), and each of the five distinct facts section 221 names
+      (erp.sales-order.accepted.v1, erp.goods-shipment.completed.v1,
+      erp.customer-invoice.posted.v1, erp.payment.completed.v1,
+      erp.payment.allocated.v1) is written to the transactional outbox exactly
+      once, in order, within the same database transaction as its mapping write
+      -- section 222-223's "no echo events" rule is honoured (creation alone
+      never emits a fact; only ERP's own completed processing does). Separately,
+      the `events` bundle now emits its own generic erp.*.synced.v1 facts for any
+      native postCreate/postUpdate (a reconciliation safety net for mutations made
+      directly in iDempiere's own UI, distinct from this primary path -- see
+      ADR-ERP-004's evidence). What's still open: buy-side procure-to-pay (Gate
+      ZB-07/08) is not started; this has never run against a live iDempiere
+      instance, only the fake REST server the integration test stands up (the
+      same REST-plugin-install gap as ADR-ERP-005/013); and
+      modules/application/server.py's new endpoints are baobab-erp's own shape,
+      not yet reconciled against nabhold/shared's published
+      contracts/erp/v1/openapi.yaml, matching the pre-existing gap
+      ADR-ERP-005/006 already record for this HTTP surface.
 
   - id: ADR-ERP-017
     title: ERP document, attachment, records retention and evidence architecture
@@ -345,19 +421,46 @@ adrs:
       - modules/provisioning/planner.py
       - modules/provisioning/service.py
       - modules/provisioning/store.py
+      - modules/provisioning/idempiere_adapter.py
+      - modules/context/postgres_store.py
       - db/migrations/0007_create_erp_provisioning.sql
       - db/migrations/0008_add_control_plane_mapping_context.sql
-      - config/provisioning/zuribeans.production.template.json
+      - config/provisioning/zuribeans-ug.production.template.json
+      - config/provisioning/zuribeans-za.production.template.json
       - tests/unit/test_provisioning_lifecycle.py
       - tests/unit/test_provisioning_planner.py
       - tests/unit/test_provisioning_service.py
+      - tests/unit/test_provisioning_config.py
+      - tests/unit/test_provisioning_validation.py
+      - tests/unit/test_provisioning_idempiere_adapter.py
       - migration/
     gap: >
       Desired-state validation, deterministic planning, idempotent step execution,
-      persisted audit evidence and readiness reconciliation now exist. The ZuriBeans
-      production template fails closed on unverified canonical, legal and financial
-      values. A live Control Plane client and concrete iDempiere provisioning adapter
-      remain required; no real migration source system exists.
+      persisted audit evidence and readiness reconciliation now exist, and so does
+      a concrete ProvisioningAdapter (IdempiereProvisioningAdapter): it executes
+      every step the planner emits (CREATE_CLIENT, CONFIGURE_ACCOUNTING,
+      CONFIGURE_LOCALISATION, CREATE_WAREHOUSE, PERSIST_MAPPING) against the
+      already-real RestIdempiereClient, and PERSIST_MAPPING writes the resulting
+      (tenant_id, legal_entity_id) -> (AD_Client_ID, AD_Org_ID) row into
+      baobab.tenant_mapping (PostgresTenantMappingStore.create_mapping, new
+      alongside this adapter) so modules/context can resolve it afterwards --
+      closing the responsibility split this ADR describes (Control Plane owns the
+      canonical identifiers; the ERP engine owns Client/Org/accounting
+      configuration). The single ZuriBeans production template was replaced by
+      two -- zuribeans-ug and zuribeans-za -- reflecting ADR-ERP-021's two-
+      AD_Client topology decision; both fail closed on unverified canonical, legal
+      and financial values, including effective_date and accounting.approved_at
+      (previously unchecked placeholder fields, fixed alongside this work). What's
+      still open: the adapter is code-complete against RestIdempiereClient's
+      spec-verified transport shape but has never run against a live instance (no
+      REST plugin installed, same gap as ADR-ERP-005/013), so its AD_Client/
+      C_AcctSchema/M_Warehouse field payloads are drawn from iDempiere's public
+      schema, not independently proven correct end-to-end; its AD_Client_ID
+      hand-off between steps is a process-local cache, not durable across a
+      restart mid-apply (documented in the module itself); a live Control Plane
+      client and real migration source system still don't exist; and no
+      CREATE_ORGANISATION step exists yet (not needed for ZuriBeans' Pattern-B
+      topology, since each AD_Client already is one market).
 
   - id: ADR-ERP-020
     title: ERP production readiness, governance and architecture conformance
@@ -367,3 +470,28 @@ adrs:
       - docs/migration/00-target-architecture.md
       - docs/migration/01-capability-ownership-matrix.md
     gap: The governance mechanism exists; production readiness itself has not been demonstrated (see the still-planned ADRs above).
+
+  - id: ADR-ERP-021
+    title: ZuriBeans multi-market AD_Client topology
+    status: partial
+    evidence:
+      - docs/adr/ADR-ERP-021 — ZuriBeans Multi-Market AD_Client Topology.md
+      - config/provisioning/zuribeans-ug.production.template.json
+      - config/provisioning/zuribeans-za.production.template.json
+      - modules/provisioning/idempiere_adapter.py
+      - tests/unit/test_provisioning_idempiere_adapter.py
+    gap: >
+      Status: Proposed (formal acceptance is a team action, not something implied
+      by this ledger). Records the decision ZuriBeans' two operating markets
+      (Uganda, South Africa) needed and that ADR-ERP-002/008 explicitly forbid
+      defaulting: two separate AD_Clients (ZURIBEANS_UG, ZURIBEANS_ZA), each its
+      own LegalEntity, both on the shared ERP-AF-SOUTH-01 EngineInstance alongside
+      NABHOLD/THAMANI. The two provisioning templates and the provisioning
+      adapter's CREATE_CLIENT/PERSIST_MAPPING steps are real code built against
+      this decision. What's still open: real Control-Plane-issued UUIDs and
+      Finance-approved accounting configuration for both legal entities (explicit
+      REQUIRED_* placeholders -- pending a live nabhold/baobab-cp deployment and
+      actual Finance sign-off, not fabricatable here); the UG<->ZA intercompany
+      consequence this decision creates (governed by ADR-ERP-008 sections 92-97)
+      is documented but not built; and none of it has run against a live
+      iDempiere instance (same REST-plugin-install gap as ADR-ERP-005/013).

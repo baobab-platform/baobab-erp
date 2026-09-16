@@ -99,3 +99,14 @@ class ProvisioningReadiness:
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+# Sentinel values for a date/datetime field whose real value is still a
+# ``REQUIRED_*`` placeholder in the source config (config.py can't leave the
+# field as a raw string -- ErpProvisioningRequest types effective_date/
+# approved_at as date/datetime -- so it parses a placeholder to this instead
+# of crashing on `date.fromisoformat("REQUIRED_...")`). validate_request
+# checks for these explicitly; nothing else in this module should ever
+# construct or compare against them directly.
+PENDING_DATE = date.min
+PENDING_DATETIME = datetime.min.replace(tzinfo=timezone.utc)
