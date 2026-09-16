@@ -23,6 +23,6 @@ jobs:
       contents: read
       security-events: write
       packages: read
-    uses: nabhold/shared/.github/workflows/security-codeql.yml@38defb11aacd95a6f68b7db8026fe336417a2af6 # v1.2.0
+    uses: nabhold/shared/.github/workflows/security-codeql.yml@b7acc1e48806c6afc89419e56fdd74c54f467b2e # TEMP: testing fix/codeql-reusable-workflow-sarif-upload
     with:
       languages: '["python", "java"]'
