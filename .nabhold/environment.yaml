@@ -7,7 +7,7 @@ application:
 environment:
   provider: "baobab-dev"
   profile: "full"
-  minimum_version: "1.2.6"
+  minimum_version: "1.4.0"
   contract_minimum_version: "1.0"
 compatibility_policy:
   strict_runtime_versions: false
