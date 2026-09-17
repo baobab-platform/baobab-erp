@@ -1,0 +1,22 @@
+{
+  "note": "Examples only. Canonical IDs/payloads must come from authoritative Baobab sources; do not seed invented production masters.",
+  "legal_entities": {
+    "Zuribeans_ZA": {
+      "legal_entity_id": "REPLACE_CP_ZA_LEGAL_ENTITY_ID",
+      "engine_instance_id": "REPLACE_CP_ERP_ENGINE_INSTANCE_ID"
+    },
+    "Zuribeans_UG": {
+      "legal_entity_id": "REPLACE_CP_UG_LEGAL_ENTITY_ID",
+      "engine_instance_id": "REPLACE_CP_ERP_ENGINE_INSTANCE_ID"
+    }
+  },
+  "required_kinds": [
+    "uom",
+    "currency",
+    "tax_category",
+    "payment_term",
+    "business_partner",
+    "product",
+    "product_accounting"
+  ]
+}
