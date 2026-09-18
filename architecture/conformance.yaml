@@ -236,13 +236,23 @@ adrs:
       over real HTTP (tests/integration/test_http_server.py's 401 cases: missing
       token, wrong audience, malformed scheme). ServiceIdentity is no longer only a
       data carrier with nothing constructing it -- verify_workload_token is the first
-      real caller. What's still open: this authenticates callers, it doesn't yet
-      authorize by role (every valid workload token can call every endpoint; no
-      per-endpoint scope check beyond audience), and human ERP login (iDempiere's own
-      WebUI, via its built-in org.idempiere.ui.sso.oidc plugin) is configured as an
-      operational runbook (docs/sso-configuration.md) rather than anything this
-      repository's own code touches, since AD_SSO_PrincipalConfig lives in iDempiere's
-      own schema (ADR-ERP-001) -- see nabhold/baobab-iam's
+      real caller. Gate ZB-03.8 closed the authorization gap this block used to record
+      here: every /context/resolve* and /mapping/resolve* request now also requires
+      its workload token's scope claim to grant the specific scope that endpoint needs
+      (_WORKLOAD_REQUIRED_SCOPES in application/server.py), returning 403 -- distinct
+      from the 401 an unauthenticated caller gets -- for a validly authenticated
+      workload token that simply doesn't carry it (tests/integration/test_http_server.py's
+      403 cases). ServiceIdentity.has_role is no longer dead code with nothing calling
+      it. All four gated endpoints currently require the same erp:integrate scope
+      because only that one scope is granted to any workload client today
+      (baobab-iam/config/scopes/erp-integrate.json) -- splitting context resolution
+      from mapping resolution into separate scopes is tracked as a follow-on once a
+      real need for finer granularity exists, not invented speculatively here. What's
+      still open: human ERP login (iDempiere's own WebUI, via its built-in
+      org.idempiere.ui.sso.oidc plugin) is configured as an operational runbook
+      (docs/sso-configuration.md) rather than anything this repository's own code
+      touches, since AD_SSO_PrincipalConfig lives in iDempiere's own schema
+      (ADR-ERP-001) -- see nabhold/baobab-iam's
       docs/governance/gate-iam-10-erp-integration-scope.md for the full human-login
       picture, including one explicitly accepted deviation from ADR-0014 §9.
 
