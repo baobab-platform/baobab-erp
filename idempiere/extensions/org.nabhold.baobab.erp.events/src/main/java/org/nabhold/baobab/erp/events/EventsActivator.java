@@ -6,6 +6,7 @@ import java.util.Dictionary;
 import java.util.Hashtable;
 import org.nabhold.baobab.erp.context.ContextResolver;
 import org.nabhold.baobab.erp.mapping.CanonicalMappingResolver;
+import org.nabhold.baobab.erp.outbox.OutboxPublisher;
 import org.osgi.framework.BundleActivator;
 import org.osgi.framework.BundleContext;
 import org.osgi.service.event.EventConstants;
@@ -37,6 +38,7 @@ public final class EventsActivator implements BundleActivator {
 
     private ServiceTracker<ContextResolver, ContextResolver> contextTracker;
     private ServiceTracker<CanonicalMappingResolver, CanonicalMappingResolver> mappingTracker;
+    private ServiceTracker<OutboxPublisher, OutboxPublisher> outboxTracker;
 
     @Override
     public void start(BundleContext context) {
@@ -45,9 +47,11 @@ public final class EventsActivator implements BundleActivator {
         contextTracker.open();
         mappingTracker = new ServiceTracker<>(context, CanonicalMappingResolver.class, null);
         mappingTracker.open();
+        outboxTracker = new ServiceTracker<>(context, OutboxPublisher.class, null);
+        outboxTracker.open();
 
         BaobabCanonicalMappingEventHandler handler =
-                new BaobabCanonicalMappingEventHandler(contextTracker, mappingTracker);
+                new BaobabCanonicalMappingEventHandler(contextTracker, mappingTracker, outboxTracker);
 
         Dictionary<String, Object> properties = new Hashtable<>();
         properties.put(EventConstants.EVENT_TOPIC, new String[] {TOPIC_PO_POST_CREATE, TOPIC_PO_POST_UPDATE});
@@ -63,6 +67,9 @@ public final class EventsActivator implements BundleActivator {
         }
         if (mappingTracker != null) {
             mappingTracker.close();
+        }
+        if (outboxTracker != null) {
+            outboxTracker.close();
         }
     }
 }
