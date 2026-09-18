@@ -7,7 +7,7 @@
 #   partial    - some of the decision is implemented and tested; a material gap remains
 #   planned    - decided in the ADR, not yet implemented
 schema_version: "1.0"
-updated: "2026-09-16"
+updated: "2026-09-18"
 adrs:
   - id: ADR-ERP-001
     title: iDempiere as an isolated, headless, multi-tenant Baobab ERP engine
@@ -407,9 +407,43 @@ adrs:
 
   - id: ADR-ERP-014
     title: ERP master data ownership, synchronisation and reference data architecture
-    status: planned
-    evidence: []
-    gap: Not started.
+    status: partial
+    evidence:
+      - modules/provisioning/master_data.py
+      - modules/provisioning/master_data_adapter.py
+      - modules/provisioning/master_data_mapping.py
+      - modules/provisioning/master_data_service.py
+      - config/provisioning/zuribeans.master-data.example.json
+      - db/migrations/0010_erp_master_data_mapping.sql
+      - tests/unit/test_master_data_bootstrap.py
+      - tests/integration/test_postgres_master_data_mapping_store.py
+    gap: >
+      Gate ZB-04's canonical master-data bootstrap: CanonicalMasterRecord carries
+      canonical_id, external_key and legal_entity_id as distinct fields (INV-ERP-MD-008,
+      "Product is not equivalent to M_Product") and IdempiereMasterDataBootstrapper
+      reconciles desired state against the native record by a content digest,
+      creating/reusing/updating rather than guessing by name (INV-ERP-MD-023/043,
+      idempotent projection updates). It also rejects an incoming record whose
+      source_version is not newer than what's already mapped instead of silently
+      overwriting with a possibly-replayed/out-of-order update (INV-ERP-MD-027,
+      "consumers do not overwrite newer source versions with stale updates") --
+      reported as drift for reconciliation rather than applied. product_accounting
+      records are deliberately never applied (fail-closed until an approved native
+      accounting process is wired, matching ADR-ERP-008's posted-record immutability
+      intent) and are reported as drift. Cross-legal-entity records are rejected
+      (Zuribeans_ZA and Zuribeans_UG remain isolated canonical LegalEntities, never
+      conflated). What's still open: CanonicalMasterDataSource (the reader of
+      authoritative Baobab master data) is only a Protocol here -- no concrete
+      implementation reading from Shared/CP/Trade's actual canonical stores exists
+      yet, so MasterDataBootstrapService cannot run against real data in this
+      environment. There is no HTTP endpoint wiring this into
+      modules/application/server.py, and no workload-token authorization is
+      enforced at this layer yet (INV-ERP-MD-053/054) -- that belongs at the
+      integration boundary once one exists. config/provisioning/
+      zuribeans.master-data.example.json's legal_entity_id/engine_instance_id
+      fields are still REPLACE_*-placeholder, pending real Control-Plane-issued
+      identifiers; the file states explicitly that examples must never seed
+      invented production masters.
 
   - id: ADR-ERP-015
     title: ERP inventory, warehouse, procurement and supply-chain architecture
