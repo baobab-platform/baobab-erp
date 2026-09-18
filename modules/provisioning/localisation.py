@@ -9,7 +9,7 @@ class LocalisationError(ValueError): pass
 
 @dataclass(frozen=True, slots=True)
 class CertifiedLocalisation:
-    profile_key: str
+    profile_id: str
     country_code: str
     version: str
     effective_from: date

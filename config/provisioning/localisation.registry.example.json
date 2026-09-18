@@ -1,7 +1,7 @@
 {
   "profiles": [
     {
-      "profile_key": "zuribeans-za-certified-v1",
+      "profile_id": "zuribeans-za-certified-v1",
       "country_code": "ZA",
       "version": "1",
       "effective_from": "REPLACE_EFFECTIVE_DATE",
@@ -10,7 +10,7 @@
       "certification_reference": "REPLACE_FINANCE_TAX_CERTIFICATION"
     },
     {
-      "profile_key": "zuribeans-ug-certified-v1",
+      "profile_id": "zuribeans-ug-certified-v1",
       "country_code": "UG",
       "version": "1",
       "effective_from": "REPLACE_EFFECTIVE_DATE",

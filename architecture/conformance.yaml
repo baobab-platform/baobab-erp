@@ -273,9 +273,32 @@ adrs:
 
   - id: ADR-ERP-009
     title: ERP market localisation, jurisdiction and regulatory architecture
-    status: planned
-    evidence: []
-    gap: Not started.
+    status: partial
+    evidence:
+      - modules/provisioning/localisation.py
+      - modules/provisioning/localisation_adapter.py
+      - config/provisioning/localisation.registry.example.json
+      - tests/unit/test_zuribeans_localisation.py
+    gap: >
+      Gate ZB-03 implements a narrow, working slice of SS18-25's certification
+      concept for ZuriBeans specifically: CertifiedLocalisation captures a profile's
+      country, version, effective window, approved native process_id and
+      certification_reference, and LocalisationRegistry.require() fails closed if
+      any of those don't hold for the requested (profile, country, date) --
+      wrong country (SS9's market-to-jurisdiction relationship misuse), no
+      certification_reference (SS23 "certified" requires Baobab's approval on
+      record), outside the effective window, or no approved process_id (never
+      invents an iDempiere process). What's still open: this models only the
+      certified/active end-state, not the full candidate -> assessing ->
+      configured -> testing -> certified -> active lifecycle SS18 describes, and
+      certification here is a single reference string, not SS28's fuller evidence
+      record (functional/legal/security/accounting/technical review artifacts).
+      The example registry (config/provisioning/localisation.registry.example.json)
+      has REQUIRED_*-equivalent REPLACE_* placeholders for the actual approved
+      process IDs and certification references for both ZuriBeans legal entities --
+      genuinely pending Finance/tax certification and a live iDempiere instance to
+      get real process IDs from, not fabricatable here. LocalisationProvisioner is
+      not yet wired into the planner/IdempiereProvisioningAdapter step flow.
 
   - id: ADR-ERP-010
     title: ERP security, identity, authorization and tenant-isolation architecture
@@ -390,9 +413,35 @@ adrs:
 
   - id: ADR-ERP-015
     title: ERP inventory, warehouse, procurement and supply-chain architecture
-    status: planned
-    evidence: []
-    gap: Not started.
+    status: partial
+    evidence:
+      - modules/provisioning/warehouse.py
+      - modules/provisioning/warehouse_adapter.py
+      - modules/provisioning/zuribeans_entities.py
+      - config/provisioning/zuribeans.warehouses.example.json
+      - tests/unit/test_zuribeans_warehouses.py
+      - tests/unit/test_zuribeans_entities.py
+    gap: >
+      Gate ZB-03's warehouse slice: validate_warehouses() fails closed on a
+      warehouse declared for the wrong legal entity or market (ADR-ERP-002 SS61's
+      "warehouse identity SHALL remain distinct from Organization identity" and
+      this ADR's own legal-entity-isolation intent), a duplicate warehouse code,
+      or a missing explicit ERP-organisation mapping (never inferred from country,
+      per ADR-ERP-002 SS28/SS30 -- market and infrastructure region never
+      automatically become an AD_Org). WarehouseProvisioner creates/reuses the
+      native M_Warehouse record under a caller-supplied AD_Org_ID (mapping-driven
+      idempotency, same pattern as IdempiereProvisioningAdapter). What's still
+      open: WarehouseProvisioner is not yet wired into the planner/
+      IdempiereProvisioningAdapter step flow, which has its own CREATE_WAREHOUSE
+      handling that never sets AD_Org_ID and has no per-warehouse legal-entity/
+      market validation -- the two paths use different resource_key schemes and
+      must not both run for the same warehouse until reconciled, or they would
+      create duplicate native records. Buy-side procurement (this ADR's other
+      major scope) is entirely out of scope for this gate, as ADR-ERP-021 already
+      records. config/provisioning/zuribeans.warehouses.example.json's
+      organisation_mapping_id/legal_entity_id/market_id fields are still
+      REPLACE_*-placeholder, pending real Control-Plane-issued identifiers and an
+      actual approved AD_Org mapping decision for each ZuriBeans legal entity.
 
   - id: ADR-ERP-016
     title: Commerce-ERP integration and order-to-cash architecture
