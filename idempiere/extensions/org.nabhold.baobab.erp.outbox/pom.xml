@@ -1,0 +1,69 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.nabhold.baobab.erp</groupId>
+    <artifactId>baobab-erp-extensions</artifactId>
+    <version>0.1.0</version>
+  </parent>
+
+  <artifactId>org.nabhold.baobab.erp.outbox</artifactId>
+  <packaging>jar</packaging>
+
+  <name>Baobab ERP Outbox Bundle</name>
+  <description>
+    Publishes a canonical event fact to baobab-app's transactional outbox
+    (ADR-ERP-004/ADR-ERP-006) for a record this bundle's own events service
+    resolved canonical identity for. Fire-after-commit, best-effort, matching
+    org.nabhold.baobab.erp.events' own already-accepted eventual-consistency
+    model (INV-ERP-EXT-011): iDempiere's own database and baobab's `baobab`
+    schema are two separate databases, so this cannot be one atomic Postgres
+    transaction with the iDempiere document post that triggered it -- only
+    baobab-app's own insert into baobab.event_outbox is atomic, in its own
+    database. See OutboxPublisher's own Javadoc for the full explanation.
+  </description>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.osgi</groupId>
+      <artifactId>org.osgi.core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.nabhold.baobab.erp</groupId>
+      <artifactId>org.nabhold.baobab.erp.integration</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>biz.aQute.bnd</groupId>
+        <artifactId>bnd-maven-plugin</artifactId>
+        <configuration>
+          <bnd><![CDATA[
+Bundle-SymbolicName: org.nabhold.baobab.erp.outbox
+Bundle-Activator: org.nabhold.baobab.erp.outbox.OutboxActivator
+Bundle-Vendor: Nabhold Group Africa
+Export-Package: org.nabhold.baobab.erp.outbox
+Import-Package: org.nabhold.baobab.erp.integration;version="[0.1,1)",*
+]]></bnd>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>
