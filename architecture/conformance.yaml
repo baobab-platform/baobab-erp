@@ -32,6 +32,10 @@ adrs:
       - idempiere/extensions/org.nabhold.baobab.erp.context/
       - idempiere/extensions/org.nabhold.baobab.erp.integration/
       - idempiere/extensions/org.nabhold.baobab.erp.events/
+      - modules/provisioning/cp_contract.py
+      - modules/provisioning/legal_entity_policy.py
+      - modules/provisioning/authoritative_service.py
+      - tests/unit/test_cp_authoritative_assignment.py
     gap: >
       modules/context resolves against a real Postgres-backed store, exposed over
       HTTP at GET /context/resolve. BaobabContextResolver (the OSGi bundle running
@@ -48,6 +52,25 @@ adrs:
       C_Invoice create/update to derive the correct tenant per record (ADR-ERP-003's default
       topology puts several AD_Clients/tenants on one iDempiere runtime, so a single
       process-wide tenant would be wrong) -- see ADR-ERP-007's evidence below.
+
+      Gate ZB-01 closes a different, previously-open piece of this ADR: SS113/114's
+      responsibility split (Control Plane owns canonical identities/topology/isolation;
+      ERP consumes rather than infers). CpErpAssignment is the authoritative CP
+      projection ERP provisioning now consumes -- it fails closed on expiry, a
+      non-production target_environment, duplicate markets, and any required field
+      missing (SS76's provisioning preconditions). AuthoritativeProvisioningRequestFactory
+      rejects a CP response whose (tenant_id, legal_entity_id) doesn't match what was
+      requested (SS97/INV-ERP-MAP-009's "caller cannot override resolved context" applied
+      to the CP response itself, not just caller input), and separately rejects any
+      native_client_mode other than dedicated_client, because the provisioning adapter
+      (idempiere_adapter.py, Gate ZB-02) only ever creates a new AD_Client -- it has no
+      "reuse an existing AD_Client" path, so silently accepting existing_client would
+      misprovision rather than fail closed. What's still open: no real baobab-cp
+      deployment exists to call (ControlPlaneAssignmentSource is a Protocol here,
+      exercised only against a fake in tests/unit/test_cp_authoritative_assignment.py);
+      FinanceBaseline is still supplied directly to the factory rather than sourced from
+      an authoritative Finance system; and native_client_mode itself has only one working
+      value end-to-end (dedicated_client) until the adapter gains an existing-client path.
 
   - id: ADR-ERP-003
     title: ERP EngineInstance isolation, regional deployment and data residency
