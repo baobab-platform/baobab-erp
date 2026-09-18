@@ -432,9 +432,12 @@ adrs:
       - modules/provisioning/service.py
       - modules/provisioning/store.py
       - modules/provisioning/idempiere_adapter.py
+      - modules/provisioning/native_mapping_store.py
+      - modules/provisioning/planner_patch.py
       - modules/context/postgres_store.py
       - db/migrations/0007_create_erp_provisioning.sql
       - db/migrations/0008_add_control_plane_mapping_context.sql
+      - db/migrations/0009_erp_provisioning_native_mapping.sql
       - config/provisioning/zuribeans-ug.production.template.json
       - config/provisioning/zuribeans-za.production.template.json
       - tests/unit/test_provisioning_lifecycle.py
@@ -442,21 +445,34 @@ adrs:
       - tests/unit/test_provisioning_service.py
       - tests/unit/test_provisioning_config.py
       - tests/unit/test_provisioning_validation.py
-      - tests/unit/test_provisioning_idempiere_adapter.py
+      - tests/unit/test_idempiere_provisioning_adapter.py
       - migration/
     gap: >
       Desired-state validation, deterministic planning, idempotent step execution,
       persisted audit evidence and readiness reconciliation now exist, and so does
-      a concrete ProvisioningAdapter (IdempiereProvisioningAdapter): it executes
-      every step the planner emits (CREATE_CLIENT, CONFIGURE_ACCOUNTING,
-      CONFIGURE_LOCALISATION, CREATE_WAREHOUSE, PERSIST_MAPPING) against the
-      already-real RestIdempiereClient, and PERSIST_MAPPING writes the resulting
+      a concrete ProvisioningAdapter (IdempiereProvisioningAdapter, Gate ZB-02):
+      it executes every step the planner emits (CREATE_CLIENT,
+      CREATE_ORGANISATION, CONFIGURE_ACCOUNTING, CONFIGURE_LOCALISATION,
+      CREATE_WAREHOUSE, PERSIST_MAPPING) against the already-real
+      RestIdempiereClient. Retries never guess a native record by Name: every
+      create step is keyed by (provisioning_id, resource_key) in a durable
+      Postgres-backed store (PostgresNativeProvisioningMappingStore,
+      baobab.erp_provisioning_native_mapping), so a retried step reuses the
+      native ID a prior attempt already created instead of duplicating it.
+      CONFIGURE_ACCOUNTING/CONFIGURE_LOCALISATION fail closed with no invented
+      process ID unless the plan payload already carries an approved
+      process_id (planner_patch.enrich_step_payload shows the intended
+      integration point into planner.py once real process IDs are configured
+      per deployment). PERSIST_MAPPING additionally writes the resulting
       (tenant_id, legal_entity_id) -> (AD_Client_ID, AD_Org_ID) row into
-      baobab.tenant_mapping (PostgresTenantMappingStore.create_mapping, new
-      alongside this adapter) so modules/context can resolve it afterwards --
-      closing the responsibility split this ADR describes (Control Plane owns the
+      baobab.tenant_mapping (PostgresTenantMappingStore.create_mapping, via the
+      adapter's optional tenant_mappings collaborator) so modules/context can
+      actually resolve the new legal entity afterwards -- without this, a
+      provisioning operation could mark itself complete while remaining
+      unresolvable, which would defeat the point of provisioning. This closes
+      the responsibility split this ADR describes: Control Plane owns the
       canonical identifiers; the ERP engine owns Client/Org/accounting
-      configuration). The single ZuriBeans production template was replaced by
+      configuration. The single ZuriBeans production template was replaced by
       two -- zuribeans-ug and zuribeans-za -- reflecting ADR-ERP-021's two-
       AD_Client topology decision; both fail closed on unverified canonical, legal
       and financial values, including effective_date and accounting.approved_at
@@ -464,13 +480,12 @@ adrs:
       still open: the adapter is code-complete against RestIdempiereClient's
       spec-verified transport shape but has never run against a live instance (no
       REST plugin installed, same gap as ADR-ERP-005/013), so its AD_Client/
-      C_AcctSchema/M_Warehouse field payloads are drawn from iDempiere's public
-      schema, not independently proven correct end-to-end; its AD_Client_ID
-      hand-off between steps is a process-local cache, not durable across a
-      restart mid-apply (documented in the module itself); a live Control Plane
-      client and real migration source system still don't exist; and no
-      CREATE_ORGANISATION step exists yet (not needed for ZuriBeans' Pattern-B
-      topology, since each AD_Client already is one market).
+      AD_Org/M_Warehouse field payloads are drawn from iDempiere's public schema,
+      not independently proven correct end-to-end; no approved accounting or
+      localisation process IDs exist for either ZuriBeans legal entity yet, so
+      CONFIGURE_ACCOUNTING/CONFIGURE_LOCALISATION cannot actually run against a
+      real deployment until those are supplied; and a live Control Plane client
+      and real migration source system still don't exist.
 
   - id: ADR-ERP-020
     title: ERP production readiness, governance and architecture conformance
