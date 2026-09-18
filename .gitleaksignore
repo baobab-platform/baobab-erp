@@ -1,0 +1,9 @@
+# Historical false positives from gitleaks' generic-api-key heuristic.
+# These fingerprints point at placeholder values in an EXAMPLE config file
+# (config/provisioning/localisation.registry.example.json), at commits that
+# predate the field rename (profile_key -> profile_id) fixing the underlying
+# naming false-positive. The flagged commit is on a shared, already-pushed
+# branch authored by another contributor and must not be rewritten, so the
+# false positive is allowlisted here instead of purged from history.
+6614ee891b74e8e701b2396c4e58f6093b0e8572:config/provisioning/localisation.registry.example.json:generic-api-key:4
+6614ee891b74e8e701b2396c4e58f6093b0e8572:config/provisioning/localisation.registry.example.json:generic-api-key:13
