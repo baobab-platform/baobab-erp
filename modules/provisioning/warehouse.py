@@ -13,7 +13,7 @@ class WarehouseDeclaration:
     legal_entity_id: str
     market_id: str
     country_code: str
-    organisation_key: str
+    organisation_mapping_id: str
     active: bool = True
 
 
@@ -33,6 +33,6 @@ def validate_warehouses(
             raise WarehousePolicyError(f"{w.code}: cross-legal-entity warehouse")
         if w.market_id != market_id or w.country_code != country_code:
             raise WarehousePolicyError(f"{w.code}: warehouse market mismatch")
-        if not w.organisation_key.strip():
+        if not w.organisation_mapping_id.strip():
             raise WarehousePolicyError(f"{w.code}: explicit ERP organisation mapping required")
     return items
