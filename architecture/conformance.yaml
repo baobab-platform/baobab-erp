@@ -627,7 +627,50 @@ adrs:
       - architecture/conformance.yaml
       - docs/migration/00-target-architecture.md
       - docs/migration/01-capability-ownership-matrix.md
-    gap: The governance mechanism exists; production readiness itself has not been demonstrated (see the still-planned ADRs above).
+      - modules/provisioning/activation.py
+      - docs/zuribeans-activation-runbook.md
+      - tests/golden/harness.py
+      - tests/golden/README.md
+      - tests/golden/test_activation.py
+      - tests/golden/test_zuribeans_release1.py
+      - scripts/validate.sh
+    gap: >
+      Gate ZB-06 adds the machine-readable readiness gate section 9 describes:
+      ActivationEvaluator.evaluate() takes a single LegalEntity's Evidence set and
+      returns ready only when every one of the ten mandatory checks (CP assignment,
+      native provisioning, localisation, warehouses, master data, the four golden
+      paths, and reconciliation) is present with status PASS -- missing or failing
+      evidence is reported as a named blocker, never silently treated as passing.
+      Two real gaps in the supplied evidence model were fixed: a PASS Evidence with
+      an empty reference (no audit trail pointing at what proves the check passed)
+      was previously accepted, which would let "ready" mean nothing more than a
+      status flag; Evidence now rejects that at construction. Duplicate evidence
+      submitted twice for the same check was previously resolved by silently
+      keeping whichever happened to be last in the sequence (which could silently
+      shadow a real FAIL with a stale PASS); evaluate() now rejects it outright.
+      evaluate() is always called per LegalEntity, matching section 220
+      ("independent activation" -- Zuribeans_ZA's readiness never forces or blocks
+      Zuribeans_UG's). GoldenHarness's trade/erp/reconciliation collaborators are
+      now typed against explicit Protocols (TradeGoldenClient/ErpGoldenClient/
+      ReconciliationClient) instead of bare `object`, documenting the exact
+      interface a real integration would need to implement. tests/golden/
+      test_zuribeans_release1.py -- previously pytest-fixture-based code this
+      repo's actual `python -m unittest discover` CI runner would never collect,
+      the same dead-test anti-pattern found repeatedly in Gates ZB-01/03/04/05 --
+      is rewritten so it's correctly discovered and skips with an honest reason
+      rather than silently vanishing; and scripts/validate.sh, which never ran
+      tests/golden at all, now does, so this gate's real unit-level evidence
+      (test_activation.py) actually executes in CI rather than being present in
+      the repo but never run -- the same class of gap, one level up the stack.
+      What's still open, honestly, and by design (see the activation runbook and
+      tests/golden/README.md): no concrete TradeGoldenClient/ErpGoldenClient/
+      ReconciliationClient implementation exists, so the golden paths themselves
+      cannot execute in this environment, which has no live iDempiere instance to
+      provision one against (same REST-plugin-install gap as ADR-ERP-005/013) --
+      golden tests must run against a real provisioned test iDempiere instance and
+      are deliberately never replaced with mocks for release evidence. Production
+      readiness for ZuriBeans itself has therefore not been demonstrated; this
+      gate provides the mechanism that will evaluate it once real evidence exists.
 
   - id: ADR-ERP-021
     title: ZuriBeans multi-market AD_Client topology

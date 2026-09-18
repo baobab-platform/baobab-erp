@@ -25,6 +25,7 @@ PYTHONPATH=modules:/tmp/py-deps python -m unittest discover -s tests/security -p
 PYTHONPATH=modules:/tmp/py-deps python -m unittest discover -s tests/tenancy -p 'test_*.py'
 PYTHONPATH=modules:/tmp/py-deps python -m unittest discover -s tests/contract -p 'test_*.py'
 PYTHONPATH=modules:/tmp/py-deps python -m unittest discover -s tests/architecture -p 'test_*.py'
+PYTHONPATH=modules:/tmp/py-deps python -m unittest discover -s tests/golden -p 'test_*.py'
 
 python - <<'PY'
 import json
