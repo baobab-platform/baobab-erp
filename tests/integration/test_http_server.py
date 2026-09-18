@@ -43,6 +43,8 @@ class HttpServerIntegrationTests(unittest.TestCase):
         private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         cls.workload_token = cls._mint_workload_token(private_key)
         cls.wrong_audience_token = cls._mint_workload_token(private_key, aud="baobab-control-plane")
+        cls.wrong_scope_token = cls._mint_wrong_scope_token(private_key)
+        cls.no_scope_token = cls._mint_no_scope_token(private_key)
 
         from application.server import Config, make_handler
 
@@ -68,6 +70,14 @@ class HttpServerIntegrationTests(unittest.TestCase):
         }
         claims.update(overrides)
         return jwt.encode(claims, private_key, algorithm="RS256")
+
+    @classmethod
+    def _mint_wrong_scope_token(cls, private_key) -> str:
+        return cls._mint_workload_token(private_key, scope="some:other:scope")
+
+    @classmethod
+    def _mint_no_scope_token(cls, private_key) -> str:
+        return cls._mint_workload_token(private_key, scope="")
 
     @classmethod
     def tearDownClass(cls):
@@ -263,6 +273,37 @@ class HttpServerIntegrationTests(unittest.TestCase):
     def test_context_resolve_with_malformed_authorization_header_is_401(self):
         status, _ = self._get("/context/resolve?tenant_id=x&entity_id=y", authorization="not-a-bearer-token")
         self.assertEqual(status, 401)
+
+    def test_context_resolve_with_wrong_scope_token_is_403(self):
+        # A real, validly-signed, correctly-audienced workload token that simply
+        # doesn't carry erp:integrate must be refused, not just any authenticated
+        # workload (ADR-ERP-010's "authenticates but doesn't authorize" gap).
+        status, _ = self._get(
+            "/context/resolve?tenant_id=x&entity_id=y",
+            authorization=f"Bearer {self.wrong_scope_token}",
+        )
+        self.assertEqual(status, 403)
+
+    def test_mapping_resolve_with_no_scope_token_is_403(self):
+        status, _ = self._get(
+            "/mapping/resolve?tenant_id=x&canonical_type=Party&canonical_id=y",
+            authorization=f"Bearer {self.no_scope_token}",
+        )
+        self.assertEqual(status, 403)
+
+    def test_context_resolve_tenant_with_wrong_scope_token_is_403(self):
+        status, _ = self._get(
+            "/context/resolve-tenant?ad_client_id=1&ad_org_id=1",
+            authorization=f"Bearer {self.wrong_scope_token}",
+        )
+        self.assertEqual(status, 403)
+
+    def test_mapping_resolve_canonical_with_wrong_scope_token_is_403(self):
+        status, _ = self._get(
+            "/mapping/resolve-canonical?tenant_id=x&table=C_BPartner&record_id=1",
+            authorization=f"Bearer {self.wrong_scope_token}",
+        )
+        self.assertEqual(status, 403)
 
     def test_health_and_events_endpoints_need_no_workload_token(self):
         # Health probes and the signed-event webhook have their own, separate

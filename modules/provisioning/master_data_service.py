@@ -1,9 +1,10 @@
 from dataclasses import dataclass
+from provisioning.master_data import CanonicalMasterDataSource
 from provisioning.master_data_adapter import IdempiereMasterDataBootstrapper
 
 @dataclass(slots=True)
 class MasterDataBootstrapService:
-    source: object
+    source: CanonicalMasterDataSource
     bootstrapper: IdempiereMasterDataBootstrapper
 
     def run(self, *, tenant_id: str, legal_entity_id: str, engine_instance_id: str):

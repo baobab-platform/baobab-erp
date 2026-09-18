@@ -8,7 +8,7 @@
         {
           "code": "ZB-ZA-MAIN",
           "name": "ZuriBeans South Africa Main Warehouse",
-          "organisation_key": "REPLACE_EXPLICIT_ZA_ERP_ORG_MAPPING"
+          "organisation_mapping_id": "REPLACE_EXPLICIT_ZA_ERP_ORG_MAPPING"
         }
       ]
     },
@@ -20,7 +20,7 @@
         {
           "code": "ZB-UG-MAIN",
           "name": "ZuriBeans Uganda Main Warehouse",
-          "organisation_key": "REPLACE_EXPLICIT_UG_ERP_ORG_MAPPING"
+          "organisation_mapping_id": "REPLACE_EXPLICIT_UG_ERP_ORG_MAPPING"
         }
       ]
     }

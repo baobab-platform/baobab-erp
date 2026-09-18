@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS baobab.erp_master_data_mapping (
   canonical_id text NOT NULL,
   native_id bigint NOT NULL,
   desired_digest text NOT NULL,
+  source_version text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (engine_instance_id, legal_entity_id, resource_kind, canonical_id)

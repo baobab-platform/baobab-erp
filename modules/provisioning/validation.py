@@ -1,4 +1,4 @@
-from provisioning.model import ErpProvisioningRequest, ReadinessCheck
+from provisioning.model import PENDING_DATE, PENDING_DATETIME, ErpProvisioningRequest, ReadinessCheck
 
 
 _REQUIRED_CAPABILITIES = frozenset(
@@ -69,6 +69,20 @@ def validate_request(request: ErpProvisioningRequest) -> tuple[ReadinessCheck, .
             "accounting.approval",
             bool(request.accounting.approved_by.strip()),
             "finance approval recorded" if request.accounting.approved_by.strip() else "finance approval required",
+        )
+    )
+    checks.append(
+        ReadinessCheck(
+            "accounting.approved_at",
+            request.accounting.approved_at != PENDING_DATETIME,
+            "recorded" if request.accounting.approved_at != PENDING_DATETIME else "missing or placeholder",
+        )
+    )
+    checks.append(
+        ReadinessCheck(
+            "effective_date",
+            request.effective_date != PENDING_DATE,
+            "recorded" if request.effective_date != PENDING_DATE else "missing or placeholder",
         )
     )
     market_ids: set[str] = set()
