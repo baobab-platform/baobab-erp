@@ -14,7 +14,10 @@ class TransactionKind(StrEnum):
     SHIPMENT="shipment"
     AP_INVOICE="ap_invoice"
     AR_INVOICE="ar_invoice"
-    PAYMENT="payment"
+    AP_PAYMENT="ap_payment"
+    AR_PAYMENT="ar_payment"
+
+_LINELESS_KINDS = frozenset({TransactionKind.AP_PAYMENT, TransactionKind.AR_PAYMENT})
 
 @dataclass(frozen=True,slots=True)
 class Line:
@@ -43,7 +46,7 @@ class TradeProjection:
         for n in ("event_id","correlation_id","tenant_id","legal_entity_id","market_id",
                   "engine_instance_id","canonical_transaction_id","counterparty_id","currency","contract_version"):
             if not str(getattr(self,n)).strip(): raise ProjectionError(f"{n} is required")
-        if self.kind not in {TransactionKind.PAYMENT} and not self.lines:
+        if self.kind not in _LINELESS_KINDS and not self.lines:
             raise ProjectionError("transaction lines required")
         for l in self.lines:
             if l.quantity <= 0: raise ProjectionError("quantity must be positive")
@@ -53,11 +56,11 @@ class TradeProjection:
         self.validate()
         raw=json.dumps({"kind":self.kind.value,"id":self.canonical_transaction_id,
             "legal_entity_id":self.legal_entity_id,"market_id":self.market_id,
-            "currency":self.currency,"payload":self.payload,
+            "counterparty_id":self.counterparty_id,"currency":self.currency,"payload":self.payload,
             "lines":[{"product":x.canonical_product_id,"q":str(x.quantity),"p":str(x.unit_price),"uom":x.uom_id} for x in self.lines]},
             sort_keys=True,separators=(",",":"))
         return sha256(raw.encode()).hexdigest()
 
 class ProjectionMappingStore(Protocol):
-    def get(self,*,engine_instance_id:str,legal_entity_id:str,kind:str,canonical_id:str):...
-    def put(self,*,engine_instance_id:str,legal_entity_id:str,kind:str,canonical_id:str,native_id:int,digest:str):...
+    def get(self,*,engine_instance_id:str,legal_entity_id:str,kind:str,canonical_id:str) -> tuple[int,str] | None: ...
+    def put(self,*,engine_instance_id:str,legal_entity_id:str,kind:str,canonical_id:str,native_id:int,digest:str) -> None: ...
