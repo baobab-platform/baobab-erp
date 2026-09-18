@@ -23,6 +23,6 @@ jobs:
       contents: read
       security-events: write
       packages: read
-    uses: nabhold/shared/.github/workflows/security-codeql.yml@b7acc1e48806c6afc89419e56fdd74c54f467b2e # TEMP: testing fix/codeql-reusable-workflow-sarif-upload
+    uses: nabhold/shared/.github/workflows/security-codeql.yml@6ddda104faecd4a5e43b3b1a4b85d1e62eb7991e # fix: explicit upload-sarif step (nabhold/shared#42)
     with:
       languages: '["python", "java"]'
