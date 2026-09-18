@@ -15,7 +15,7 @@ jobs:
   secrets:
     permissions:
       contents: read
-    uses: nabhold/shared/.github/workflows/security-secrets-scan.yml@38defb11aacd95a6f68b7db8026fe336417a2af6 # v1.2.0
+    uses: nabhold/shared/.github/workflows/security-secrets-scan.yml@29590cd01a5cf107f7cc5605b217bd6767e4ae2a # TEMP: testing fix/gitleaks-scope-to-checked-out-ref
 
   codeql:
     permissions:
