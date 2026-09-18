@@ -99,4 +99,49 @@ public final class BaobabAppClient {
         }
         throw new BaobabAppClientException(response.statusCode() + " from " + request.uri() + ": " + detail);
     }
+
+    /**
+     * @param path e.g. "/outbox/record"; requestBody is serialised via {@link MinimalJson#writeObject}.
+     * @throws BaobabAppClientException on any non-2xx response (a POST endpoint that meaningfully
+     *         distinguishes 404 doesn't exist yet among this client's current callers).
+     */
+    public Map<String, Object> post(String path, Map<String, ?> requestBody) throws BaobabAppClientException {
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + path))
+                .timeout(timeout)
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/json");
+        if (tokenProvider != null) {
+            requestBuilder.header("Authorization", "Bearer " + tokenProvider.getAccessToken());
+        }
+        HttpRequest request = requestBuilder
+                .POST(HttpRequest.BodyPublishers.ofString(MinimalJson.writeObject(requestBody), StandardCharsets.UTF_8))
+                .build();
+
+        HttpResponse<String> response;
+        try {
+            response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        } catch (IOException e) {
+            throw new BaobabAppClientException("Could not reach " + request.uri(), e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BaobabAppClientException("Interrupted calling " + request.uri(), e);
+        }
+
+        Map<String, Object> responseBody;
+        try {
+            responseBody = (response.body() == null || response.body().isBlank())
+                    ? Map.of()
+                    : MinimalJson.parseObject(response.body());
+        } catch (RuntimeException e) {
+            throw new BaobabAppClientException(
+                    "Invalid JSON response from " + request.uri() + ": " + e.getMessage(), e);
+        }
+
+        if (response.statusCode() >= 200 && response.statusCode() < 300) {
+            return responseBody;
+        }
+        String detail = String.valueOf(responseBody.getOrDefault("error", response.body()));
+        throw new BaobabAppClientException(response.statusCode() + " from " + request.uri() + ": " + detail);
+    }
 }

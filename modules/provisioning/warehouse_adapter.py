@@ -1,12 +1,21 @@
 from __future__ import annotations
 from dataclasses import dataclass
+from provisioning.idempiere_adapter import ProvisioningIdempiereClient, ProvisioningMappingStore
 from provisioning.warehouse import WarehouseDeclaration
 
 
 @dataclass(slots=True)
 class WarehouseProvisioner:
-    client: object
-    mappings: object
+    """Not yet wired into the planner/IdempiereProvisioningAdapter step flow (that
+    flow's own CREATE_WAREHOUSE handling never sets AD_Org_ID and has no per-warehouse
+    legal-entity/market validation -- see this gate's conformance.yaml note). Uses a
+    different resource_key scheme (warehouse:{legal_entity_id}:{code}) than
+    IdempiereProvisioningAdapter._resource_key; the two paths must not both be used for
+    the same warehouse until integrated, or they would create duplicate M_Warehouse
+    records under different keys."""
+
+    client: ProvisioningIdempiereClient
+    mappings: ProvisioningMappingStore
 
     def apply(self, provisioning_id: str, warehouse: WarehouseDeclaration, ad_org_id: int) -> dict:
         key=f"warehouse:{warehouse.legal_entity_id}:{warehouse.code}"

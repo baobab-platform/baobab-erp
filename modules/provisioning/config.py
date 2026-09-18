@@ -2,10 +2,36 @@ import json
 from datetime import date, datetime
 from pathlib import Path
 
-from provisioning.model import AccountingConfiguration, ErpProvisioningRequest, MarketConfiguration
+from provisioning.model import (
+    PENDING_DATE,
+    PENDING_DATETIME,
+    AccountingConfiguration,
+    ErpProvisioningRequest,
+    MarketConfiguration,
+)
+
+_PLACEHOLDER_PREFIX = "REQUIRED_"
+
+
+def _parse_date_or_pending(value: str) -> date:
+    if value.startswith(_PLACEHOLDER_PREFIX):
+        return PENDING_DATE
+    return date.fromisoformat(value)
+
+
+def _parse_datetime_or_pending(value: str) -> datetime:
+    if value.startswith(_PLACEHOLDER_PREFIX):
+        return PENDING_DATETIME
+    return datetime.fromisoformat(value)
 
 
 def load_request(path: str | Path) -> ErpProvisioningRequest:
+    """Parse a provisioning request config. This is structural parsing only --
+    a config with ``REQUIRED_*`` placeholders throughout (including for
+    effective_date/accounting.approved_at, which load as the PENDING_DATE/
+    PENDING_DATETIME sentinels rather than raising) still loads successfully.
+    Whether it's actually safe to provision from is validate_request's job,
+    not this function's."""
     payload = json.loads(Path(path).read_text())
     accounting = payload["accounting"]
     return ErpProvisioningRequest(
@@ -20,7 +46,7 @@ def load_request(path: str | Path) -> ErpProvisioningRequest:
         isolation_profile_id=payload["isolation_profile_id"],
         capability_binding_id=payload["capability_binding_id"],
         target_environment=payload["target_environment"],
-        effective_date=date.fromisoformat(payload["effective_date"]),
+        effective_date=_parse_date_or_pending(payload["effective_date"]),
         accounting=AccountingConfiguration(
             functional_currency=accounting["functional_currency"],
             fiscal_year_start_month=int(accounting["fiscal_year_start_month"]),
@@ -29,7 +55,7 @@ def load_request(path: str | Path) -> ErpProvisioningRequest:
             tax_profile=accounting["tax_profile"],
             costing_method=accounting["costing_method"],
             approved_by=accounting["approved_by"],
-            approved_at=datetime.fromisoformat(accounting["approved_at"]),
+            approved_at=_parse_datetime_or_pending(accounting["approved_at"]),
         ),
         markets=tuple(
             MarketConfiguration(

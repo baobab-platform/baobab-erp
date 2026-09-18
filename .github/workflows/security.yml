@@ -15,7 +15,7 @@ jobs:
   secrets:
     permissions:
       contents: read
-    uses: nabhold/shared/.github/workflows/security-secrets-scan.yml@38defb11aacd95a6f68b7db8026fe336417a2af6 # v1.2.0
+    uses: nabhold/shared/.github/workflows/security-secrets-scan.yml@317538bfa9cac7d0117420c12984d80d89d9f5ea # fix: scope gitleaks to checked-out ref (nabhold/shared#45)
 
   codeql:
     permissions:
@@ -23,6 +23,6 @@ jobs:
       contents: read
       security-events: write
       packages: read
-    uses: nabhold/shared/.github/workflows/security-codeql.yml@38defb11aacd95a6f68b7db8026fe336417a2af6 # v1.2.0
+    uses: nabhold/shared/.github/workflows/security-codeql.yml@6ddda104faecd4a5e43b3b1a4b85d1e62eb7991e # fix: explicit upload-sarif step (nabhold/shared#42)
     with:
       languages: '["python", "java"]'

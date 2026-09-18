@@ -54,6 +54,11 @@
       <version>${project.version}</version>
     </dependency>
     <dependency>
+      <groupId>org.nabhold.baobab.erp</groupId>
+      <artifactId>org.nabhold.baobab.erp.outbox</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
     </dependency>
@@ -69,7 +74,7 @@
 Bundle-SymbolicName: org.nabhold.baobab.erp.events
 Bundle-Activator: org.nabhold.baobab.erp.events.EventsActivator
 Bundle-Vendor: Nabhold Group Africa
-Import-Package: org.nabhold.baobab.erp.mapping;version="[0.1,1)",org.nabhold.baobab.erp.context;version="[0.1,1)",*
+Import-Package: org.nabhold.baobab.erp.mapping;version="[0.1,1)",org.nabhold.baobab.erp.context;version="[0.1,1)",org.nabhold.baobab.erp.outbox;version="[0.1,1)",*
 ]]></bnd>
         </configuration>
       </plugin>
