@@ -15,4 +15,4 @@ jobs:
   check:
     permissions:
       contents: read
-    uses: nabhold/shared/.github/workflows/enforce-action-pinning.yml@38defb11aacd95a6f68b7db8026fe336417a2af6 # v1.2.0
+    uses: nabhold/shared/.github/workflows/enforce-action-pinning.yml@c0b1dfcb5049f4e994e926a6f1ea9ff2b4a02b6c # v1.3.0
