@@ -249,7 +249,34 @@ adrs:
       - tests/integration/test_order_to_cash_http.py
       - tests/unit/test_provisioning_idempiere_adapter.py
       - docs/adr/ADR-ERP-021 — ZuriBeans Multi-Market AD_Client Topology.md
+      - modules/integration/trade_projection.py
+      - modules/integration/trade_projection_adapter.py
+      - modules/integration/trade_projection_mapping.py
+      - db/migrations/0011_erp_transaction_projection_mapping.sql
+      - tests/unit/test_trade_projection.py
+      - tests/integration/test_postgres_trade_projection_mapping_store.py
     gap: >
+      Gate ZB-05 adds a second, more general immutability mechanism alongside
+      order_to_cash.service's specific sell-side flow: IdempiereTradeProjectionAdapter
+      projects a Trade-owned commercial fact (procurement/sales order, goods
+      receipt/shipment, AP/AR invoice, AP/AR payment) into its native C_Order/
+      M_InOut/C_Invoice/C_Payment header record via a content digest that includes
+      the counterparty, never lookup-by-name, and raises rather than silently
+      mutating the native record once a canonical_transaction_id's digest has
+      changed post-creation -- an explicit correction/reversal workflow is required,
+      matching this ADR's posted-record immutability intent. Because C_Order/
+      M_InOut/C_Payment are shared tables between the sales and purchase side in
+      iDempiere's native schema (distinguished by IsSOTrx/IsReceipt, with no
+      inherently sales-safe default), the adapter sets that flag explicitly per
+      TransactionKind rather than relying on iDempiere's column default -- left
+      unset in the originally supplied code, which would have silently created
+      every purchase-side document as a sales-side one. What's still open: this
+      creates only the document header (no line creation, no CompleteIt/posting/
+      payment-allocation process invocation -- order_to_cash.service is still the
+      only kind-specific flow that goes that far, for the sell-side only) and is
+      not wired into any HTTP endpoint or caller; buy-side procure-to-pay (Gate
+      ZB-07/08) remains unbuilt.
+
       LegalEntity accounting configuration now has a real code path: the
       provisioning adapter's CONFIGURE_ACCOUNTING step creates a C_AcctSchema
       record from the request's functional currency and costing method, and
