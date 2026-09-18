@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "status": "draft-not-approved",
+  "provisioning_id": "zuribeans-za-production-v1",
+  "idempotency_key": "zuribeans-za-production-v1",
+  "tenant_id": "REQUIRED_CP_TENANT_ID_ZURIBEANS",
+  "legal_entity_id": "REQUIRED_CP_LEGAL_ENTITY_ID_ZURIBEANS_ZA",
+  "legal_name": "REQUIRED_APPROVED_LEGAL_NAME_ZURIBEANS_ZA",
+  "registration_identifier": "REQUIRED_VERIFIED_REGISTRATION_ID_ZURIBEANS_ZA",
+  "jurisdiction_code": "ZA",
+  "engine_instance_id": "REQUIRED_CP_ENGINE_INSTANCE_ID_ERP_AF_SOUTH_01",
+  "isolation_profile_id": "REQUIRED_CP_ISOLATION_PROFILE_ID_SHARED_INSTANCE_DEDICATED_CLIENT",
+  "capability_binding_id": "REQUIRED_CP_ERP_CAPABILITY_BINDING_ID_ZURIBEANS_ZA",
+  "target_environment": "production",
+  "effective_date": "REQUIRED_APPROVED_EFFECTIVE_DATE",
+  "requested_capabilities": [
+    "erp.accounting",
+    "erp.accounts-payable",
+    "erp.accounts-receivable",
+    "erp.inventory",
+    "erp.procurement"
+  ],
+  "accounting": {
+    "functional_currency": "ZAR",
+    "fiscal_year_start_month": 1,
+    "chart_of_accounts_template": "REQUIRED_VERSIONED_COA_TEMPLATE_ZA",
+    "accounting_schema": "REQUIRED_ACCOUNTING_SCHEMA_ZURIBEANS_ZA",
+    "tax_profile": "REQUIRED_CERTIFIED_TAX_PROFILE_ZA",
+    "costing_method": "REQUIRED_FINANCE_APPROVED_COSTING_METHOD",
+    "approved_by": "REQUIRED_FINANCE_APPROVER",
+    "approved_at": "REQUIRED_APPROVAL_TIMESTAMP"
+  },
+  "markets": [
+    {
+      "market_id": "REQUIRED_CP_ZA_MARKET_ID",
+      "country_code": "ZA",
+      "participation_capabilities": ["sourcing", "procurement", "selling", "warehousing", "distribution", "importing", "exporting"],
+      "currencies": ["ZAR", "USD"],
+      "localisation_profile": "REQUIRED_CERTIFIED_ZA_ERP_LOCALISATION",
+      "warehouse_codes": ["REQUIRED_APPROVED_ZA_WAREHOUSE"]
+    }
+  ]
+}

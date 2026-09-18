@@ -1,8 +1,27 @@
+"""Concrete ProvisioningAdapter (service.py's Protocol) against a real iDempiere
+instance. Mapping-driven, never idempotent-by-Name: retries resolve an already-created
+native record through ProvisioningMappingStore (provisioning_id + resource_key ->
+native iDempiere ID), never by searching iDempiere for a record with a matching Name --
+that would risk creating a duplicate AD_Client/AD_Org/M_Warehouse after a partial
+failure, or silently reusing an unrelated record that happens to share a name.
+
+PERSIST_MAPPING additionally writes the tenant/legal-entity -> AD_Client/AD_Org mapping
+that modules/context actually resolves against (baobab.tenant_mapping, ADR-ERP-002),
+via the optional `tenant_mappings` collaborator -- without it, provisioning would mark
+itself complete without ever making the new legal entity resolvable, which defeats the
+point of provisioning. `tenant_mappings` is optional (defaults to None) so callers that
+only care about native iDempiere state (e.g. existing unit tests) don't need to supply
+one; server.py's real wiring always will.
+"""
+
 from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 from provisioning.model import ErpProvisioningRequest, ProvisioningStep, ReadinessCheck, StepKind
+
+_ALL_ORGANIZATIONS_AD_ORG_ID = 0
 
 
 class ProvisioningMappingStore(Protocol):
@@ -17,6 +36,14 @@ class ProvisioningIdempiereClient(Protocol):
     def execute_process(self, process_id: int, parameters: dict[str, Any]) -> dict[str, Any]: ...
 
 
+class TenantMappingWriter(Protocol):
+    """The write path onto baobab.tenant_mapping (modules/context/postgres_store.py's
+    PostgresTenantMappingStore) that PERSIST_MAPPING needs to make context resolution
+    actually work for the legal entity this operation just provisioned."""
+
+    def create_mapping(self, tenant_id: str, entity_id: str, ad_client_id: int, ad_org_id: int) -> None: ...
+
+
 @dataclass(slots=True)
 class IdempiereProvisioningAdapter:
     """Concrete adapter for the existing ErpProvisioningService.
@@ -25,8 +52,10 @@ class IdempiereProvisioningAdapter:
     The canonical provisioning operation owns durable native IDs, preventing duplicate
     AD_Client/AD_Org/M_Warehouse creation after a partial failure.
     """
+
     client: ProvisioningIdempiereClient
     mappings: ProvisioningMappingStore
+    tenant_mappings: TenantMappingWriter | None = None
 
     def apply(self, request: ErpProvisioningRequest, step: ProvisioningStep) -> dict:
         handlers = {
@@ -56,10 +85,17 @@ class IdempiereProvisioningAdapter:
         return ReadinessCheck(f"idempiere.{step.kind.value}", active, f"{table}:{native_id}")
 
     def _create_client(self, request, step):
-        return self._create_once(
+        result = self._create_once(
             request, step, "AD_Client",
             {"Name": request.legal_name, "Value": self._safe_value(request.legal_entity_id), "IsActive": True},
         )
+        # Stashed under a request-scoped key (not step.key, which is digest-specific and
+        # not derivable from inside _persist_mapping) so PERSIST_MAPPING can find "the"
+        # AD_Client_ID this operation created regardless of which step produced it.
+        self.mappings.put_native_id(
+            provisioning_id=request.provisioning_id, resource_key=self._client_alias_key(), native_id=result["id"]
+        )
+        return result
 
     def _create_org(self, request, step):
         fields = dict(step.payload)
@@ -97,7 +133,24 @@ class IdempiereProvisioningAdapter:
         # means the ERP-side provisioning step completed; CP/shared mapping publication
         # remains an explicit integration concern rather than being silently invented.
         self._mark_applied(request, step)
-        return {"canonical": dict(step.payload), "persisted": True}
+        result = {"canonical": dict(step.payload), "persisted": True}
+        if self.tenant_mappings is not None:
+            ad_client_id = self.mappings.get_native_id(
+                provisioning_id=request.provisioning_id, resource_key=self._client_alias_key()
+            )
+            if ad_client_id is None:
+                raise ValueError(
+                    "PERSIST_MAPPING requires AD_Client_ID from a completed CREATE_CLIENT step "
+                    "(in this process or a prior one) before context resolution can be wired up"
+                )
+            self.tenant_mappings.create_mapping(
+                tenant_id=step.payload["tenant_id"],
+                entity_id=step.payload["legal_entity_id"],
+                ad_client_id=ad_client_id,
+                ad_org_id=_ALL_ORGANIZATIONS_AD_ORG_ID,
+            )
+            result["tenant_mapping"] = {"ad_client_id": ad_client_id, "ad_org_id": _ALL_ORGANIZATIONS_AD_ORG_ID}
+        return result
 
     def _create_once(self, request, step, table, fields):
         key = self._resource_key(step)
@@ -116,6 +169,8 @@ class IdempiereProvisioningAdapter:
 
     @staticmethod
     def _resource_key(step): return f"{step.kind.value}:{step.key}"
+    @staticmethod
+    def _client_alias_key(): return "AD_Client:primary"
     @staticmethod
     def _safe_value(value): return value.replace("_", "-")[:40]
     @staticmethod

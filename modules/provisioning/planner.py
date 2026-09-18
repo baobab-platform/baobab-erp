@@ -6,11 +6,25 @@ from provisioning.model import ErpProvisioningRequest, ProvisioningPlan, Provisi
 from provisioning.validation import require_valid_request
 
 
+def _json_default(value):
+    if isinstance(value, (frozenset, set)):
+        # sort, don't just list(): frozenset iteration order depends on element
+        # hashes AND insertion/resize history, so two frozensets with identical
+        # elements built via different code paths (e.g. a literal here vs
+        # frozenset(sorted(...)) after a JSON round-trip in config.py) are not
+        # guaranteed to iterate identically even within one interpreter process.
+        # str()/list() on the set directly would make this function's digest --
+        # and therefore step keys -- silently non-deterministic for the exact
+        # same desired state, defeating this function's own documented guarantee.
+        return sorted(value)
+    return str(value)
+
+
 def build_plan(request: ErpProvisioningRequest) -> ProvisioningPlan:
     """Create a deterministic plan. The same desired state produces the same
     digest and step keys, which makes retries safe and reviewable."""
     require_valid_request(request)
-    serialised = json.dumps(asdict(request), sort_keys=True, default=str, separators=(",", ":"))
+    serialised = json.dumps(asdict(request), sort_keys=True, default=_json_default, separators=(",", ":"))
     digest = hashlib.sha256(serialised.encode()).hexdigest()
     prefix = f"{request.provisioning_id}:{digest[:12]}"
     steps: list[ProvisioningStep] = [

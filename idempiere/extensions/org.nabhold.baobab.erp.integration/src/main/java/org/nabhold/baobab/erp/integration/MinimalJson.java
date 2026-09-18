@@ -19,6 +19,73 @@ final class MinimalJson {
         this.text = text;
     }
 
+    /**
+     * Serialises a flat-ish JSON object: String, Number, Boolean, null values, and
+     * one level of nested {@code Map<String, Object>} (enough for the outbox event
+     * payloads this bundle sends -- e.g. {@code {"table": "C_Order", "record_id": 42}}).
+     * Not a general JSON writer; deliberately narrow, matching {@link #parseObject}'s
+     * own scope, so this bundle needs no external JSON dependency.
+     */
+    static String writeObject(Map<String, ?> value) {
+        StringBuilder builder = new StringBuilder();
+        writeObjectInto(builder, value);
+        return builder.toString();
+    }
+
+    private static void writeObjectInto(StringBuilder builder, Map<String, ?> value) {
+        builder.append('{');
+        boolean first = true;
+        for (Map.Entry<String, ?> entry : value.entrySet()) {
+            if (!first) {
+                builder.append(',');
+            }
+            first = false;
+            writeString(builder, entry.getKey());
+            builder.append(':');
+            writeValue(builder, entry.getValue());
+        }
+        builder.append('}');
+    }
+
+    private static void writeValue(StringBuilder builder, Object value) {
+        if (value == null) {
+            builder.append("null");
+        } else if (value instanceof String s) {
+            writeString(builder, s);
+        } else if (value instanceof Number || value instanceof Boolean) {
+            builder.append(value);
+        } else if (value instanceof Map<?, ?> nested) {
+            @SuppressWarnings("unchecked")
+            Map<String, ?> typed = (Map<String, ?>) nested;
+            writeObjectInto(builder, typed);
+        } else {
+            throw new IllegalArgumentException(
+                    "Unsupported value type for MinimalJson.writeObject: " + value.getClass());
+        }
+    }
+
+    private static void writeString(StringBuilder builder, String value) {
+        builder.append('"');
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            switch (c) {
+                case '"' -> builder.append("\\\"");
+                case '\\' -> builder.append("\\\\");
+                case '\n' -> builder.append("\\n");
+                case '\t' -> builder.append("\\t");
+                case '\r' -> builder.append("\\r");
+                default -> {
+                    if (c < 0x20) {
+                        builder.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        builder.append(c);
+                    }
+                }
+            }
+        }
+        builder.append('"');
+    }
+
     static Map<String, Object> parseObject(String text) {
         MinimalJson parser = new MinimalJson(text);
         parser.skipWhitespace();

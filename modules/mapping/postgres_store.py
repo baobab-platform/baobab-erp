@@ -1,9 +1,11 @@
 """Postgres-backed CanonicalMappingStore against baobab.entity_mapping.
 
-See db/migrations/0003_create_entity_mapping.sql. canonical_id is stored as a
-native UUID column; this class accepts/returns it as str at the boundary, matching
-the rest of modules/mapping, and casts explicitly in SQL rather than relying on
-implicit driver-side UUID adaptation.
+See db/migrations/0003_create_entity_mapping.sql (extended by
+0008_add_control_plane_mapping_context.sql: legal_entity_id, revision,
+effective-dating). canonical_id is stored as a native UUID column; this class
+accepts/returns it as str at the boundary, matching the rest of
+modules/mapping, and casts explicitly in SQL rather than relying on implicit
+driver-side UUID adaptation.
 """
 
 import psycopg
@@ -14,6 +16,43 @@ from mapping.model import NativeRecordRef
 class PostgresCanonicalMappingStore:
     def __init__(self, connection: psycopg.Connection) -> None:
         self._connection = connection
+
+    def create_mapping(
+        self,
+        tenant_id: str,
+        legal_entity_id: str,
+        canonical_type: str,
+        canonical_id: str,
+        native_table: str,
+        native_id: int,
+    ) -> None:
+        """Persists the FIRST mapping between a canonical entity and the
+        native record that represents it. This is distinct from the "lazy
+        creation" ADR-ERP-007 forbids: that rule is about never fabricating a
+        mapping to route around one that was expected to already exist (e.g.
+        resolving a Party by matching on name because no mapping was found).
+        Here the native record was just created by the same caller in the
+        same operation -- recording that mapping is the mapping's legitimate
+        origin, not a workaround. Must be called within the caller's own
+        transaction, matching PostgresOutboxStore.record()'s convention, so
+        the native record, its mapping, and its outbox event commit or roll
+        back together.
+
+        Raises psycopg.errors.UniqueViolation (uncaught) if an active mapping
+        already exists for this canonical_id or this native record -- callers
+        must not call this to "fix up" an existing mapping; superseding one is
+        a distinct, not-yet-needed operation (see the `superseded` status and
+        `replaces_mapping_id` column this table already reserves for it).
+        """
+        with self._connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO baobab.entity_mapping
+                    (tenant_id, legal_entity_id, canonical_type, canonical_id, native_table, native_id)
+                VALUES (%s, %s, %s, %s::uuid, %s, %s)
+                """,
+                (tenant_id, legal_entity_id, canonical_type, canonical_id, native_table, native_id),
+            )
 
     def find_native(self, tenant_id: str, canonical_type: str, canonical_id: str) -> NativeRecordRef | None:
         with self._connection.cursor() as cursor:
