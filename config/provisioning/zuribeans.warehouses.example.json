@@ -1,0 +1,28 @@
+{
+  "legal_entities": {
+    "Zuribeans_ZA": {
+      "legal_entity_id": "REPLACE_CP_ZA_LEGAL_ENTITY_ID",
+      "market_id": "REPLACE_CP_ZA_MARKET_ID",
+      "country_code": "ZA",
+      "warehouses": [
+        {
+          "code": "ZB-ZA-MAIN",
+          "name": "ZuriBeans South Africa Main Warehouse",
+          "organisation_mapping_id": "REPLACE_EXPLICIT_ZA_ERP_ORG_MAPPING"
+        }
+      ]
+    },
+    "Zuribeans_UG": {
+      "legal_entity_id": "REPLACE_CP_UG_LEGAL_ENTITY_ID",
+      "market_id": "REPLACE_CP_UG_MARKET_ID",
+      "country_code": "UG",
+      "warehouses": [
+        {
+          "code": "ZB-UG-MAIN",
+          "name": "ZuriBeans Uganda Main Warehouse",
+          "organisation_mapping_id": "REPLACE_EXPLICIT_UG_ERP_ORG_MAPPING"
+        }
+      ]
+    }
+  }
+}

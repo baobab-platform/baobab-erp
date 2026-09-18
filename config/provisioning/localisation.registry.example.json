@@ -1,0 +1,22 @@
+{
+  "profiles": [
+    {
+      "profile_id": "zuribeans-za-certified-v1",
+      "country_code": "ZA",
+      "version": "1",
+      "effective_from": "REPLACE_EFFECTIVE_DATE",
+      "effective_to": null,
+      "process_id": "REPLACE_APPROVED_IDEMPIERE_PROCESS_ID",
+      "certification_reference": "REPLACE_FINANCE_TAX_CERTIFICATION"
+    },
+    {
+      "profile_id": "zuribeans-ug-certified-v1",
+      "country_code": "UG",
+      "version": "1",
+      "effective_from": "REPLACE_EFFECTIVE_DATE",
+      "effective_to": null,
+      "process_id": "REPLACE_APPROVED_IDEMPIERE_PROCESS_ID",
+      "certification_reference": "REPLACE_FINANCE_TAX_CERTIFICATION"
+    }
+  ]
+}
