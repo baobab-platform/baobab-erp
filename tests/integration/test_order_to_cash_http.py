@@ -237,7 +237,6 @@ class OrderToCashHttpIntegrationTests(unittest.TestCase):
         })
         self.assertEqual(status, 201, body)
         self.assertEqual(body["table"], "C_Order")
-        order_native_id = body["native_id"]
 
         status, body = self._post("/sales-orders/complete", {
             "tenant_id": tenant_id, "entity_id": entity_id,
