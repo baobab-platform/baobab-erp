@@ -1,234 +1,182 @@
 """Concrete ProvisioningAdapter (service.py's Protocol) against a real iDempiere
-instance, per ADR-ERP-019's responsibility split: the Control Plane already owns the
-canonical tenant_id/legal_entity_id/engine_instance_id/isolation_profile_id/
-capability_binding_id identifiers by the time a request reaches this adapter (they are
-plain fields on ErpProvisioningRequest); this adapter's job is the native half --
-create/configure the AD_Client (and its accounting, localisation and warehouses) that
-represents this legal entity inside a shared iDempiere EngineInstance, then record the
-resulting (tenant_id, legal_entity_id) -> (AD_Client_ID, AD_Org_ID) mapping so
-modules/context can resolve it afterwards (ADR-ERP-002).
+instance. Mapping-driven, never idempotent-by-Name: retries resolve an already-created
+native record through ProvisioningMappingStore (provisioning_id + resource_key ->
+native iDempiere ID), never by searching iDempiere for a record with a matching Name --
+that would risk creating a duplicate AD_Client/AD_Org/M_Warehouse after a partial
+failure, or silently reusing an unrelated record that happens to share a name.
 
-Because ADR-ERP-021 chose Pattern B (a separate AD_Client per ZuriBeans market, not one
-shared AD_Client with market AD_Orgs), each AD_Client here needs only its own default
-organization -- AD_Org_ID 0, iDempiere's built-in "*" / All-Organizations id. Pattern
-A's need for market-specific AD_Orgs under one shared AD_Client (which is what
-StepKind.CREATE_ORGANISATION would be for) does not apply to this topology, and
-planner.py never emits that step kind; apply()/check() raise a clear
-ProvisioningStepError if they ever see one rather than silently no-op-ing.
-
-Field names below (AD_Client.Value/Name, C_AcctSchema.Name/C_Currency_ID, etc.) are
-drawn from iDempiere's standard, public AD_* schema -- they are NOT independently
-verified against the REST API's request/response envelope for these specific endpoints
-the way idempiere_client.py's own core shapes (auth, /models/{table}, /processes/{id})
-were (that verification needs a live instance to do honestly, and none is reachable in
-this environment -- see idempiere/rest-api/README.md and architecture/conformance.yaml).
-This module is therefore code-complete against RestIdempiereClient's already-verified
-transport shape, not independently proven correct end-to-end; verified here via
-tests/unit/test_provisioning_idempiere_adapter.py against a fake IdempiereClient,
-matching test_provisioning_service.py's own mocking style, not a live run.
+PERSIST_MAPPING additionally writes the tenant/legal-entity -> AD_Client/AD_Org mapping
+that modules/context actually resolves against (baobab.tenant_mapping, ADR-ERP-002),
+via the optional `tenant_mappings` collaborator -- without it, provisioning would mark
+itself complete without ever making the new legal entity resolvable, which defeats the
+point of provisioning. `tenant_mappings` is optional (defaults to None) so callers that
+only care about native iDempiere state (e.g. existing unit tests) don't need to supply
+one; server.py's real wiring always will.
 """
 
-import re
+from __future__ import annotations
+
+from dataclasses import dataclass
 from typing import Any, Protocol
 
-from integration.idempiere_client import IdempiereClient, IdempiereClientError
 from provisioning.model import ErpProvisioningRequest, ProvisioningStep, ReadinessCheck, StepKind
 
 _ALL_ORGANIZATIONS_AD_ORG_ID = 0
 
 
-class ProvisioningStepError(Exception):
-    """A step kind this adapter cannot apply/check, or the underlying iDempiere call failed."""
+class ProvisioningMappingStore(Protocol):
+    def get_native_id(self, *, provisioning_id: str, resource_key: str) -> int | None: ...
+    def put_native_id(self, *, provisioning_id: str, resource_key: str, native_id: int) -> None: ...
+
+
+class ProvisioningIdempiereClient(Protocol):
+    def get_record(self, table: str, record_id: int) -> dict[str, Any]: ...
+    def create_record(self, table: str, fields: dict[str, Any]) -> int: ...
+    def update_record(self, table: str, record_id: int, fields: dict[str, Any]) -> None: ...
+    def execute_process(self, process_id: int, parameters: dict[str, Any]) -> dict[str, Any]: ...
 
 
 class TenantMappingWriter(Protocol):
+    """The write path onto baobab.tenant_mapping (modules/context/postgres_store.py's
+    PostgresTenantMappingStore) that PERSIST_MAPPING needs to make context resolution
+    actually work for the legal entity this operation just provisioned."""
+
     def create_mapping(self, tenant_id: str, entity_id: str, ad_client_id: int, ad_org_id: int) -> None: ...
-    def find_active_mapping(self, tenant_id: str, entity_id: str) -> tuple[int, int] | None: ...
 
 
+@dataclass(slots=True)
 class IdempiereProvisioningAdapter:
-    """One instance is used for the whole of a single ErpProvisioningService.apply()
-    call (see service.py: it loops over every pending step for one provisioning_id in
-    one call). This adapter caches the AD_Client_ID that CREATE_CLIENT produces,
-    in-memory, keyed by provisioning_id, so later steps in the *same* apply() call
-    (CONFIGURE_ACCOUNTING, CONFIGURE_LOCALISATION, CREATE_WAREHOUSE, PERSIST_MAPPING)
-    can use it without re-deriving it. That cache is process-local and not durable: if
-    apply() is retried from a fresh process after CREATE_CLIENT already completed (per
-    ProvisioningStore.completed_steps), this adapter falls back to
-    TenantMappingWriter.find_active_mapping -- which only has an answer once
-    PERSIST_MAPPING itself has already run once. A restart between CREATE_CLIENT
-    succeeding and PERSIST_MAPPING running is therefore a genuine gap: this adapter
-    cannot invent an AD_Client lookup-by-natural-key call the REST API spec doesn't
-    document. Flagged here rather than papered over.
+    """Concrete adapter for the existing ErpProvisioningService.
+
+    It is deliberately mapping-driven: retries never guess native records by Name.
+    The canonical provisioning operation owns durable native IDs, preventing duplicate
+    AD_Client/AD_Org/M_Warehouse creation after a partial failure.
     """
 
-    def __init__(self, client: IdempiereClient, mappings: TenantMappingWriter) -> None:
-        self._client = client
-        self._mappings = mappings
-        self._ad_client_id_cache: dict[str, int] = {}
-        # Results already applied in *this* process, keyed by step.key -- the only
-        # thing check() has to go on beyond re-querying iDempiere/the mapping store,
-        # since ProvisioningStep itself carries only the desired payload, not the
-        # result of applying it (that lives in ProvisioningStore, which this adapter
-        # has no handle on). Matches how test_provisioning_service.py exercises one
-        # adapter instance across both apply() and readiness() in the same process.
-        self._step_results: dict[str, dict] = {}
+    client: ProvisioningIdempiereClient
+    mappings: ProvisioningMappingStore
+    tenant_mappings: TenantMappingWriter | None = None
 
     def apply(self, request: ErpProvisioningRequest, step: ProvisioningStep) -> dict:
-        try:
-            if step.kind is StepKind.CREATE_CLIENT:
-                result = self._apply_create_client(request, step)
-            elif step.kind is StepKind.CONFIGURE_ACCOUNTING:
-                result = self._apply_configure_accounting(request, step)
-            elif step.kind is StepKind.CONFIGURE_LOCALISATION:
-                result = self._apply_configure_localisation(request, step)
-            elif step.kind is StepKind.CREATE_WAREHOUSE:
-                result = self._apply_create_warehouse(request, step)
-            elif step.kind is StepKind.PERSIST_MAPPING:
-                result = self._apply_persist_mapping(request, step)
-            else:
-                raise ProvisioningStepError(f"No handler for step kind {step.kind.value!r} ({step.key})")
-        except IdempiereClientError as exc:
-            raise ProvisioningStepError(f"{step.kind.value} ({step.key}) failed: {exc}") from exc
-        self._step_results[step.key] = result
-        return result
+        handlers = {
+            StepKind.CREATE_CLIENT: self._create_client,
+            StepKind.CREATE_ORGANISATION: self._create_org,
+            StepKind.CONFIGURE_ACCOUNTING: self._configure_accounting,
+            StepKind.CONFIGURE_LOCALISATION: self._configure_localisation,
+            StepKind.CREATE_WAREHOUSE: self._create_warehouse,
+            StepKind.PERSIST_MAPPING: self._persist_mapping,
+        }
+        return handlers[step.kind](request, step)
 
     def check(self, request: ErpProvisioningRequest, step: ProvisioningStep) -> ReadinessCheck:
+        resource_key = self._resource_key(step)
+        if step.kind in {StepKind.CONFIGURE_ACCOUNTING, StepKind.CONFIGURE_LOCALISATION, StepKind.PERSIST_MAPPING}:
+            marker = self.mappings.get_native_id(provisioning_id=request.provisioning_id, resource_key=resource_key)
+            return ReadinessCheck(f"idempiere.{step.kind.value}", marker is not None, "applied" if marker is not None else "not applied")
+        native_id = self.mappings.get_native_id(provisioning_id=request.provisioning_id, resource_key=resource_key)
+        if native_id is None:
+            return ReadinessCheck(f"idempiere.{step.kind.value}", False, "native mapping missing")
+        table = self._table(step.kind)
         try:
-            if step.kind is StepKind.CREATE_CLIENT:
-                return self._check_record(step, "AD_Client")
-            if step.kind is StepKind.CONFIGURE_ACCOUNTING:
-                return self._check_record(step, "C_AcctSchema")
-            if step.kind is StepKind.CONFIGURE_LOCALISATION:
-                return self._check_client_field(request, step, "AD_Language")
-            if step.kind is StepKind.CREATE_WAREHOUSE:
-                return self._check_record(step, "M_Warehouse")
-            if step.kind is StepKind.PERSIST_MAPPING:
-                return self._check_persist_mapping(request, step)
-        except IdempiereClientError as exc:
-            return ReadinessCheck(f"step.{step.key}", False, f"could not verify: {exc}")
-        raise ProvisioningStepError(f"No handler for step kind {step.kind.value!r} ({step.key})")
+            record = self.client.get_record(table, native_id)
+        except Exception as exc:
+            return ReadinessCheck(f"idempiere.{step.kind.value}", False, f"native record unavailable: {exc}")
+        active = bool(record.get("IsActive", True))
+        return ReadinessCheck(f"idempiere.{step.kind.value}", active, f"{table}:{native_id}")
 
-    # -- CREATE_CLIENT --------------------------------------------------------------
-
-    def _apply_create_client(self, request: ErpProvisioningRequest, step: ProvisioningStep) -> dict:
-        fields: dict[str, Any] = {
-            "Value": _slug(step.payload["Name"]),
-            "Name": step.payload["Name"],
-            "IsActive": "Y",
-        }
-        ad_client_id = self._client.create_record("AD_Client", fields)
-        self._ad_client_id_cache[request.provisioning_id] = ad_client_id
-        return {"AD_Client_ID": ad_client_id, "AD_Org_ID": _ALL_ORGANIZATIONS_AD_ORG_ID}
-
-    # -- CONFIGURE_ACCOUNTING ---------------------------------------------------------
-
-    def _apply_configure_accounting(self, request: ErpProvisioningRequest, step: ProvisioningStep) -> dict:
-        ad_client_id = self._require_ad_client_id(request)
-        fields: dict[str, Any] = {
-            "AD_Client_ID": ad_client_id,
-            "Name": f"{request.legal_name} Accounting Schema",
-            "C_Currency_ID": step.payload["functional_currency"],
-            "CostingMethod": step.payload["costing_method"],
-            "IsActive": "Y",
-        }
-        acct_schema_id = self._client.create_record("C_AcctSchema", fields)
-        return {"C_AcctSchema_ID": acct_schema_id}
-
-    # -- CONFIGURE_LOCALISATION -------------------------------------------------------
-
-    def _apply_configure_localisation(self, request: ErpProvisioningRequest, step: ProvisioningStep) -> dict:
-        ad_client_id = self._require_ad_client_id(request)
-        fields: dict[str, Any] = {
-            "AD_Language": _language_for_country(step.payload["country_code"]),
-            "Info": step.payload["profile"],
-        }
-        self._client.update_record("AD_Client", ad_client_id, fields)
-        return {"AD_Client_ID": ad_client_id, **fields}
-
-    # -- CREATE_WAREHOUSE --------------------------------------------------------------
-
-    def _apply_create_warehouse(self, request: ErpProvisioningRequest, step: ProvisioningStep) -> dict:
-        ad_client_id = self._require_ad_client_id(request)
-        fields: dict[str, Any] = {
-            "AD_Client_ID": ad_client_id,
-            "AD_Org_ID": _ALL_ORGANIZATIONS_AD_ORG_ID,
-            "Value": step.payload["warehouse_code"],
-            "Name": step.payload["warehouse_code"],
-            "IsActive": "Y",
-        }
-        warehouse_id = self._client.create_record("M_Warehouse", fields)
-        return {"M_Warehouse_ID": warehouse_id}
-
-    # -- PERSIST_MAPPING ----------------------------------------------------------------
-
-    def _apply_persist_mapping(self, request: ErpProvisioningRequest, step: ProvisioningStep) -> dict:
-        ad_client_id = self._require_ad_client_id(request)
-        self._mappings.create_mapping(
-            tenant_id=step.payload["tenant_id"],
-            entity_id=step.payload["legal_entity_id"],
-            ad_client_id=ad_client_id,
-            ad_org_id=_ALL_ORGANIZATIONS_AD_ORG_ID,
+    def _create_client(self, request, step):
+        result = self._create_once(
+            request, step, "AD_Client",
+            {"Name": request.legal_name, "Value": self._safe_value(request.legal_entity_id), "IsActive": True},
         )
-        return {"AD_Client_ID": ad_client_id, "AD_Org_ID": _ALL_ORGANIZATIONS_AD_ORG_ID}
+        # Stashed under a request-scoped key (not step.key, which is digest-specific and
+        # not derivable from inside _persist_mapping) so PERSIST_MAPPING can find "the"
+        # AD_Client_ID this operation created regardless of which step produced it.
+        self.mappings.put_native_id(
+            provisioning_id=request.provisioning_id, resource_key=self._client_alias_key(), native_id=result["id"]
+        )
+        return result
 
-    # -- shared helpers -------------------------------------------------------------------
+    def _create_org(self, request, step):
+        fields = dict(step.payload)
+        fields.setdefault("Name", request.legal_name)
+        fields.setdefault("Value", self._safe_value(request.legal_entity_id))
+        fields.setdefault("IsActive", True)
+        return self._create_once(request, step, "AD_Org", fields)
 
-    def _require_ad_client_id(self, request: ErpProvisioningRequest) -> int:
-        cached = self._ad_client_id_cache.get(request.provisioning_id)
-        if cached is not None:
-            return cached
-        mapping = self._mappings.find_active_mapping(request.tenant_id, request.legal_entity_id)
-        if mapping is None:
-            raise ProvisioningStepError(
-                "No AD_Client_ID available for this provisioning operation -- CREATE_CLIENT "
-                "must run (in this process) or PERSIST_MAPPING must already have completed "
-                "before this step can proceed"
+    def _create_warehouse(self, request, step):
+        code = step.payload["warehouse_code"]
+        fields = {"Name": code, "Value": code, "IsActive": True}
+        return self._create_once(request, step, "M_Warehouse", fields)
+
+    def _configure_accounting(self, request, step):
+        # Native accounting schema/tax/COA creation is deployment-specific and must
+        # be performed through an approved iDempiere process/plugin. We fail closed
+        # unless process IDs are supplied in the deterministic plan payload.
+        process_id = step.payload.get("process_id")
+        if process_id is None:
+            raise ValueError("CONFIGURE_ACCOUNTING requires approved iDempiere process_id")
+        result = self.client.execute_process(int(process_id), dict(step.payload))
+        self._mark_applied(request, step)
+        return {"process_id": int(process_id), "result": result}
+
+    def _configure_localisation(self, request, step):
+        process_id = step.payload.get("process_id")
+        if process_id is None:
+            raise ValueError("CONFIGURE_LOCALISATION requires certified localisation process_id")
+        result = self.client.execute_process(int(process_id), dict(step.payload))
+        self._mark_applied(request, step)
+        return {"process_id": int(process_id), "result": result}
+
+    def _persist_mapping(self, request, step):
+        # The durable Baobab canonical mapping is owned outside iDempiere. This marker
+        # means the ERP-side provisioning step completed; CP/shared mapping publication
+        # remains an explicit integration concern rather than being silently invented.
+        self._mark_applied(request, step)
+        result = {"canonical": dict(step.payload), "persisted": True}
+        if self.tenant_mappings is not None:
+            ad_client_id = self.mappings.get_native_id(
+                provisioning_id=request.provisioning_id, resource_key=self._client_alias_key()
             )
-        ad_client_id, _ad_org_id = mapping
-        self._ad_client_id_cache[request.provisioning_id] = ad_client_id
-        return ad_client_id
+            if ad_client_id is None:
+                raise ValueError(
+                    "PERSIST_MAPPING requires AD_Client_ID from a completed CREATE_CLIENT step "
+                    "(in this process or a prior one) before context resolution can be wired up"
+                )
+            self.tenant_mappings.create_mapping(
+                tenant_id=step.payload["tenant_id"],
+                entity_id=step.payload["legal_entity_id"],
+                ad_client_id=ad_client_id,
+                ad_org_id=_ALL_ORGANIZATIONS_AD_ORG_ID,
+            )
+            result["tenant_mapping"] = {"ad_client_id": ad_client_id, "ad_org_id": _ALL_ORGANIZATIONS_AD_ORG_ID}
+        return result
 
-    def _check_record(self, step: ProvisioningStep, table: str) -> ReadinessCheck:
-        result = self._step_results.get(step.key)
-        record_id = result.get(f"{table}_ID") if result else None
-        if record_id is None:
-            return ReadinessCheck(f"step.{step.key}", False, f"{table} not yet applied in this process")
-        record = self._client.get_record(table, record_id)
-        active = record.get("IsActive") in ("Y", True)
-        return ReadinessCheck(f"step.{step.key}", active, f"{table}#{record_id} IsActive={record.get('IsActive')!r}")
+    def _create_once(self, request, step, table, fields):
+        key = self._resource_key(step)
+        existing = self.mappings.get_native_id(provisioning_id=request.provisioning_id, resource_key=key)
+        if existing is not None:
+            self.client.get_record(table, existing)
+            return {"table": table, "id": existing, "reused": True}
+        native_id = self.client.create_record(table, fields)
+        self.mappings.put_native_id(provisioning_id=request.provisioning_id, resource_key=key, native_id=native_id)
+        return {"table": table, "id": native_id, "reused": False}
 
-    def _check_client_field(self, request: ErpProvisioningRequest, step: ProvisioningStep, field: str) -> ReadinessCheck:
-        ad_client_id = self._ad_client_id_cache.get(request.provisioning_id)
-        if ad_client_id is None:
-            mapping = self._mappings.find_active_mapping(request.tenant_id, request.legal_entity_id)
-            ad_client_id = mapping[0] if mapping else None
-        if ad_client_id is None:
-            return ReadinessCheck(f"step.{step.key}", False, "AD_Client not yet created")
-        record = self._client.get_record("AD_Client", ad_client_id)
-        configured = bool(record.get(field))
-        return ReadinessCheck(f"step.{step.key}", configured, f"AD_Client#{ad_client_id}.{field}={record.get(field)!r}")
+    def _mark_applied(self, request, step):
+        # 1 is a non-native sentinel only for process/marker steps. Resource mappings
+        # always contain the actual iDempiere record ID.
+        self.mappings.put_native_id(provisioning_id=request.provisioning_id, resource_key=self._resource_key(step), native_id=1)
 
-    def _check_persist_mapping(self, request: ErpProvisioningRequest, step: ProvisioningStep) -> ReadinessCheck:
-        mapping = self._mappings.find_active_mapping(step.payload["tenant_id"], step.payload["legal_entity_id"])
-        ready = mapping is not None
-        detail = f"ad_client_id={mapping[0]}, ad_org_id={mapping[1]}" if mapping else "no active tenant mapping"
-        return ReadinessCheck(f"step.{step.key}", ready, detail)
-
-
-def _slug(name: str) -> str:
-    """A short, iDempiere-Value-shaped (uppercase, underscore-separated) natural key
-    derived from a human-readable name. AD_Client.Value has a real length limit in
-    iDempiere (40 chars); truncate defensively since this is never verified live."""
-    slug = re.sub(r"[^A-Za-z0-9]+", "_", name).strip("_").upper()
-    return slug[:40]
-
-
-_LANGUAGE_BY_COUNTRY = {
-    "UG": "en_US",
-    "ZA": "en_US",
-}
-
-
-def _language_for_country(country_code: str) -> str:
-    return _LANGUAGE_BY_COUNTRY.get(country_code, "en_US")
+    @staticmethod
+    def _resource_key(step): return f"{step.kind.value}:{step.key}"
+    @staticmethod
+    def _client_alias_key(): return "AD_Client:primary"
+    @staticmethod
+    def _safe_value(value): return value.replace("_", "-")[:40]
+    @staticmethod
+    def _table(kind):
+        return {
+            StepKind.CREATE_CLIENT: "AD_Client",
+            StepKind.CREATE_ORGANISATION: "AD_Org",
+            StepKind.CREATE_WAREHOUSE: "M_Warehouse",
+        }[kind]

@@ -23,6 +23,16 @@ command endpoint require a Baobab IAM-issued workload bearer token
 security.workload_auth. They no longer rely on network-level trust alone,
 closing the gap this module's own docstring used to note here (ADR-ERP-010).
 
+Each of those paths also requires its token to carry a specific scope
+(_WORKLOAD_REQUIRED_SCOPES) -- a validly authenticated workload whose token
+doesn't grant that scope gets 403, not access. This closes the gap
+architecture/conformance.yaml's ADR-ERP-010 block used to record here:
+Gate IAM-10 phase 2 authenticated callers but let any valid workload token
+call every gated endpoint regardless of scope. Every order-to-cash and outbox
+path requires the same erp:integrate scope as /context/resolve*/mapping/resolve*
+today, for the same reason PR ZB-03.8 gives there: it is the only scope granted
+to any workload client so far (baobab-iam/config/scopes/erp-integrate.json).
+
 The order-to-cash endpoints need two pieces of deployment configuration this
 module cannot invent: per-AD_Client iDempiere REST credentials (there is no live
 iDempiere instance in any environment this code has run in yet -- see
@@ -148,26 +158,31 @@ def _load_order_to_cash_process_ids() -> "order_to_cash.ProcessIds | None":
     )
 
 
-# Endpoints an authenticated Baobab IAM workload token gates (ADR-0014 §111). Kept
-# as an explicit allowlist rather than "everything except health/events" so a new
-# unauthenticated route is never accidentally exempt by omission.
-_WORKLOAD_AUTHENTICATED_GET_PATHS = frozenset(
-    {"/context/resolve", "/context/resolve-tenant", "/mapping/resolve", "/mapping/resolve-canonical"}
-)
-_WORKLOAD_AUTHENTICATED_POST_PATHS = frozenset(
-    {
-        "/outbox/record",
-        "/sales-orders",
-        "/sales-orders/complete",
-        "/shipments",
-        "/shipments/complete",
-        "/customer-invoices",
-        "/customer-invoices/post",
-        "/payments",
-        "/payments/complete",
-        "/payments/allocate",
-    }
-)
+# Endpoints a Baobab IAM workload token gates, and the scope each one requires
+# (ADR-0014 §111, ADR-ERP-010 §41 "deny by default"). Kept as an explicit
+# allowlist rather than "everything except health/events" so a new
+# unauthenticated route is never accidentally exempt by omission. Every path
+# here currently requires the same scope because only one is granted to any
+# workload client today (baobab-iam/config/scopes/erp-integrate.json,
+# baobab-erp-workload's only client) -- per-resource scopes (e.g. separating
+# context resolution from mapping resolution, or order-to-cash from outbox) are
+# tracked as a follow-on, not invented speculatively here.
+_WORKLOAD_REQUIRED_SCOPES = {
+    "/context/resolve": "erp:integrate",
+    "/context/resolve-tenant": "erp:integrate",
+    "/mapping/resolve": "erp:integrate",
+    "/mapping/resolve-canonical": "erp:integrate",
+    "/outbox/record": "erp:integrate",
+    "/sales-orders": "erp:integrate",
+    "/sales-orders/complete": "erp:integrate",
+    "/shipments": "erp:integrate",
+    "/shipments/complete": "erp:integrate",
+    "/customer-invoices": "erp:integrate",
+    "/customer-invoices/post": "erp:integrate",
+    "/payments": "erp:integrate",
+    "/payments/complete": "erp:integrate",
+    "/payments/allocate": "erp:integrate",
+}
 
 
 def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None) -> type[BaseHTTPRequestHandler]:
@@ -187,23 +202,28 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             self.end_headers()
             self.wfile.write(payload)
 
-        def _authenticate_workload(self) -> bool:
-            """Returns True and lets the caller proceed, or sends a 401 itself and
-            returns False. The identity isn't used by any handler yet (none of these
-            endpoints vary their response by caller) -- this is authentication, not
-            authorization; per-workload scoping is future work if a real need for it
-            arises."""
+        def _authorize_workload(self, required_scope: str) -> bool:
+            """Returns True and lets the caller proceed, or sends a 401/403 itself
+            and returns False. 401 means nothing about the caller could be trusted
+            (missing/invalid/expired/wrong-audience token); 403 means the caller
+            authenticated as a real Baobab IAM workload but its token doesn't grant
+            required_scope -- these are kept distinct so a legitimate workload with
+            the wrong scope gets an actionable signal, while an untrusted caller
+            never learns whether a scope check even ran."""
             try:
-                verify_workload_token(
+                identity = verify_workload_token(
                     self.headers.get("Authorization"),
                     issuer=config.workload_oidc_issuer,
                     audience=config.workload_oidc_audience,
                     key_resolver=resolver,
                 )
-                return True
             except TokenValidationError as exc:
                 self._send_json(401, {"error": str(exc)})
                 return False
+            if not identity.has_role(required_scope):
+                self._send_json(403, {"error": "workload token does not grant the required scope"})
+                return False
+            return True
 
         def do_GET(self) -> None:  # noqa: N802 - stdlib method name
             split = urlsplit(self.path)
@@ -219,7 +239,8 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                 except Exception as exc:  # noqa: BLE001 - reported as a 503, not raised
                     self._send_json(503, {"status": "not_ready", "error": str(exc)})
                 return
-            if split.path in _WORKLOAD_AUTHENTICATED_GET_PATHS and not self._authenticate_workload():
+            required_scope = _WORKLOAD_REQUIRED_SCOPES.get(split.path)
+            if required_scope is not None and not self._authorize_workload(required_scope):
                 return
             if split.path == "/context/resolve":
                 self._handle_context_resolve(query)
@@ -306,8 +327,9 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             if self.path == "/events/inbound":
                 self._handle_inbound_event()
                 return
-            if self.path in _WORKLOAD_AUTHENTICATED_POST_PATHS:
-                if not self._authenticate_workload():
+            required_scope = _WORKLOAD_REQUIRED_SCOPES.get(self.path)
+            if required_scope is not None:
+                if not self._authorize_workload(required_scope):
                     return
                 body = self._read_json_body()
                 if body is None:
