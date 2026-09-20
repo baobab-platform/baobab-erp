@@ -46,6 +46,7 @@ request against an unconfigured AD_Client gets a clear 503, not a crash.
 """
 
 import json
+import hashlib
 import os
 import uuid
 from datetime import datetime, timezone
@@ -56,6 +57,12 @@ import psycopg
 
 from application.business_partner_http import execute_project
 from application.health import liveness, readiness
+from commercial_review.postgres_store import PostgresCommercialReviewStore
+from commercial_review.service import (
+    CommercialReviewError,
+    CommercialReviewRequest,
+    decide_commercial_review,
+)
 from context.model import ContextResolutionError
 from context.postgres_store import PostgresTenantMappingStore
 from context.resolver import resolve_context, resolve_tenant
@@ -188,6 +195,7 @@ _WORKLOAD_REQUIRED_SCOPES = {
     "/mapping/resolve-canonical": "erp:integrate",
     "/outbox/record": "erp:integrate",
     "/business-partners/project": "erp:integrate",
+    "/buyer-commercial-reviews/decide": "erp:integrate",
     "/sales-orders": "erp:integrate",
     "/sales-orders/complete": "erp:integrate",
     "/shipments": "erp:integrate",
@@ -423,6 +431,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             handlers = {
                 "/outbox/record": self._handle_outbox_record,
                 "/business-partners/project": self._handle_project_business_partner,
+                "/buyer-commercial-reviews/decide": self._handle_buyer_commercial_review,
                 "/sales-orders": self._handle_create_sales_order,
                 "/sales-orders/complete": self._handle_complete_sales_order,
                 "/shipments": self._handle_create_shipment,
@@ -434,6 +443,63 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                 "/payments/allocate": self._handle_allocate_payment,
             }
             handlers[path](body)
+
+        def _handle_buyer_commercial_review(self, body: dict) -> None:
+            """ADR-ERP-024: record ERP-owned credit/payment-term decision."""
+            required = (
+                "tenant_id", "entity_id", "buyer_organisation_id",
+                "canonical_organisation_id", "business_partner_id", "credit_status",
+                "currency_code", "profile_reference", "decision_reference",
+                "decided_by_principal_id", "idempotency_key", "correlation_id",
+            )
+            missing = [name for name in required if not str(body.get(name, "")).strip()]
+            if missing:
+                self._send_json(400, {"error": f"missing required fields: {', '.join(missing)}"})
+                return
+            normalized = {key: body.get(key) for key in sorted(body)}
+            request_hash = hashlib.sha256(
+                json.dumps(normalized, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
+            try:
+                credit_limit = body.get("credit_limit_minor")
+                request = CommercialReviewRequest(
+                    tenant_id=str(body["tenant_id"]),
+                    legal_entity_id=str(body["entity_id"]),
+                    buyer_organisation_id=str(body["buyer_organisation_id"]),
+                    canonical_organisation_id=str(body["canonical_organisation_id"]),
+                    business_partner_id=str(body["business_partner_id"]),
+                    credit_status=str(body["credit_status"]),
+                    currency_code=str(body["currency_code"]).upper(),
+                    payment_term_code=body.get("payment_term_code"),
+                    credit_limit_minor=int(credit_limit) if credit_limit is not None else None,
+                    profile_reference=str(body["profile_reference"]),
+                    decision_reference=str(body["decision_reference"]),
+                    decided_by_principal_id=str(body["decided_by_principal_id"]),
+                    idempotency_key=str(body["idempotency_key"]),
+                    request_hash=request_hash,
+                    correlation_id=str(body["correlation_id"]),
+                )
+                with psycopg.connect(config.database_url) as connection:
+                    scope = self._resolve_tenant_scope(connection, body)
+                    if scope is None:
+                        return
+                    record, event, replayed = decide_commercial_review(
+                        request,
+                        store=PostgresCommercialReviewStore(connection),
+                    )
+                    if not replayed:
+                        PostgresOutboxStore(connection).record(event)
+            except (CommercialReviewError, TypeError, ValueError) as exc:
+                self._send_json(400, {"error": str(exc)})
+                return
+            self._send_json(
+                200 if replayed else 201,
+                {
+                    "review_id": record.review_id,
+                    "credit_status": record.request.credit_status,
+                    "replayed": replayed,
+                },
+            )
 
         def _handle_project_business_partner(self, body: dict) -> None:
             """ADR-ERP-022: readiness-gated, tenant-isolated C_BPartner projection."""
