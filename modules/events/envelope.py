@@ -19,6 +19,22 @@ class EventEnvelope:
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> "EventEnvelope":
+        """Accept the legacy ERP envelope and the Shared CloudEvents v1 envelope."""
+        if "specversion" in value:
+            mapped = {
+                "event_id": value.get("id"),
+                "event_type": value.get("type"),
+                "schema_version": value.get("specversion"),
+                "occurred_at": value.get("time"),
+                "source": value.get("source"),
+                "correlation_id": value.get("correlationid"),
+                "tenant_id": value.get("tenantid"),
+                "entity_id": value.get("entityid"),
+                "payload": value.get("data"),
+            }
+        else:
+            mapped = value
+
         required = {
             "event_id",
             "event_type",
@@ -30,12 +46,15 @@ class EventEnvelope:
             "entity_id",
             "payload",
         }
-        missing = sorted(required - value.keys())
+        missing = sorted(name for name in required if mapped.get(name) in (None, ""))
         if missing:
             raise ValueError(f"Missing event envelope fields: {', '.join(missing)}")
-        occurred_at = datetime.fromisoformat(str(value["occurred_at"]).replace("Z", "+00:00"))
+        occurred_at = datetime.fromisoformat(str(mapped["occurred_at"]).replace("Z", "+00:00"))
         if occurred_at.tzinfo is None:
             raise ValueError("occurred_at must include a timezone")
-        if not isinstance(value["payload"], dict):
+        if not isinstance(mapped["payload"], dict):
             raise ValueError("payload must be an object")
-        return cls(occurred_at=occurred_at.astimezone(UTC), **{k: value[k] for k in required - {"occurred_at"}})
+        return cls(
+            occurred_at=occurred_at.astimezone(UTC),
+            **{key: mapped[key] for key in required - {"occurred_at"}},
+        )
