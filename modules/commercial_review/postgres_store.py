@@ -1,6 +1,7 @@
 """Postgres commercial-review audit store (ADR-ERP-024)."""
 
 import json
+from dataclasses import asdict
 from datetime import UTC
 
 from commercial_review.service import (
@@ -50,6 +51,6 @@ class PostgresCommercialReviewStore:
                     request.credit_limit_minor, request.profile_reference,
                     request.decision_reference, request.decided_by_principal_id,
                     request.idempotency_key, request.request_hash,
-                    json.dumps(request.__dict__), record.decided_at,
+                    json.dumps(asdict(request)), record.decided_at,
                 ),
             )
