@@ -54,6 +54,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import psycopg
 
+from application.business_partner_http import execute_project
 from application.health import liveness, readiness
 from context.model import ContextResolutionError
 from context.postgres_store import PostgresTenantMappingStore
@@ -61,9 +62,14 @@ from context.resolver import resolve_context, resolve_tenant
 from events.envelope import EventEnvelope
 from inbox.postgres_store import PostgresInboxStore
 from inbox.service import InvalidSignatureError, receive
-from application.business_partner_http import execute_project
 from integration.business_partner_adapter import BusinessPartnerProjectionError
-from integration.idempiere_client import IdempiereCredentials, IdempiereClientError, RestIdempiereClient, UnconfiguredIdempiereClient, IdempiereEndpoint
+from integration.idempiere_client import (
+    IdempiereCredentials,
+    IdempiereClientError,
+    IdempiereEndpoint,
+    RestIdempiereClient,
+    UnconfiguredIdempiereClient,
+)
 from mapping.model import MappingNotFoundError
 from mapping.postgres_store import PostgresCanonicalMappingStore
 from mapping.resolver import resolve_to_canonical, resolve_to_native
