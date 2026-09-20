@@ -115,6 +115,58 @@ class BusinessPartnerAdapterTests(unittest.TestCase):
         with self.assertRaises(BusinessPartnerProjectionError):
             supplier_request(roles=()).validate()
 
+    def test_projects_buyer_as_customer_and_preserves_trade_identity(self):
+        client, mappings = FakeClient(), FakeMappings()
+        request = supplier_request(
+            canonical_organisation_id="org_buyer_1",
+            display_name="Cape Coffee Buyers",
+            roles=("customer",),
+            billing_country="ZA",
+            default_currency="ZAR",
+            source_customer_id="buyerorg_cape1",
+        )
+
+        result = project_business_partner(request, client=client, mappings=mappings)
+
+        fields = client.records[("C_BPartner", result.native_record_id)]
+        self.assertTrue(fields["IsCustomer"])
+        self.assertFalse(fields["IsVendor"])
+        public = result.projection.to_public_dict()
+        self.assertEqual(public["source_customer_id"], "buyerorg_cape1")
+        self.assertEqual(public["default_currency"], "ZAR")
+
+    def test_same_canonical_party_is_isolated_per_legal_entity(self):
+        client, mappings = FakeClient(), FakeMappings()
+        ug = project_business_partner(
+            supplier_request(
+                canonical_organisation_id="org_buyer_shared",
+                roles=("customer",),
+                source_customer_id="buyerorg_shared",
+            ),
+            client=client,
+            mappings=mappings,
+        )
+        za = project_business_partner(
+            supplier_request(
+                canonical_organisation_id="org_buyer_shared",
+                legal_entity_id="le_zuribeans_za",
+                billing_country="ZA",
+                default_currency="ZAR",
+                roles=("customer",),
+                source_customer_id="buyerorg_shared",
+            ),
+            client=client,
+            mappings=mappings,
+        )
+
+        self.assertEqual(ug.created, 1)
+        self.assertEqual(za.created, 1)
+        self.assertNotEqual(
+            ug.projection.business_partner_id,
+            za.projection.business_partner_id,
+        )
+        self.assertEqual(len(client.records), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
