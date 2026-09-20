@@ -61,6 +61,8 @@ from context.resolver import resolve_context, resolve_tenant
 from events.envelope import EventEnvelope
 from inbox.postgres_store import PostgresInboxStore
 from inbox.service import InvalidSignatureError, receive
+from application.business_partner_http import execute_project
+from integration.business_partner_adapter import BusinessPartnerProjectionError
 from integration.idempiere_client import IdempiereCredentials, IdempiereClientError, RestIdempiereClient, UnconfiguredIdempiereClient, IdempiereEndpoint
 from mapping.model import MappingNotFoundError
 from mapping.postgres_store import PostgresCanonicalMappingStore
@@ -68,6 +70,7 @@ from mapping.resolver import resolve_to_canonical, resolve_to_native
 from order_to_cash import service as order_to_cash
 from order_to_cash.model import OrderLine, OrderToCashError, TenantScope
 from outbox.postgres_store import PostgresOutboxStore
+from provisioning.master_data_mapping import PostgresMasterDataMappingStore
 from security.jwks import JwksSigningKeyResolver
 from security.workload_auth import SigningKeyResolver, TokenValidationError, verify_workload_token
 
@@ -173,6 +176,7 @@ _WORKLOAD_REQUIRED_SCOPES = {
     "/mapping/resolve": "erp:integrate",
     "/mapping/resolve-canonical": "erp:integrate",
     "/outbox/record": "erp:integrate",
+    "/business-partners/project": "erp:integrate",
     "/sales-orders": "erp:integrate",
     "/sales-orders/complete": "erp:integrate",
     "/shipments": "erp:integrate",
@@ -373,6 +377,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
         def _route_post(self, path: str, body: dict) -> None:
             handlers = {
                 "/outbox/record": self._handle_outbox_record,
+                "/business-partners/project": self._handle_project_business_partner,
                 "/sales-orders": self._handle_create_sales_order,
                 "/sales-orders/complete": self._handle_complete_sales_order,
                 "/shipments": self._handle_create_shipment,
@@ -384,6 +389,37 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                 "/payments/allocate": self._handle_allocate_payment,
             }
             handlers[path](body)
+
+        def _handle_project_business_partner(self, body: dict) -> None:
+            """ADR-ERP-022: readiness-gated, tenant-isolated C_BPartner projection."""
+            try:
+                with psycopg.connect(config.database_url) as connection:
+                    scope = self._resolve_tenant_scope(connection, body)
+                    if scope is None:
+                        return
+                    credentials = config.idempiere_credentials_by_ad_client.get(scope.ad_client_id)
+                    if credentials is None:
+                        self._send_json(
+                            503,
+                            {"error": "iDempiere client is not configured for this legal entity"},
+                        )
+                        return
+                    project_body = {
+                        **body,
+                        "legal_entity_id": scope.legal_entity_id,
+                    }
+                    result = execute_project(
+                        project_body,
+                        client=RestIdempiereClient(credentials),
+                        mappings=PostgresMasterDataMappingStore(connection),
+                    )
+            except BusinessPartnerProjectionError as exc:
+                self._send_json(400, {"error": str(exc)})
+                return
+            except IdempiereClientError as exc:
+                self._send_json(502, {"error": f"iDempiere rejected the request: {exc}"})
+                return
+            self._send_json(200, result)
 
         def _handle_outbox_record(self, body: dict) -> None:
             """Called by the OSGi outbox bundle (BaobabOutboxPublisher) -- the caller has
