@@ -64,6 +64,26 @@ class BusinessPartnerHttpTests(unittest.TestCase):
         self.assertTrue(out["business_partner"]["business_partner_id"].startswith("erp_"))
         self.assertEqual(out["created"], 1)
 
+    def test_execute_customer_projection_preserves_source_customer(self):
+        body = {
+            "engine_instance_id": "erp-zuribeans",
+            "legal_entity_id": "le_zuribeans_za",
+            "canonical_organisation_id": "org_buyer_1",
+            "source_customer_id": "buyerorg_1",
+            "display_name": "Cape Coffee Buyers",
+            "readiness_status": "READY",
+            "roles": ["customer"],
+            "billing_country": "ZA",
+            "default_currency": "ZAR",
+            "source_version": "7",
+        }
+
+        out = execute_project(body, client=FakeClient(), mappings=FakeMappings())
+
+        self.assertEqual(out["business_partner"]["roles"], ["customer"])
+        self.assertEqual(out["business_partner"]["source_customer_id"], "buyerorg_1")
+        self.assertEqual(out["business_partner"]["revision"], 7)
+
 
 if __name__ == "__main__":
     unittest.main()
