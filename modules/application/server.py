@@ -63,6 +63,10 @@ from events.envelope import EventEnvelope
 from inbox.postgres_store import PostgresInboxStore
 from inbox.service import InvalidSignatureError, receive
 from integration.business_partner_adapter import BusinessPartnerProjectionError
+from integration.buyer_projection_consumer import (
+    BUYER_PROJECTION_REQUESTED,
+    consume_buyer_projection,
+)
 from integration.idempiere_client import (
     IdempiereCredentials,
     IdempiereClientError,
@@ -99,6 +103,7 @@ class Config:
         self.workload_oidc_audience = os.environ.get("BAOBAB_IAM_OIDC_AUDIENCE", "baobab-erp")
         self.idempiere_credentials_by_ad_client = _load_idempiere_credentials()
         self.order_to_cash_process_ids = _load_order_to_cash_process_ids()
+        self.engine_instance_id = os.environ.get("BAOBAB_ERP_ENGINE_INSTANCE_ID")
 
 
 def _require_env(name: str) -> str:
@@ -356,13 +361,47 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                 with psycopg.connect(config.database_url) as connection:
                     store = PostgresInboxStore(connection)
                     envelope = receive(body, signature, config.event_signing_secret, store)
+                    projection = None
+                    if envelope.event_type == BUYER_PROJECTION_REQUESTED:
+                        if not config.engine_instance_id:
+                            raise BusinessPartnerProjectionError(
+                                "BAOBAB_ERP_ENGINE_INSTANCE_ID is not configured"
+                            )
+                        scope = resolve_context(
+                            envelope.tenant_id,
+                            envelope.entity_id,
+                            PostgresTenantMappingStore(connection),
+                        )
+                        credentials = config.idempiere_credentials_by_ad_client.get(
+                            scope.ad_client_id
+                        )
+                        if credentials is None:
+                            raise BusinessPartnerProjectionError(
+                                "iDempiere client is not configured for this legal entity"
+                            )
+                        projection = consume_buyer_projection(
+                            envelope,
+                            engine_instance_id=config.engine_instance_id,
+                            client=RestIdempiereClient(credentials),
+                            mappings=PostgresMasterDataMappingStore(connection),
+                        )
+                    store.mark_processed(envelope.event_id)
             except InvalidSignatureError:
                 self._send_json(401, {"error": "invalid signature"})
+                return
+            except (BusinessPartnerProjectionError, ContextResolutionError, IdempiereClientError) as exc:
+                if "store" in locals() and "envelope" in locals():
+                    store.mark_failed(envelope.event_id, str(exc))
+                self._send_json(503, {"error": str(exc)})
                 return
             except ValueError as exc:
                 self._send_json(400, {"error": str(exc)})
                 return
-            self._send_json(200, {"status": "accepted", "event_id": envelope.event_id})
+
+            response = {"status": "processed", "event_id": envelope.event_id}
+            if projection is not None:
+                response["business_partner"] = projection.projection.to_public_dict()
+            self._send_json(200, response)
 
         def _read_json_body(self) -> dict | None:
             length = int(self.headers.get("Content-Length", "0"))
