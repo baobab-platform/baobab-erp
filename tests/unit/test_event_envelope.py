@@ -34,6 +34,24 @@ class EventEnvelopeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "timezone"):
             EventEnvelope.from_dict(value)
 
+    def test_parses_shared_cloudevent(self):
+        event = EventEnvelope.from_dict(
+            {
+                "specversion": "1.0",
+                "id": "f3b3a11b-d767-49c5-a2a8-7ed49d8466f6",
+                "type": "com.baobab-platform.customer.buyer-erp-projection.requested.v1",
+                "source": "urn:baobab-platform:baobab-trade",
+                "time": "2026-09-20T12:00:00Z",
+                "correlationid": "cor-1",
+                "tenantid": "tn_zuribeans",
+                "entityid": "le_zuribeans_za",
+                "data": {"buyer_organisation_id": "buyerorg_1"},
+            }
+        )
+        self.assertEqual(event.event_type, "com.baobab-platform.customer.buyer-erp-projection.requested.v1")
+        self.assertEqual(event.entity_id, "le_zuribeans_za")
+        self.assertEqual(event.payload["buyer_organisation_id"], "buyerorg_1")
+
 
 if __name__ == "__main__":
     unittest.main()
