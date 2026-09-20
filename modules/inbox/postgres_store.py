@@ -46,3 +46,27 @@ class PostgresInboxStore:
                 ),
             )
         self._connection.commit()
+
+    def mark_processed(self, event_id: str) -> None:
+        with self._connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE baobab.event_inbox
+                   SET status = 'processed', processed_at = now(), last_error = NULL
+                 WHERE event_id = %s::uuid
+                """,
+                (event_id,),
+            )
+        self._connection.commit()
+
+    def mark_failed(self, event_id: str, error: str) -> None:
+        with self._connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE baobab.event_inbox
+                   SET status = 'failed', last_error = %s
+                 WHERE event_id = %s::uuid
+                """,
+                (error[:2000], event_id),
+            )
+        self._connection.commit()
