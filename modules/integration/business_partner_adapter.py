@@ -1,4 +1,4 @@
-"""Business Partner projection adapter (ADR-ERP-021).
+"""Business Partner projection adapter (ADR-ERP-022).
 
 Projects a readiness-gated organisation into iDempiere C_BPartner via the existing
 master-data bootstrapper. Public identifiers follow Shared contracts/erp/v1
@@ -37,6 +37,7 @@ class BusinessPartnerProjectionRequest:
     billing_country: str | None = None
     default_currency: str | None = None
     source_version: str = "1"
+    source_customer_id: str | None = None
     contract_version: str = "erp/v1"
     status: ProjectionStatus = "active"
 
@@ -64,6 +65,8 @@ class BusinessPartnerProjectionRequest:
             raise BusinessPartnerProjectionError("billing_country must be ISO 3166-1 alpha-2")
         if self.default_currency is not None and len(self.default_currency) != 3:
             raise BusinessPartnerProjectionError("default_currency must be ISO 4217")
+        if self.source_customer_id is not None and not self.source_customer_id.strip():
+            raise BusinessPartnerProjectionError("source_customer_id must not be blank")
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,7 +179,7 @@ def project_business_partner(
         display_name=request.display_name.strip(),
         status=request.status,
         revision=revision,
-        source_customer_id=None,
+        source_customer_id=request.source_customer_id,
         billing_country=request.billing_country.upper() if request.billing_country else None,
         default_currency=request.default_currency.upper() if request.default_currency else None,
     )
