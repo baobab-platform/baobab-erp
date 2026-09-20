@@ -1,4 +1,4 @@
-"""HTTP helpers for Business Partner projection (ADR-ERP-021).
+"""HTTP helpers for Business Partner projection (ADR-ERP-022).
 
 Kept separate from server.py so the route body is unit-testable without the
 ThreadingHTTPServer handler class.
@@ -6,14 +6,13 @@ ThreadingHTTPServer handler class.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any
 
 from integration.business_partner_adapter import (
     BusinessPartnerProjectionError,
     BusinessPartnerProjectionRequest,
     project_business_partner,
 )
-from integration.idempiere_client import IdempiereClientError
 from provisioning.master_data_mapping import MasterDataMappingStore
 
 
@@ -44,6 +43,7 @@ def parse_project_request(body: dict[str, Any]) -> BusinessPartnerProjectionRequ
         billing_country=body.get("billing_country"),
         default_currency=body.get("default_currency"),
         source_version=str(body.get("source_version", "1")),
+        source_customer_id=body.get("source_customer_id"),
         status=body.get("status", "active"),
     )
 
