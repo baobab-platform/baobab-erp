@@ -389,13 +389,13 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             except InvalidSignatureError:
                 self._send_json(401, {"error": "invalid signature"})
                 return
-            except ValueError as exc:
-                self._send_json(400, {"error": str(exc)})
-                return
             except (BusinessPartnerProjectionError, ContextResolutionError, IdempiereClientError) as exc:
                 if "store" in locals() and "envelope" in locals():
                     store.mark_failed(envelope.event_id, str(exc))
                 self._send_json(503, {"error": str(exc)})
+                return
+            except ValueError as exc:
+                self._send_json(400, {"error": str(exc)})
                 return
 
             response = {"status": "processed", "event_id": envelope.event_id}
