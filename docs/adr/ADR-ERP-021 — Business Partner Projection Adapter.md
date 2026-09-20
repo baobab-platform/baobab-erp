@@ -29,11 +29,20 @@ reconciliation (ADR-ERP-014).
    projection request into a native `C_BPartner` via the master-data bootstrapper.
 2. Public `business_partner_id` is minted as `erp_` + opaque hex derived from the
    canonical organisation id and legal entity — never `C_BPartner_ID`.
-3. Projection **fails closed** unless `readiness_status == "READY"` (matches estate
-   `erp_projection_status` vocabulary for the approved/active path).
+3. Projection **fails closed** unless `readiness_status == "READY"`.
 4. Native fields use AD_Column names (`Name`, `IsVendor`, `IsCustomer`, `IsActive`).
-5. iDempiere credentials remain optional at process level; callers inject a client
-   (real `RestIdempiereClient` or test double). Unconfigured clients raise as today.
+5. HTTP surface: `POST /business-partners/project` (workload scope `erp:integrate`),
+   implemented via `application.business_partner_http.execute_project` and wired in
+   `server.py` per `SERVER_WIRE_BUSINESS_PARTNER.md`.
+6. iDempiere credentials remain optional; unconfigured AD_Client → HTTP 503.
+
+## Estate handoff
+
+```text
+READY  →  POST /business-partners/project  →  PROJECTED
+                │
+                └ on error → estate marks FAILED
+```
 
 ## Non-goals
 
@@ -41,9 +50,3 @@ reconciliation (ADR-ERP-014).
 - Bank account / payment master mutation (ADR-0023 §40–43)
 - Automatic projection without readiness
 - Returning vendor table IDs on the public API
-
-## Consequences
-
-- ZuriBeans / Trade may call ERP only after READY with a canonical organisation id.
-- Procurement commitment remains blocked until mapping exists and ERP projection succeeds
-  (ADR-0023 §33).
