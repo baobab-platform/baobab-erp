@@ -1,0 +1,17 @@
+schema_version: 1
+repository:
+  lifecycle: active
+capabilities:
+  - python
+  - java
+  - container
+  - engine
+environment:
+  baobab_dev:
+    required: true
+    profile: full
+package_managers:
+  python: uv
+  java: maven
+artifacts:
+  container: true

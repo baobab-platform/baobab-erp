@@ -1,5 +1,5 @@
 schema:
-  name: "nabhold-development-environment-contract"
+  name: "baobab-platform-development-environment-contract"
   version: "1.0"
 application:
   name: "baobab-erp"
