@@ -32,9 +32,11 @@ reconciliation (ADR-ERP-014).
 3. Projection **fails closed** unless `readiness_status == "READY"`.
 4. Native fields use AD_Column names (`Name`, `IsVendor`, `IsCustomer`, `IsActive`).
 5. HTTP surface: `POST /business-partners/project` (workload scope `erp:integrate`),
-   implemented via `application.business_partner_http.execute_project` and wired in
-   `server.py` per `SERVER_WIRE_BUSINESS_PARTNER.md`.
+   implemented via `application.business_partner_http.execute_project` and registered
+   directly in `server.py`'s authenticated route allowlist and dispatcher.
 6. iDempiere credentials remain optional; unconfigured AD_Client → HTTP 503.
+7. HTTP integration tests prove authentication, scope enforcement, request validation,
+   tenant-context resolution and fail-closed behaviour when iDempiere is unconfigured.
 
 ## Estate handoff
 
