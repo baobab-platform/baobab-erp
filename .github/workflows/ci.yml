@@ -28,7 +28,7 @@ jobs:
           --workdir /workspace
           --env SKIP_COMPOSE_VALIDATION=1
           --env PYTHONPYCACHEPREFIX=/tmp/baobab-pyc
-          ghcr.io/nabhold/baobab-dev:1.0.0
+          ghcr.io/baobab-platform/baobab-dev:1.4.3
           bash scripts/validate.sh
 
   compose-validate:

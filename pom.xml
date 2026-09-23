@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Root aggregator so the repository's Java build has a single entry point
+  (and a committed Maven wrapper at the root, as the Foundation
+  reproducibility and Java runtime gates require). The iDempiere OSGi
+  extensions remain a self-contained reactor under idempiere/extensions;
+  this POM only lists it as a module.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>org.nabhold.baobab.erp</groupId>
+  <artifactId>baobab-erp</artifactId>
+  <version>0.1.0</version>
+  <packaging>pom</packaging>
+  <name>Baobab ERP</name>
+  <modules>
+    <module>idempiere/extensions</module>
+  </modules>
+</project>
