@@ -56,3 +56,11 @@ RUN if [ -f /tmp/rest-api-p2/content.xml ] || [ -f /tmp/rest-api-p2/content.jar 
         echo "No pre-built REST API p2 repository at idempiere/vendor/rest-api-p2/; skipping install (see idempiere/rest-api/README.md)"; \
     fi && \
     rm -rf /tmp/rest-api-p2
+
+# Readiness of the ZK web UI. iDempiere bootstraps OSGi and its database
+# connections slowly (and runs setup on first start), so allow a 3-minute
+# start period before failures count. Probes the same HTTPS listener and
+# curl client that compose.yaml's healthcheck already uses for this image
+# (only 8443 is published), with -k for the image's self-signed certificate.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=3m --retries=3 \
+  CMD curl -kfsS https://127.0.0.1:8443/webui/index.zul >/dev/null || exit 1
