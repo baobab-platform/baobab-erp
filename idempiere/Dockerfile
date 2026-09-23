@@ -15,6 +15,11 @@ COPY idempiere/extensions/ idempiere/extensions/
 RUN mvn -q -B -f idempiere/extensions package -DskipTests
 
 FROM ${IDEMPIERE_IMAGE}
+ARG VERSION=0.0.0-dev
+ARG REVISION=unknown
+LABEL org.opencontainers.image.source="https://github.com/baobab-platform/baobab-erp" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}"
 
 # Pick up upstream Ubuntu security patches the pinned base image itself may be
 # behind on (e.g. openssl). This patches OS packages only; it does not touch
