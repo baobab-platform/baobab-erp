@@ -15,4 +15,4 @@ jobs:
   check:
     permissions:
       contents: read
-    uses: nabhold/shared/.github/workflows/enforce-action-pinning.yml@38defb11aacd95a6f68b7db8026fe336417a2af6 # v1.2.0
+    uses: baobab-platform/shared/.github/workflows/enforce-action-pinning.yml@38defb11aacd95a6f68b7db8026fe336417a2af6 # v1.2.0
