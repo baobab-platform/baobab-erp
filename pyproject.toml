@@ -1,0 +1,6 @@
+# Virtual uv workspace root. The Python application-service layer lives in
+# modules/ (its own pyproject.toml); this root only groups it into a
+# workspace so the repository has a single uv.lock at the root, where the
+# Foundation dependency audit and reproducibility gates look for it.
+[tool.uv.workspace]
+members = ["modules"]

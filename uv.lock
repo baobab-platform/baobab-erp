@@ -2,10 +2,15 @@ version = 1
 revision = 3
 requires-python = ">=3.11"
 
+[manifest]
+members = [
+    "baobab-erp-modules",
+]
+
 [[package]]
 name = "baobab-erp-modules"
 version = "0.1.0"
-source = { editable = "." }
+source = { editable = "modules" }
 dependencies = [
     { name = "psycopg", extra = ["binary"] },
     { name = "pyjwt", extra = ["crypto"] },
