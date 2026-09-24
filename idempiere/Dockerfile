@@ -14,6 +14,29 @@ WORKDIR /build
 COPY idempiere/extensions/ idempiere/extensions/
 RUN mvn -q -B -f idempiere/extensions package -DskipTests
 
+# Bouncy Castle override for the iDempiere runtime. The pinned iDempiere
+# image bundles Bouncy Castle 1.81 (OSGi bundles bcprov/bcpkix/bcutil/bcpg/bcmail),
+# whose bcprov carries CRITICAL CVE-2026-8763 (name-constraints bypass) and
+# HIGH CVE-2026-13506, fixed in 1.85. Fetch the patched bundles here,
+# verified against pinned SHA-256 digests (cross-checked with Maven
+# Central's published SHA-1); the final stage swaps them in. The whole
+# family (bcprov/bcpkix/bcutil/bcpg/bcmail) moves together because bcpg and
+# bcmail import bcprov packages with version "[x,x+0.01)".
+RUN set -eu; mkdir -p /build/bc; cd /build/bc; \
+    m=https://repo1.maven.org/maven2/org/bouncycastle; \
+    curl -fsSL -o bcprov_1.85.2.jar "$m/bcprov-jdk18on/1.85.2/bcprov-jdk18on-1.85.2.jar"; \
+    curl -fsSL -o bcpkix_1.85.0.jar "$m/bcpkix-jdk18on/1.85/bcpkix-jdk18on-1.85.jar"; \
+    curl -fsSL -o bcutil_1.85.0.jar "$m/bcutil-jdk18on/1.85/bcutil-jdk18on-1.85.jar"; \
+    curl -fsSL -o bcpg_1.85.0.jar "$m/bcpg-jdk18on/1.85/bcpg-jdk18on-1.85.jar"; \
+    curl -fsSL -o bcmail_1.85.0.jar "$m/bcmail-jdk18on/1.85/bcmail-jdk18on-1.85.jar"; \
+    printf '%s  %s\n' \
+      986b0fb92ec10e0c66b43e036ce0077e6150cfaecd1db9fb92b56672e157afe5 bcprov_1.85.2.jar \
+      c9f82b2d4e99c4bbdfccf684e52cc06ea06a0b567bfd0d08f9c5a3f417055996 bcpkix_1.85.0.jar \
+      590f55ed5d68529239898a4a5c4f730b6e37f45d1cfa3fbe51f8485abe32c42d bcutil_1.85.0.jar \
+      39426367dc247dfaae9b1253457a39298b6b9a6c28a39b908bca829e315323dd bcpg_1.85.0.jar \
+      ab87de929f8fb8d515143921580b60b7dcc6507f07939ca345b8ffa07d213837 bcmail_1.85.0.jar \
+      | sha256sum --check --strict
+
 FROM ${IDEMPIERE_IMAGE}
 ARG VERSION=0.0.0-dev
 ARG REVISION=unknown
@@ -32,6 +55,27 @@ RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 # already creates and runs as a non-root "idempiere" user owning that tree.
 ARG IDEMPIERE_HOME=/opt/idempiere
 ARG IDEMPIERE_PLUGINS_DIR=${IDEMPIERE_HOME}/plugins
+# Swap in the patched Bouncy Castle bundles (see extensions-builder). The
+# image ships no pre-built OSGi cache, so the simpleconfigurator's
+# bundles.info alone decides what is installed: replace the five 1.81 jars
+# and rewrite their bundles.info entries. The guard fails the build if the
+# base image stops shipping exactly these 1.81 bundles, so this override is
+# revisited rather than silently misapplied. Remove it once the pinned
+# iDempiere image bundles Bouncy Castle >= 1.85.
+COPY --from=extensions-builder /build/bc/ /tmp/bc/
+RUN set -eu; \
+    info="${IDEMPIERE_HOME}/configuration/org.eclipse.equinox.simpleconfigurator/bundles.info"; \
+    for n in bcprov bcpkix bcutil bcpg bcmail; do \
+      old=$(ls "${IDEMPIERE_PLUGINS_DIR}/${n}_1.81.0"*.jar); \
+      [ "$(echo "$old" | wc -l)" = 1 ] || { echo "expected one ${n} 1.81 bundle" >&2; exit 1; }; \
+      grep -q "^${n},1\.81\.0" "$info" || { echo "bundles.info has no ${n} 1.81 entry" >&2; exit 1; }; \
+      new=$(ls /tmp/bc/${n}_*.jar); ver=$(basename "$new" .jar | sed "s/^${n}_//"); \
+      rm -f "$old"; \
+      install -o idempiere -g idempiere -m 0644 "$new" "${IDEMPIERE_PLUGINS_DIR}/"; \
+      sed -i "s#^${n},1\.81\.0[^,]*,plugins/[^,]*,#${n},${ver},plugins/$(basename "$new"),#" "$info"; \
+      grep -q "^${n},${ver},plugins/$(basename "$new")," "$info"; \
+    done; \
+    rm -rf /tmp/bc
 
 COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.integration/target/org.nabhold.baobab.erp.integration-*.jar ${IDEMPIERE_PLUGINS_DIR}/
 COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.context/target/org.nabhold.baobab.erp.context-*.jar ${IDEMPIERE_PLUGINS_DIR}/
