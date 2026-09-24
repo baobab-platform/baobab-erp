@@ -19,3 +19,5 @@ artifacts:
     dockerfile: idempiere/Dockerfile
     context: .
     runtime: true
+security:
+  sast_provider: fallback
