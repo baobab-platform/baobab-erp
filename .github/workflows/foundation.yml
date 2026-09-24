@@ -10,10 +10,15 @@ on:
 
 permissions:
   contents: read
+  packages: read
+  actions: read
+  security-events: write
 
 jobs:
   foundation:
-    uses: nabhold/shared/.github/workflows/foundation-repository-gates.yml@d6c751ad9e5b85ed854c4ad3270bff4b7ac3c8cc
+    uses: baobab-platform/shared/.github/workflows/foundation-repository-gates.yml@468f0e6a8e8e4aac5ec37e87264a073752320530
     with:
-      dockerfile: "idempiere/Dockerfile"
-      build_context: "."
+      foundation_ref: "468f0e6a8e8e4aac5ec37e87264a073752320530"
+      dependency_review_enabled: false
+      advanced_security_enabled: false
+      legacy_metadata_enabled: false

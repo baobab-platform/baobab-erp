@@ -1,11 +1,11 @@
-* @nabhold/platform-engineering
-/.github/ @nabhold/platform-engineering @nabhold/security
-/.devcontainer/ @nabhold/platform-engineering
-/.nabhold/ @nabhold/platform-engineering
-/compose.yaml @nabhold/platform-engineering @nabhold/security
-/idempiere/ @nabhold/platform-engineering
-/modules/ @nabhold/platform-engineering
-/db/ @nabhold/platform-engineering @nabhold/security
-/migration/ @nabhold/platform-engineering
-/contracts/ @nabhold/platform-engineering
-/SECURITY.md @nabhold/security
+* @baobab-platform/platform-engineering
+/.github/ @baobab-platform/platform-engineering @baobab-platform/security
+/.devcontainer/ @baobab-platform/platform-engineering
+/.baobab/ @baobab-platform/platform-engineering
+/compose.yaml @baobab-platform/platform-engineering @baobab-platform/security
+/idempiere/ @baobab-platform/platform-engineering
+/modules/ @baobab-platform/platform-engineering
+/db/ @baobab-platform/platform-engineering @baobab-platform/security
+/migration/ @baobab-platform/platform-engineering
+/contracts/ @baobab-platform/platform-engineering
+/SECURITY.md @baobab-platform/security

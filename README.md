@@ -16,7 +16,7 @@ belong here.
 | Baobab OSGi extensions | `idempiere/extensions/` | Baobab-specific behaviour installed as additional plugins under `org.nabhold.baobab.erp.*` |
 | Application services | `modules/` | Context, mapping, events, outbox/inbox, reconciliation, provisioning — framework-free, backed by Protocol interfaces |
 | Baobab-owned schema | `db/` | Postgres migrations for the `baobab` schema, separate from iDempiere's own tables |
-| Canonical contracts | `nabhold/shared` | Organisation-wide identities and obligations; referenced, not redefined |
+| Canonical contracts | `baobab-platform/shared` | Organisation-wide identities and obligations; referenced, not redefined |
 | Engine contracts | `contracts/` | ERP-owned API/event profiles conforming to shared governance |
 | Migration tooling | `migration/` | Scaffolding for a future ERPNext-source migration; currently unused — see `migration/README.md` |
 

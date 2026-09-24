@@ -1,5 +1,5 @@
 schema:
-  name: "nabhold-development-environment-contract"
+  name: "baobab-platform-development-environment-contract"
   version: "1.0"
 application:
   name: "baobab-erp"
@@ -7,7 +7,7 @@ application:
 environment:
   provider: "baobab-dev"
   profile: "full"
-  minimum_version: "1.4.0"
+  minimum_version: "1.4.3"
   contract_minimum_version: "1.0"
 compatibility_policy:
   strict_runtime_versions: false
