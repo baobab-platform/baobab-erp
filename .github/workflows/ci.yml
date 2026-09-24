@@ -24,6 +24,8 @@ jobs:
       - name: Validate source and contracts in the Baobab environment
         run: >-
           docker run --rm
+          --user "$(id -u):$(id -g)"
+          --env HOME=/tmp/baobab-home
           --volume "${GITHUB_WORKSPACE}:/workspace"
           --workdir /workspace
           --env SKIP_COMPOSE_VALIDATION=1
