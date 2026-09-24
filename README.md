@@ -53,7 +53,7 @@ cp .env.example .env
 ./scripts/dev/bootstrap.sh
 ```
 
-The Codespaces configuration uses `ghcr.io/nabhold/baobab-dev:1.2.6` and provisions a
+The Codespaces configuration uses `ghcr.io/baobab-platform/baobab-dev:1.4.4` and provisions a
 PostgreSQL instance for the `modules/` test suite and Maven/Java for the OSGi extensions.
 
 ## Runtime
