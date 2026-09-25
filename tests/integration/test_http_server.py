@@ -99,6 +99,22 @@ class HttpServerIntegrationTests(unittest.TestCase):
     def _get_as_workload(self, path: str):
         return self._get(path, authorization=f"Bearer {self.workload_token}")
 
+    def _post_json(self, path: str, body: dict, authorization: str | None = None):
+        headers = {"Content-Type": "application/json"}
+        if authorization:
+            headers["Authorization"] = authorization
+        request = urllib.request.Request(
+            self._url(path),
+            data=json.dumps(body).encode(),
+            method="POST",
+            headers=headers,
+        )
+        try:
+            with urllib.request.urlopen(request) as response:
+                return response.status, json.loads(response.read())
+        except urllib.error.HTTPError as exc:
+            return exc.code, json.loads(exc.read())
+
     def _post_event(self, body: bytes, signature: str):
         request = urllib.request.Request(
             self._url("/events/inbound"), data=body, method="POST", headers={"X-Baobab-Signature": signature}
@@ -304,6 +320,68 @@ class HttpServerIntegrationTests(unittest.TestCase):
             authorization=f"Bearer {self.wrong_scope_token}",
         )
         self.assertEqual(status, 403)
+
+    def test_business_partner_projection_requires_workload_token(self):
+        status, _ = self._post_json("/business-partners/project", {})
+        self.assertEqual(status, 401)
+
+    def test_business_partner_projection_requires_erp_integrate_scope(self):
+        status, _ = self._post_json(
+            "/business-partners/project",
+            {},
+            authorization=f"Bearer {self.wrong_scope_token}",
+        )
+        self.assertEqual(status, 403)
+
+    def test_business_partner_projection_validates_context_before_database_work(self):
+        status, body = self._post_json(
+            "/business-partners/project",
+            {"readiness_status": "READY"},
+            authorization=f"Bearer {self.workload_token}",
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("tenant_id", body["error"])
+        self.assertIn("entity_id", body["error"])
+
+    def test_business_partner_projection_fails_closed_when_idempiere_is_unconfigured(self):
+        tenant_id = f"test-tenant-{uuid.uuid4()}"
+        entity_id = f"test-entity-{uuid.uuid4()}"
+        ad_client_id = random.randint(100000, 999999)
+        with psycopg.connect(os.environ["DATABASE_URL"]) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO baobab.tenant_mapping
+                        (tenant_id, entity_id, ad_client_id, ad_org_id)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (tenant_id, entity_id, ad_client_id, 1),
+                )
+            connection.commit()
+            try:
+                status, body = self._post_json(
+                    "/business-partners/project",
+                    {
+                        "tenant_id": tenant_id,
+                        "entity_id": entity_id,
+                        "engine_instance_id": "erp-zuribeans",
+                        "canonical_organisation_id": "org_supplier_test",
+                        "display_name": "Test Supplier",
+                        "readiness_status": "READY",
+                        "roles": ["supplier"],
+                        "billing_country": "UG",
+                    },
+                    authorization=f"Bearer {self.workload_token}",
+                )
+                self.assertEqual(status, 503)
+                self.assertIn("not configured", body["error"])
+            finally:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "DELETE FROM baobab.tenant_mapping WHERE tenant_id = %s",
+                        (tenant_id,),
+                    )
+                connection.commit()
 
     def test_health_and_events_endpoints_need_no_workload_token(self):
         # Health probes and the signed-event webhook have their own, separate
