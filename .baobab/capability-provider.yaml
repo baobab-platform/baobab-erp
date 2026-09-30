@@ -1,0 +1,56 @@
+# Baobab Capability Provider Declaration: baobab-erp
+#
+# Conforms to:
+#   baobab-platform/shared/contracts/capability/v1/provider-declaration.schema.json
+# Governing decision:
+#   baobab-platform/shared ADR-SHARED-017 (EA-02)
+#
+# Declares which canonical Baobab capabilities this engine's providers
+# implement or plan. It references Shared's catalogue.yaml; it defines no
+# capability. It does not state certification (EA-09), activation,
+# bindings, grants, engine instances or health: the Control Plane owns
+# those.
+#
+# The three .baobab contracts are distinct:
+#   repository.yaml          Foundation technical traits
+#   environment.yaml         baobab-dev toolchain
+#   capability-provider.yaml canonical capability support  <- this file
+#
+# Census (EA-02A) and candidate review (EA-02B), 2026-09-30:
+#   finance.order-consequence.process is canonical, with Shared erp/v1 as
+#     its contract. The sell-side order-to-cash in
+#     modules/order_to_cash/service.py is real, but it does not yet consume
+#     erp/v1 commerce-order-consequence or publish order-consequence-status,
+#     so it is planned (CONTRACTED), not claimed as support. Move it into
+#     providers[].support, with evidence, once it does.
+#   inventory.availability.query is a reserved key whose Shared contract
+#     still lacks a request schema, so it stays a CANDIDATE.
+#
+# Validate with a Shared checkout:
+#   python3 <shared>/scripts/capability_catalogue.py validate-declaration \
+#     .baobab/capability-provider.yaml --engine-id baobab-erp --repository-root .
+
+schema:
+  name: baobab-capability-provider-declaration
+  version: "1.0"
+
+engine:
+  engine_id: baobab-erp
+
+planned_capabilities:
+  - capability_key: finance.order-consequence.process
+    proposal_status: CONTRACTED
+    description: Carry a commerce order's ERP consequences and report their status through the erp/v1 boundary.
+    target_provider_key: baobab-erp.idempiere
+    provenance:
+      authority:
+        repository: baobab-platform/baobab-erp
+        decision: ADR-ERP-016
+  - proposed_key: inventory.availability.query
+    proposal_status: CANDIDATE
+    description: Query the ERP-owned physical inventory availability projection (erp/v1 GET /inventory-availability).
+    target_provider_key: baobab-erp.idempiere
+    provenance:
+      authority:
+        repository: baobab-platform/baobab-erp
+        decision: ADR-ERP-015
