@@ -4,6 +4,14 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 
 ## [Unreleased]
 
+### Security
+
+- `idempiere/Dockerfile` swaps the Jackson 2.15.4 bundles in the pinned iDempiere
+  image for 2.18.11 (CVE-2026-91776, CVE-2026-91777 in jackson-databind), as an
+  ADR-ERP-004 section 5 emergency mitigation recorded in the Dockerfile with its
+  owner, reason, removal condition and build guards. `jackson-datatype-joda` stays at
+  2.15.4 because its 2.18 line needs joda-time 2.12 and the image ships 2.10.14.
+
 ### Changed
 
 - Replaced the Frappe/ERPNext foundation-stage scaffold with an iDempiere-based
