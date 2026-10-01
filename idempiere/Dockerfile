@@ -37,6 +37,48 @@ RUN set -eu; mkdir -p /build/bc; cd /build/bc; \
       ab87de929f8fb8d515143921580b60b7dcc6507f07939ca345b8ffa07d213837 bcmail_1.85.0.jar \
       | sha256sum --check --strict
 
+# Jackson override for the iDempiere runtime (ADR-ERP-004 section 5: emergency
+# security mitigation of a bundled third-party library; not a fork of iDempiere core).
+#   owner:    @baobab-platform/platform-engineering
+#   reason:   the pinned iDempiere image bundles Jackson 2.15.4, whose
+#             jackson-databind carries HIGH CVE-2026-91776 and CVE-2026-91777;
+#             the 2.15 line has no fix (fixed in 2.18.11, 2.21.7, 2.22.3)
+#   upstream: idempiereofficial/idempiere:13-release (idempiere-docker); no
+#             upstream issue is filed yet -- file one and link it here
+#   affected: idempiereofficial/idempiere:13-release, Jackson 2.15.4 bundles
+#   removal:  delete this override (and its final-stage swap) once the pinned
+#             iDempiere image bundles jackson-databind >= 2.18.11
+#   tests:    the final-stage guard fails the build if the base image stops
+#             shipping exactly these 2.15.4 bundles; the Foundation container
+#             scan (Trivy) must pass
+# 2.18.11 is the smallest fixed line. databind 2.18 needs jackson-core and
+# jackson-annotations 2.18, so the family moves together, verified against pinned
+# SHA-256 digests (cross-checked with Maven Central's published SHA-1, SHA-256 and
+# SHA-512). jackson-datatype-joda stays at 2.15.4: its 2.18 line requires
+# joda-time [2.12,3) and the image ships joda-time 2.10.14, so an upgraded bundle
+# would not resolve. Nothing in the image depends on it, and the 2.15.4 module
+# still resolves against the 2.18 core and databind.
+RUN set -eu; mkdir -p /build/jackson; cd /build/jackson; \
+    m=https://repo1.maven.org/maven2/com/fasterxml/jackson; v=2.18.11; \
+    printf '%s\n' \
+      "core jackson-annotations 9eab0d36da981645392427eedcb087e13be542488e37f935723dc0be50d18a53" \
+      "core jackson-core 825fa72dfb9e2f8a642322f1390dbac22c30d15ebd6dc6b3772158821ee124eb" \
+      "core jackson-databind 075ad94a76c3edf83e1972dc26f476361eb6b9d0e260d93fc11105509bc79cab" \
+      "dataformat jackson-dataformat-xml 08ad14c8b335fd8cba6b46188a7a0071d328e81a5a545f46c6d0b333c3843694" \
+      "datatype jackson-datatype-guava 3eed4eefff6a765f87b5280cb3d6335bbc97fd12930ab39703bcc8f781c80c05" \
+      "datatype jackson-datatype-json-org 948e7b5b6adb3c4469a53ee2c4e7e80f28be6652428a3d1f5fa6287e005f3e86" \
+      "jaxrs jackson-jaxrs-base 7ac14feba8c41f36d31c8e4f249de8a02971054a4dcc5c8529f9d0131bad2f4b" \
+      "jaxrs jackson-jaxrs-json-provider 347118c93c9c9d202f71d635a9fc33bc822c65f2be7acd7c1309adfaf47e2697" \
+      "jaxrs jackson-jaxrs-xml-provider bda4536646472899d6e4d5d465f98fd5bc3b586d89f6a74278f69f5f1825af5f" \
+      "module jackson-module-jaxb-annotations 6ef536c210df2d5ba2ece053567702eee714a8543b36b1c3dcc430073b12d065" \
+      "module jackson-module-jsonSchema a00a4680a9b4b060cecb7895c88ce7e020e56aa5a494098d6d325d25547eefd7" \
+    | while read -r g a sum; do \
+        f="com.fasterxml.jackson.${g}.${a}_${v}.jar"; \
+        curl -fsSL --retry 5 --retry-all-errors -o "$f" "$m/${g}/${a}/${v}/${a}-${v}.jar"; \
+        printf '%s  %s\n' "$sum" "$f" | sha256sum --check --strict; \
+      done; \
+    [ "$(ls /build/jackson/*.jar | wc -l)" = 11 ]
+
 FROM ${IDEMPIERE_IMAGE}
 ARG VERSION=0.0.0-dev
 ARG REVISION=unknown
@@ -76,6 +118,31 @@ RUN set -eu; \
       grep -q "^${n},${ver},plugins/$(basename "$new")," "$info"; \
     done; \
     rm -rf /tmp/bc
+
+# Swap in the patched Jackson bundles (see extensions-builder), the same way as
+# Bouncy Castle above: replace each 2.15.4 jar and rewrite its bundles.info entry.
+# The guard fails the build if the base image stops shipping exactly one 2.15.4
+# bundle and one matching bundles.info entry for each of them, and afterwards
+# only jackson-datatype-joda may remain at 2.15.4.
+COPY --from=extensions-builder /build/jackson/ /tmp/jackson/
+RUN set -eu; \
+    info="${IDEMPIERE_HOME}/configuration/org.eclipse.equinox.simpleconfigurator/bundles.info"; \
+    old=2.15.4; lines=$(wc -l < "$info"); \
+    for new in /tmp/jackson/*.jar; do \
+      file=$(basename "$new"); n=${file%_*}; ver=${file##*_}; ver=${ver%.jar}; \
+      oldjar="${IDEMPIERE_PLUGINS_DIR}/${n}_${old}.jar"; \
+      [ -f "$oldjar" ] || { echo "expected ${n} ${old} bundle" >&2; exit 1; }; \
+      [ "$(awk -F, -v n="$n" -v o="$old" '$1==n && $2==o' "$info" | wc -l)" = 1 ] || { echo "bundles.info has no single ${n} ${old} entry" >&2; exit 1; }; \
+      rm -f "$oldjar"; \
+      install -o idempiere -g idempiere -m 0644 "$new" "${IDEMPIERE_PLUGINS_DIR}/"; \
+      awk -F, -v OFS=, -v n="$n" -v o="$old" -v v="$ver" -v f="plugins/${file}" '$1==n && $2==o {$2=v; $3=f} {print}' "$info" > /tmp/bundles.info.new; \
+      cat /tmp/bundles.info.new > "$info"; rm -f /tmp/bundles.info.new; \
+      [ "$(awk -F, -v n="$n" -v v="$ver" -v f="plugins/${file}" '$1==n && $2==v && $3==f' "$info" | wc -l)" = 1 ]; \
+    done; \
+    [ "$(wc -l < "$info")" = "$lines" ]; \
+    left=$(awk -F, -v o="$old" 'index($1,"com.fasterxml.jackson.")==1 && $2==o {print $1}' "$info"); \
+    [ "$left" = "com.fasterxml.jackson.datatype.jackson-datatype-joda" ] || { echo "unexpected Jackson ${old} bundles left: ${left}" >&2; exit 1; }; \
+    rm -rf /tmp/jackson
 
 COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.integration/target/org.nabhold.baobab.erp.integration-*.jar ${IDEMPIERE_PLUGINS_DIR}/
 COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.context/target/org.nabhold.baobab.erp.context-*.jar ${IDEMPIERE_PLUGINS_DIR}/
