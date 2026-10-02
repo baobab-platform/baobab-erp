@@ -1,0 +1,75 @@
+# ERP-COMPAT-01 — Semantic delta census (Shared `2da1a42` → `739f0ca`)
+
+Status: census only. **No re-pin, no behaviour change.** `contracts.lock.yaml`
+stays at `2da1a42` until ERP-COMPAT-02…06 pass (ERP-COMPAT-07 moves it).
+Date: 2026-10-02. Method: `git diff 2da1a42 739f0ca -- <contract>` in
+`baobab-platform/shared` for each of the 19 contracts in the lock (500 Shared
+commits in between), plus the contracts and registries added since that ERP
+does not yet list.
+
+## 1. The 19 locked contracts
+
+| Contract | Delta | Class |
+|---|---|---|
+| `erp/v1/mapping.schema.json` | `$id` host only | unchanged |
+| `erp/v1/domain.schema.json` | `$id` host only | unchanged |
+| `erp/v1/{business-partner,customer}-projection`, `commerce-order-consequence`, `inventory-availability`, `invoice-outcome`, `order-consequence-status`, `payment-outcome`, `provisioning-request`, `provisioning-state`, `warehouse-projection` `.schema.json` (11) | `$id` host only | unchanged |
+| `errors/v1/problem-details.schema.json` | `$id` host only | unchanged |
+| `idempotency/v1/policy.yaml` | policy `name` only (`nabhold-` → `baobab-platform-idempotency-policy`) | unchanged (rename) |
+| `events/v1/envelope.schema.json` | `type` pattern `^com\.nabhold\.…` → `^com\.baobab-platform\.…`; description | **breaking** (type namespace) |
+| `erp/v1/asyncapi.yaml` | all 9 event `name`s `com.nabhold.…` → `com.baobab-platform.…`; channel addresses `nabhold.erp.{commands,outcomes}.v1` → `baobab-platform.erp.…` | **breaking** (names/addresses) |
+| `erp/v1/openapi.yaml` | server/OIDC hosts renamed; `/inventory-availability` now documented against new `inventory-availability-query.schema.json`; SKU/warehouse id descriptions | additive (docs) + one new referenced schema |
+| `erp/v1/system-of-record.yaml` | schema 1.0 → **1.1** (ADR-BCP-018): Legal Entity runtime owner `shared` → `control-plane` (Shared keeps contract authority); Organisation owner `unassigned` → `control-plane`; sync direction `shared_to_consumers` → `control-plane_to_consumers` | **behavioural** |
+| `control-plane/v1/domain.schema.json` | `legalEntityId` description (CP-known, external ids CP-authoritative); +14 new id types (`engineId`, `engineInstanceId`, `engineReleaseId`, `deploymentObservationId`, `tenantProvisioningId`, `tenantProvisioningState`, `provisioningPlanId`, `changesetId`, `providerMigrationId`, `approvalDecisionId`, `operationId`, …) | additive; one semantic note |
+
+Result: 16 of 19 are cosmetic (host/name). **Three are breaking**
+(`envelope.schema.json`, `asyncapi.yaml`, plus the `com.nabhold` → `com.baobab-platform`
+type namespace they define) and **one is behavioural**
+(`system-of-record.yaml`, Legal Entity authority moves to Control Plane).
+No field of any projection/outcome/mapping/provisioning payload schema changed.
+
+## 2. Added since the pin and not in ERP's lock
+
+| Contract | Why ERP needs it |
+|---|---|
+| `erp/v1/inventory-availability-query.schema.json` | request contract for `GET /inventory-availability` (openapi now references it) |
+| `erp/v1/capabilities.yaml` | canonical capability definitions ERP owns (`finance.order-consequence.process`, …); provider side is ERP's `.baobab/capability-provider.yaml` |
+| `events/v1/event-registry.yaml` (+schema) | every `com.baobab-platform.erp.*.v1` type is registered with `producer: baobab-erp`; ERP may emit only registered types, and no second vocabulary |
+| `events/v1/context-registry.yaml` (+schema) | `erp` is the one non-tenant-scoped context exception (stewards `[baobab-erp]`) |
+| `events/v1/compatibility/legacy-trade-erp-event.json` | archived shape of ERP's current envelope |
+| `erp/v1/examples/*.json` (9) | golden payloads for conformance tests |
+| `organisation/v1/*` (ADR-BCP-018) | Organisation / Legal-Entity authority split referenced from `system-of-record.yaml` |
+
+These are lock additions for ERP-COMPAT-07, each justified by a conformance test.
+
+## 3. ERP state against the target (what each COMPAT step must close)
+
+| Area | ERP today (`main` = #42) | Target | Step |
+|---|---|---|---|
+| Identity / mapping | `baobab.entity_mapping` has since 0008: `legal_entity_id`, `revision`, `effective_from/to`, `replaces_mapping_id` (BIGINT FK). Still missing: `mapping_id` (`^map_[a-z0-9]+$`), `erp_`-prefixed `canonical_reference`/`erp_resource_id` (today bare `canonical_id` UUID + native integer id), 5-value status (today `active`/`superseded`), `tn_` tenant pattern on `tenant_id`. The lock comment calling this "not yet reconciled" is therefore only partly stale. Legal-entity source must now be **Control Plane** (system-of-record 1.1), not a Shared registry. | `mapping.schema.json` | 02 |
+| HTTP boundary | `modules/application/server.py` serves `/context/*`, `/mapping/*`, `/outbox/record`, `/sales-orders*`, `/shipments*`, `/customer-invoices*`, `/payments*`, `/events/inbound`. **None** of the 6 openapi paths exist: `/provisioning-operations[/{id}]`, `/mappings[/{id}]`, `/order-consequences/{commerce_order_id}`, `/inventory-availability` | openapi paths, scopes, idempotency | 03 |
+| Errors | ad-hoc `{error: …}` JSON | RFC 9457 `application/problem+json` on every error, negative-case tests | 04 |
+| Events | 9-field legacy envelope (`event_id, event_type, schema_version, occurred_at, source, correlation_id, tenant_id, entity_id, payload`); `event_type` values like `erp.payment.completed.v1`, `trade.order.accepted`; `contracts/events/envelope.schema.json` self-declared; `causation_id` declared but unused | CloudEvents 1.0 profile, `com.baobab-platform.erp.*.v1` registered types, `(source, id)` dedup | 05 |
+| Conformance proof | tests validate against ERP's own schemas | tests read the exact Shared commit in the lock and refuse any other | 06 |
+
+## 4. Corrections to carry forward
+
+1. The reconciliation plan and lock comments still say `com.nabhold…` /
+   `nabhold/shared`; every new type must use `com.baobab-platform…`.
+   ERP code contains no `com.nabhold` event types today (only docs/ADR/tests
+   text), so the rename is a contract/documentation concern, not a data
+   migration. Historical migrations stay immutable.
+2. Legal Entity authority is Control Plane at runtime (ADR-BCP-018). ERP-COMPAT-02
+   must resolve `legal_entity_id` through the CP context path already used by
+   `modules/context`, never a Shared-registry lookup, and must not use names.
+3. Trade is now on the converged contracts (T-COMPAT-01…07), so the earlier
+   "no live consumer" framing in `docs/reconciliation-plan.md` is out of date:
+   ERP is the remaining blocker for EA-01.
+4. iDempiere remains ERP authority behind the anti-corruption boundary
+   (ADR-ERP-004); nothing in COMPAT-02…07 changes iDempiere internals.
+
+## 5. Reproduce
+
+```
+git -C shared diff 2da1a429 739f0ca -- <each path in contracts.lock.yaml>
+```
