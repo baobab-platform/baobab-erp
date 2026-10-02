@@ -163,3 +163,20 @@ All error responses are `application/problem+json` (`type`, `title`, `status`, `
 missing `/context/resolve` parameters are 400 instead of 404; 401/503/500 bodies no longer carry validator or
 driver text; the `error` member is gone (the Java client was updated to read `detail`). Negative-case proofs:
 `tests/integration/test_legacy_problem_details.py`.
+
+## 11. ERP-COMPAT-05 — CloudEvents envelope
+
+* `modules/events/cloudevent.py` (envelope), `modules/events/registry.py` (the 8 types ERP produces — the
+  seven `erp.*` types plus `customer.buyer-commercial-profile.changed.v1`, which the buyer-organisation
+  contract registers to baobab-erp and which the census had missed — and the 2 Trade types it consumes).
+* Migration 0013: canonical members stored on outbox/inbox; inbox dedup is `(source, id)`; legacy rows kept,
+  undelivered legacy outbox rows parked as `held` (verified on a pre-0013 database: pending/retry -> held,
+  delivered/dead_letter and the legacy inbox row untouched).
+* Delivery is structured mode (`application/cloudevents+json`); inbound accepts only registered Trade events
+  with their registered `dataschema` and producer; the legacy body is a 400 problem.
+* Proof against Shared 739f0ca: all 9 `erp/v1` examples parse and round-trip, and the registry index equals
+  Shared's registry (`tests/contract/test_shared_event_examples.py`, run with `SHARED_CONTRACTS_DIR`).
+* Honest limit: ERP's domain recorders still produce legacy-shaped events with iDempiere native ids and no
+  registered canonical counterpart, so they are `held`, not delivered. Producing the registered `erp.*` events
+  needs an outcome projection (order_version, revisions, totals, erp_ ids) and the consequence read model; until
+  then ERP delivers no events.

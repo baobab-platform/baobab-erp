@@ -188,6 +188,8 @@ adrs:
     title: ERP canonical event architecture
     status: foundation
     evidence:
+      - modules/events/cloudevent.py
+      - modules/events/registry.py
       - modules/events/envelope.py
       - modules/outbox/postgres_store.py
       - modules/inbox/postgres_store.py
@@ -197,7 +199,9 @@ adrs:
       - modules/integration/delivery_transport.py
       - db/migrations/0004_create_event_outbox.sql
       - db/migrations/0005_create_event_inbox.sql
-      - contracts/events/
+      - db/migrations/0013_event_cloudevents.sql
+      - tests/unit/test_cloudevent.py
+      - tests/contract/test_shared_event_examples.py
       - compose.yaml
       - tests/integration/test_postgres_outbox_store.py
       - tests/integration/test_postgres_inbox_store.py
@@ -217,16 +221,16 @@ adrs:
       supports today, but worth revisiting if/when ADR-ERP-013 moves past it; and
       there's no retry/backoff between ticks beyond dispatch_worker.py's own
       per-event backoff, so a failed tick just waits for the next fixed-interval
-      attempt. Separately: EventEnvelope (modules/events/envelope.py) and
-      contracts/events/envelope.schema.json are baobab-erp's own bespoke shape,
-      not nabhold/shared's published CloudEvents 1.0 envelope
-      (contracts/events/v1/envelope.schema.json) -- nabhold/shared itself now
-      archives this repo's shape as the legacy fixture
-      contracts/events/v1/compatibility/legacy-trade-erp-event.json. See
-      contracts.lock.yaml and docs/reconciliation-plan.md (Phase 1) for the exact
-      field-level drift and why migrating the wrapper alone, ahead of Phase 2's
-      canonical-id work, isn't done yet. baobab-trade has not integrated
-      contracts/erp/v1 either, so this is readiness work, not an active break.
+      attempt. ERP-COMPAT-05: events now travel in Shared's CloudEvents 1.0 envelope
+      (modules/events/cloudevent.py): outbox and inbox store every envelope member (migration 0013),
+      the inbox deduplicates on (source, id), only registered baobab-erp types can be recorded
+      (record_event) and only registered Trade types with their registered dataschema and producer are
+      accepted (a legacy-shaped body is a 400). What is still open: ERP's own domain recorders
+      (order-to-cash, /outbox/record, the OSGi publisher) emit legacy-shaped events carrying iDempiere
+      native ids, for which no registered canonical event or payload exists; they are stored as 'held'
+      (never delivered, counted by held_count) until an outcome projection maps them to the registered
+      erp.* types with canonical payloads (order_version, revisions, totals), which also needs the
+      order-consequence read model. No ERP-produced event is delivered until then.
 
   - id: ADR-ERP-007
     title: ERP canonical entity and external reference mapping architecture

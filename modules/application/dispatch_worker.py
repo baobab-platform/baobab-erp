@@ -10,7 +10,7 @@ import os
 
 import psycopg
 
-from events.envelope import EventEnvelope
+from events.cloudevent import CloudEvent
 from integration.delivery_transport import WebhookDestination
 from integration.delivery_transport import deliver as deliver_webhook
 from outbox.postgres_store import PostgresOutboxStore
@@ -21,8 +21,8 @@ class WebhookEventTransport:
     def __init__(self, destination: WebhookDestination) -> None:
         self._destination = destination
 
-    def deliver(self, envelope: EventEnvelope) -> None:
-        deliver_webhook(envelope, self._destination)
+    def deliver(self, event: CloudEvent) -> None:
+        deliver_webhook(event, self._destination)
 
 
 def _require_env(name: str) -> str:

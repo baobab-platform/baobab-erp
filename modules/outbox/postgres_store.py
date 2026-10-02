@@ -12,6 +12,10 @@ from dataclasses import dataclass
 
 import psycopg
 
+from datetime import UTC
+
+from events import registry
+from events.cloudevent import CloudEvent, EnvelopeError
 from events.envelope import EventEnvelope
 
 
@@ -20,7 +24,7 @@ class PostgresOutboxRecord:
     name: str
     attempts: int
     status: str
-    envelope: EventEnvelope
+    event: CloudEvent
 
 
 class PostgresOutboxStore:
@@ -28,14 +32,17 @@ class PostgresOutboxStore:
         self._connection = connection
 
     def record(self, envelope: EventEnvelope) -> None:
-        """Must be called within the caller's own transaction; does not commit."""
+        """Records a LEGACY-shaped domain event as 'held': it is kept, never delivered. Shared rejects the
+        legacy envelope and no registered canonical event exists yet for these facts (see
+        db/migrations/0013_event_cloudevents.sql). Must be called within the caller's own transaction."""
         with self._connection.cursor() as cursor:
             cursor.execute(
                 """
                 INSERT INTO baobab.event_outbox
                     (event_id, event_type, schema_version, tenant_id, entity_id,
-                     correlation_id, payload_json, occurred_at)
-                VALUES (%s::uuid, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                     correlation_id, payload_json, occurred_at, status, last_error, envelope_format)
+                VALUES (%s::uuid, %s, %s, %s, %s, %s, %s::jsonb, %s, 'held',
+                        'legacy envelope: no registered canonical event to deliver as', 'legacy')
                 """,
                 (
                     envelope.event_id,
@@ -49,14 +56,51 @@ class PostgresOutboxStore:
                 ),
             )
 
-    def pending(self, limit: int = 100) -> list[PostgresOutboxRecord]:
+    def record_event(self, event: CloudEvent) -> None:
+        """Records a canonical event for delivery. Refuses anything ERP does not produce. Must be called
+        within the caller's own transaction; does not commit."""
+        event.validate()
+        if event.type not in registry.PRODUCED or event.source != registry.ERP_SOURCE:
+            raise EnvelopeError(f"{event.type} from {event.source} is not an event baobab-erp produces")
+        if event.dataschema != registry.dataschema_for(event.type):
+            raise EnvelopeError("dataschema does not match the registered schema for the event type")
         with self._connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT event_id, event_type, schema_version, tenant_id, entity_id,
-                       correlation_id, payload_json, occurred_at, attempts, status
+                INSERT INTO baobab.event_outbox
+                    (event_id, event_type, tenant_id, payload_json, occurred_at, envelope_format,
+                     ce_source, ce_subject, ce_dataschema, ce_scope, ce_correlation_id, ce_causation_id,
+                     ce_idempotency_key, ce_traceparent, ce_tracestate)
+                VALUES (%s::uuid, %s, %s, %s::jsonb, %s, 'cloudevents',
+                        %s, %s, %s, %s, %s::uuid, %s::uuid, %s, %s, %s)
+                """,
+                (
+                    event.id, event.type, event.tenantid,
+                    json.dumps(event.data, separators=(",", ":"), sort_keys=True), event.time,
+                    event.source, event.subject, event.dataschema, event.baobabscope, event.correlationid,
+                    event.causationid, event.idempotencykey, event.traceparent, event.tracestate,
+                ),
+            )
+
+    def held_count(self) -> int:
+        """Legacy-shaped events recorded but not deliverable."""
+        with self._connection.cursor() as cursor:
+            cursor.execute("SELECT count(*) FROM baobab.event_outbox WHERE status = 'held'")
+            count = cursor.fetchone()[0]
+        self._connection.commit()
+        return count
+
+    def pending(self, limit: int = 100) -> list[PostgresOutboxRecord]:
+        """Canonical events awaiting delivery, oldest business time first. Legacy 'held' rows are never
+        returned."""
+        with self._connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT event_id, event_type, tenant_id, payload_json, occurred_at, attempts, status,
+                       ce_source, ce_subject, ce_dataschema, ce_scope, ce_correlation_id, ce_causation_id,
+                       ce_idempotency_key, ce_traceparent, ce_tracestate
                 FROM baobab.event_outbox
-                WHERE status IN ('pending', 'retry')
+                WHERE status IN ('pending', 'retry') AND envelope_format = 'cloudevents'
                 ORDER BY occurred_at
                 LIMIT %s
                 """,
@@ -66,23 +110,16 @@ class PostgresOutboxStore:
         self._connection.commit()
 
         records = []
-        for row in rows:
-            (event_id, event_type, schema_version, tenant_id, entity_id, correlation_id, payload_json,
-             occurred_at, attempts, status) = row
-            envelope = EventEnvelope(
-                event_id=str(event_id),
-                event_type=event_type,
-                schema_version=schema_version,
-                occurred_at=occurred_at,
-                source="baobab-erp",
-                correlation_id=correlation_id,
-                tenant_id=tenant_id,
-                entity_id=entity_id,
-                payload=payload_json,
-            )
-            records.append(
-                PostgresOutboxRecord(name=str(event_id), attempts=attempts, status=status, envelope=envelope)
-            )
+        for (event_id, event_type, tenant_id, data, occurred_at, attempts, status, source, subject,
+             dataschema, scope, correlation_id, causation_id, idempotency_key, traceparent, tracestate) in rows:
+            event = CloudEvent(
+                id=str(event_id), type=event_type, source=source, subject=subject,
+                time=occurred_at.astimezone(UTC), dataschema=dataschema, baobabscope=scope,
+                correlationid=str(correlation_id), data=data, tenantid=tenant_id,
+                causationid=str(causation_id) if causation_id else None,
+                idempotencykey=idempotency_key, traceparent=traceparent, tracestate=tracestate,
+            ).validate()
+            records.append(PostgresOutboxRecord(name=str(event_id), attempts=attempts, status=status, event=event))
         return records
 
     def mark_delivered(self, name: str) -> None:
