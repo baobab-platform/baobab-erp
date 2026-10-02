@@ -9,16 +9,12 @@
   "registration_identifier": "REQUIRED_VERIFIED_REGISTRATION_ID_ZURIBEANS_ZA",
   "jurisdiction_code": "ZA",
   "engine_instance_id": "REQUIRED_CP_ENGINE_INSTANCE_ID_ERP_AF_SOUTH_01",
-  "isolation_profile_id": "REQUIRED_CP_ISOLATION_PROFILE_ID_SHARED_INSTANCE_DEDICATED_CLIENT",
-  "capability_binding_id": "REQUIRED_CP_ERP_CAPABILITY_BINDING_ID_ZURIBEANS_ZA",
+  "isolation_requirement": "REQUIRED_CP_ISOLATION_REQUIREMENT",
+  "plan_digest": "REQUIRED_CP_APPROVED_PLAN_DIGEST",
   "target_environment": "production",
   "effective_date": "REQUIRED_APPROVED_EFFECTIVE_DATE",
   "requested_capabilities": [
-    "erp.accounting",
-    "erp.accounts-payable",
-    "erp.accounts-receivable",
-    "erp.inventory",
-    "erp.procurement"
+    "finance.order-consequence.process"
   ],
   "accounting": {
     "functional_currency": "ZAR",

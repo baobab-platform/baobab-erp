@@ -66,7 +66,7 @@ def build_plan(request: ErpProvisioningRequest) -> ProvisioningPlan:
                 "tenant_id": request.tenant_id,
                 "legal_entity_id": request.legal_entity_id,
                 "engine_instance_id": request.engine_instance_id,
-                "capability_binding_id": request.capability_binding_id,
+                "plan_digest": request.plan_digest,
             },
         )
     )

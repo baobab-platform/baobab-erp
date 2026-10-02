@@ -200,3 +200,22 @@ driver text; the `error` member is gone (the Java client was updated to read `de
   (baobab-platform/shared#198, merge `92accac`; namespace stays `erp/v1`). `contracts.lock.yaml` now pins `92accac`, the
   `KNOWN_UNDECLARED` tracking list is deleted, and the suite fails on any undeclared status. The 501s remain a
   transitional capability-absent signal: implementing the four operations, held events and the IAM grants stay separate gates.
+
+## 13. ERP provisioning adopts the Control Plane ERP assignment (Shared `6c6bd17`)
+
+* `contracts.lock.yaml`: `92accac` -> `6c6bd17`; adds `control-plane/v1/erp-assignment.schema.json`, its example and the
+  schemas it references.
+* `CpErpAssignment` is Shared's `ErpAssignment`. Removed from the model, with no replacement from Control Plane:
+  `native_client_mode`/`native_client_key` (ERP-owned placement), `idempotency_key` (ERP-derived from the provisioning, legal
+  entity and approved plan digest), `isolation_profile_id` and `capability_binding_id` (Control Plane registry UUIDs, never
+  projected; `isolation_requirement` and `plan_digest` are carried instead), `legal_entity_code` (the canonical
+  `legal_entity_id` is the identifier), `effective_date`, `target_environment` and `markets[].currencies/localisation_profile/warehouse_codes`
+  (ERP-owned inputs).
+* `ErpProvisioningRequest`: `isolation_profile_id`/`capability_binding_id` -> `isolation_requirement`/`plan_digest`;
+  `requested_capabilities` now holds canonical capability keys and is checked against ERP's `SUPPORTED_CAPABILITIES`
+  (previously a hard-coded `erp.*` module list that Shared does not register); the market participation vocabulary is
+  Shared's governed set. The two production templates were updated to match.
+* Behaviour unchanged for `dedicated_client`; unconfigured legal entities, unconfigured markets, ambiguous registration
+  identifiers, unsupported capabilities, an unverified legal entity, an expired assignment and a cross-boundary assignment
+  all fail closed.
+
