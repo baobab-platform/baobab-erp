@@ -70,6 +70,48 @@ jobs:
       - name: Build deployable application-service image
         run: docker build -f modules/Dockerfile -t baobab-app:test .
 
+  shared-conformance:
+    name: Conformance against the pinned Shared contracts
+    runs-on: ubuntu-26.04
+    # EA-01 / ADR-SHARED-018 ERP-COMPAT-06: ERP's mapping documents, problem documents, events and live HTTP
+    # responses are checked against the real files at the commit contracts.lock.yaml pins. The suite itself
+    # asserts that the checkout is exactly that commit and never skips.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: baobab_test
+          POSTGRES_USER: baobab
+          POSTGRES_PASSWORD: baobab
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U baobab -d baobab_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://baobab:baobab@localhost:5432/baobab_test
+      BAOBAB_SHARED_PATH: ${{ github.workspace }}/.shared-contracts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read pinned baobab-platform/shared commit
+        id: pin
+        run: echo "commit=$(grep -m1 'commit:' contracts.lock.yaml | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      - name: Checkout baobab-platform/shared at the pinned commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/shared
+          ref: ${{ steps.pin.outputs.commit }}
+          path: .shared-contracts
+      - name: Install modules/ with the conformance extras
+        run: pip install --break-system-packages -q -e "modules[conformance]"
+      - name: Apply database migrations
+        run: ./db/migrate.sh
+      - name: Shared conformance
+        run: PYTHONPATH=modules:tests/conformance python3 -m unittest discover -s tests/conformance -p 'test_*.py' -v
+
   integration:
     runs-on: ubuntu-26.04
     services:

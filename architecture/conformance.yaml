@@ -130,6 +130,7 @@ adrs:
       - tests/integration/test_boundary_api.py
       - tests/integration/test_legacy_problem_details.py
       - tests/integration/_problem.py
+      - tests/conformance/test_http_contract.py
       - tests/unit/test_idempiere_client.py
       - tests/integration/test_http_server.py
       - idempiere/Dockerfile
@@ -184,6 +185,13 @@ adrs:
       test_legacy_problem_details.py against a structural check of the Shared schema; exact-pin schema
       validation is ERP-COMPAT-06.
 
+      ERP-COMPAT-06/07: contracts.lock.yaml now pins baobab-platform/shared 739f0ca and tests/conformance/
+      (CI job shared-conformance) validates the live Boundary API responses and problem documents against the
+      OpenAPI and problem-details schemas at exactly that commit. Statuses ERP returns that the pinned OpenAPI
+      does not declare (400 on the two mapping reads; 501 on the four operations whose backing capability is
+      missing) are listed as KNOWN_UNDECLARED, asserted to be problem documents and asserted to stay undeclared,
+      so closing the Shared gap forces the list to shrink.
+
   - id: ADR-ERP-006
     title: ERP canonical event architecture
     status: foundation
@@ -201,7 +209,9 @@ adrs:
       - db/migrations/0005_create_event_inbox.sql
       - db/migrations/0013_event_cloudevents.sql
       - tests/unit/test_cloudevent.py
-      - tests/contract/test_shared_event_examples.py
+      - tests/conformance/test_events.py
+      - tests/conformance/test_identifiers.py
+      - tests/conformance/test_pin.py
       - compose.yaml
       - tests/integration/test_postgres_outbox_store.py
       - tests/integration/test_postgres_inbox_store.py
@@ -231,6 +241,11 @@ adrs:
       (never delivered, counted by held_count) until an outcome projection maps them to the registered
       erp.* types with canonical payloads (order_version, revisions, totals), which also needs the
       order-consequence read model. No ERP-produced event is delivered until then.
+
+      ERP-COMPAT-06/07: every Shared example event round-trips through CloudEvent, validates against the pinned
+      envelope and its registered dataschema, ERP's produced-type index equals Shared's event registry, the
+      archived legacy shape is rejected by both, and identifier/envelope grammars are asserted equal to Shared's
+      (tests/conformance/).
 
   - id: ADR-ERP-007
     title: ERP canonical entity and external reference mapping architecture

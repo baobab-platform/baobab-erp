@@ -23,7 +23,6 @@ pip install --break-system-packages -q --target /tmp/py-deps "PyJWT[crypto]>=2.8
 PYTHONPATH=modules:/tmp/py-deps python -m unittest discover -s tests/unit -p 'test_*.py'
 PYTHONPATH=modules:/tmp/py-deps python -m unittest discover -s tests/security -p 'test_*.py'
 PYTHONPATH=modules:/tmp/py-deps python -m unittest discover -s tests/tenancy -p 'test_*.py'
-PYTHONPATH=modules:/tmp/py-deps python -m unittest discover -s tests/contract -p 'test_*.py'
 PYTHONPATH=modules:/tmp/py-deps python -m unittest discover -s tests/architecture -p 'test_*.py'
 PYTHONPATH=modules:/tmp/py-deps python -m unittest discover -s tests/golden -p 'test_*.py'
 

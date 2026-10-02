@@ -8,6 +8,14 @@ dependencies = [
     "PyJWT[crypto]>=2.8,<3",
 ]
 
+[project.optional-dependencies]
+# tests/conformance/: validates ERP's outputs against the pinned baobab-platform/shared contracts.
+conformance = [
+    "jsonschema[format-nongpl]>=4.21,<5",
+    "referencing>=0.35,<1",
+    "PyYAML>=6,<7",
+]
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"

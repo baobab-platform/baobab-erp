@@ -18,7 +18,9 @@ from mapping import identifiers
 
 _TYPE = re.compile(r"^com\.baobab-platform\.[a-z0-9]+(?:[.-][a-z0-9]+)*\.v[1-9][0-9]*$")
 _IDEMPOTENCY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
-_TRACEPARENT = re.compile(r"^00-(?!0{32})[0-9a-f]{32}-(?!0{16})[0-9a-f]{16}-[0-9a-f]{2}$")
+_TRACEPARENT = re.compile(
+    r"^00-(?!00000000000000000000000000000000)[0-9a-f]{32}-(?!0000000000000000)[0-9a-f]{16}-[0-9a-f]{2}$"
+)
 _TRACESTATE = re.compile(r"^[ -~]+$")
 
 REQUIRED = ("specversion", "id", "type", "source", "subject", "time", "datacontenttype", "dataschema",
