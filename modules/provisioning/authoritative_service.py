@@ -9,6 +9,7 @@ from provisioning.cp_contract import (
     FinanceBaseline,
     materialize_request,
 )
+from provisioning.finance_baseline_store import FinanceBaselineSource
 from provisioning.legal_entity_policy import NativeClientMode, NativePlacementPolicy, native_boundary
 from provisioning.model import ErpProvisioningRequest
 
@@ -18,6 +19,7 @@ class AuthoritativeProvisioningRequestFactory:
     control_plane: ControlPlaneAssignmentSource
     native_placement: NativePlacementPolicy
     market_configuration: Mapping[str, ErpMarketConfiguration]
+    finance: FinanceBaselineSource
     target_environment: str
 
     def build(
@@ -26,8 +28,7 @@ class AuthoritativeProvisioningRequestFactory:
         tenant_id: str,
         tenant_provisioning_id: str,
         legal_entity_id: str,
-        finance: FinanceBaseline,
-        effective_date: date,
+        on: date,
         now: datetime | None = None,
     ) -> ErpProvisioningRequest:
         assignment = self.control_plane.resolve_erp_assignment(
@@ -46,6 +47,19 @@ class AuthoritativeProvisioningRequestFactory:
                 f"native_client_mode={boundary.mode.value!r} is not supported by the "
                 "provisioning adapter (only dedicated_client creates a real AD_Client today)"
             )
+        # The accounting configuration is Finance's (ADR-ERP-008): the baseline in force for exactly this legal entity,
+        # with a named approver and evidence. None is not defaulted; it is "not provisionable yet".
+        baseline = self.finance.effective(legal_entity_id, on)
+        if baseline is None:
+            raise AssignmentError(f"no Finance-approved baseline is in force for {legal_entity_id!r} on {on.isoformat()}")
+        if baseline.legal_entity_id != legal_entity_id:
+            raise AssignmentError("the Finance baseline belongs to another legal entity")
         return materialize_request(
-            assignment, finance, self.market_configuration,
-            target_environment=self.target_environment, effective_date=effective_date, now=now)
+            assignment,
+            FinanceBaseline(
+                functional_currency=baseline.functional_currency, fiscal_year_start_month=baseline.fiscal_year_start_month,
+                chart_of_accounts_template=baseline.chart_of_accounts_template, accounting_schema=baseline.accounting_schema,
+                tax_profile=baseline.tax_profile, costing_method=baseline.costing_method,
+                approved_by=baseline.approved_by, approved_at=baseline.approved_at),
+            self.market_configuration,
+            target_environment=self.target_environment, effective_date=baseline.effective_from, now=now)

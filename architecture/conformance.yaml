@@ -85,8 +85,16 @@ adrs:
       provenance and validated against Shared's vocabulary, never read as a placement. tests/conformance/
       test_erp_assignment.py holds the parser, those vocabularies and the rejected members to Shared at the pin.
 
-      What's still open: FinanceBaseline is supplied by the caller rather than read from an ERP-owned, Finance-approved
-      baseline store with approver and evidence; ErpMarketConfiguration has no persisted source; the provisioning
+      The accounting configuration is no longer caller-supplied: db/migrations/0014 adds the ERP-owned, append-only,
+      versioned financial_configuration_baseline (ADR-ERP-008) and PostgresFinanceBaselineStore resolves the baseline
+      in force for exactly the legal entity and date (latest effective_from, then highest version). A baseline exists
+      only with a named accountable approver and an evidence reference: the table and the store refuse a blank or
+      placeholder approver, synthetic actors such as 'system', blank evidence, an approval in the future, and any
+      UPDATE or DELETE. The factory provisions only from a baseline in force; none in force is "not provisionable
+      yet", never a default. Whether the named approver holds Finance authority is IAM's check, not this table's.
+
+      What's still open: nothing yet RECORDS a baseline through a governed workflow (the store has no HTTP route, and
+      Finance has not approved one for ZuriBeans); ErpMarketConfiguration has no persisted source; the provisioning
       endpoints still answer 501; no real CP client calls the assignment endpoint (ControlPlaneAssignmentSource is a
       Protocol exercised against a fake); IAM has not granted erp-assignment:read or put a tenant_id claim on ERP
       tokens; and the existing-client path does not exist in the adapter.
