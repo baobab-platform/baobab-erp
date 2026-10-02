@@ -23,17 +23,6 @@ from mapping.postgres_store import PostgresCanonicalMappingStore
 
 ISSUER = "https://iam.example.invalid/realms/baobab"
 PROBLEM = shared.schema_uri("errors/v1/problem-details.schema.json")
-# Statuses ERP returns that the pinned OpenAPI does not declare for the operation. Each is a problem+json
-# and is tracked as a Shared contract gap (declare 400 on the mapping reads; declare 501 for operations
-# whose backing capability is not available), never silently accepted.
-KNOWN_UNDECLARED = {
-    ("GET", "/mappings/{mapping_id}", 400),
-    ("GET", "/mappings", 400),
-    ("GET", "/order-consequences/{commerce_order_id}", 501),
-    ("GET", "/inventory-availability", 501),
-    ("GET", "/provisioning-operations/{operation_id}", 501),
-    ("POST", "/provisioning-operations", 501),
-}
 
 
 class _Key:
@@ -108,13 +97,9 @@ class HttpContractTests(unittest.TestCase):
         status, headers, body = result
         content_type = headers["Content-Type"]
         declared = shared.declared_statuses(template, method)
-        if status in declared:
-            self.assertIn(content_type, shared.declared_media(template, method, status), (status, content_type))
-            self.assertEqual(shared.errors_for(template, method, status, content_type, body), [], body)
-        else:
-            self.assertIn((method, template, status), KNOWN_UNDECLARED, f"{method} {template} returned undeclared {status}")
-            self.assertEqual(content_type, "application/problem+json")
-            self.assertEqual(shared.errors(PROBLEM, body), [], body)
+        self.assertIn(status, declared, f"{method} {template} returned {status}, which the pinned OpenAPI does not declare")
+        self.assertIn(content_type, shared.declared_media(template, method, status), (status, content_type))
+        self.assertEqual(shared.errors_for(template, method, status, content_type, body), [], body)
         return status, headers, body
 
     # -- success responses are exactly the declared schemas
@@ -152,7 +137,7 @@ class HttpContractTests(unittest.TestCase):
                 status, *_ = self.assert_contract("GET", template, self._call("GET", path, **kwargs))
                 self.assertEqual(status, expected)
 
-    def test_unimplemented_operations_answer_tracked_501_problem_documents(self):
+    def test_unimplemented_operations_answer_declared_501_problem_documents(self):
         for method, template, path in [
             ("GET", "/order-consequences/{commerce_order_id}", "/order-consequences/ord-1"),
             ("GET", "/inventory-availability", "/inventory-availability?sku_id=s-1&warehouse_id=erp_abcdef12"),
@@ -164,10 +149,13 @@ class HttpContractTests(unittest.TestCase):
                 status, *_ = self.assert_contract(method, template, self._call(method, path, token=self._token(scope=scope, tenant=None)))
                 self.assertEqual(status, 501)
 
-    def test_known_undeclared_statuses_are_really_undeclared(self):
-        """Keeps the tracking list honest: when Shared declares one, it must leave this list."""
-        for method, template, status in KNOWN_UNDECLARED:
-            self.assertNotIn(status, shared.declared_statuses(template, method), (method, template, status))
+    def test_pinned_openapi_declares_the_statuses_erp_returns(self):
+        """Shared 1.0.1 declares 400 on the mapping reads and 501 on exactly the four unavailable operations."""
+        for template in ("/mappings/{mapping_id}", "/mappings"):
+            self.assertIn(400, shared.declared_statuses(template, "GET"), template)
+        for method, template in [("POST", "/provisioning-operations"), ("GET", "/provisioning-operations/{operation_id}"),
+                                 ("GET", "/order-consequences/{commerce_order_id}"), ("GET", "/inventory-availability")]:
+            self.assertIn(501, shared.declared_statuses(template, method), (method, template))
 
     def test_every_implemented_operation_path_exists_in_the_contract(self):
         for template in ("/mappings/{mapping_id}", "/mappings"):
