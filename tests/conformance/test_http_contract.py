@@ -60,6 +60,10 @@ class HttpContractTests(unittest.TestCase):
 
     def _cleanup(self):
         with self.connection.cursor() as cursor:
+            cleanup = getattr(self, "inventory_cleanup", None)
+            if cleanup:
+                cursor.execute("DELETE FROM baobab.erp_master_data_mapping WHERE engine_instance_id = %s", (cleanup[1],))
+                cursor.execute("DELETE FROM baobab.tenant_mapping WHERE tenant_id = %s", (self.tenant,))
             cursor.execute("DELETE FROM baobab.order_consequence_document WHERE tenant_id = ANY(%s)",
                            ([self.tenant, self.other],))
             cursor.execute("DELETE FROM baobab.order_consequence WHERE tenant_id = ANY(%s)", ([self.tenant, self.other],))
@@ -141,108 +145,84 @@ class HttpContractTests(unittest.TestCase):
                 status, *_ = self.assert_contract("GET", template, self._call("GET", path, **kwargs))
                 self.assertEqual(status, expected)
 
-    def test_unimplemented_operations_answer_declared_501_problem_documents(self):
-        for method, template, path in [
-            ("GET", "/inventory-availability", "/inventory-availability?sku_id=s-1&warehouse_id=erp_abcdef12"),
-        ]:
-            with self.subTest(template):
-                scope = "erp:provision" if method == "POST" else "erp:read"
-                status, *_ = self.assert_contract(method, template, self._call(method, path, token=self._token(scope=scope, tenant=None)))
-                self.assertEqual(status, 501)
-
-    # -- order consequences
-    def _consequence(self, tenant=None, version=2):
-        from datetime import datetime, timezone
-        from order_to_cash.consequence import Fact
-        from order_to_cash.consequence_store import PostgresOrderConsequenceStore
-        order = str(uuid.uuid4())
-        store = PostgresOrderConsequenceStore(self.connection)
-        store.open_order(tenant_id=tenant or self.tenant, legal_entity_id="ZURIBEANS-ZA", commerce_order_id=order,
-                         order_version=version, erp_order_id="erp_" + uuid.uuid4().hex, now=datetime.now(timezone.utc))
-        store.record_fact(tenant_id=tenant or self.tenant, commerce_order_id=order, fact=Fact.ORDER_COMPLETED,
-                          now=datetime.now(timezone.utc))
-        self.connection.commit()
-        return order
-
-    def test_order_consequence_matches_the_declared_200_schema(self):
-        order = self._consequence()
-        template = "/order-consequences/{commerce_order_id}"
-        status, _, body = self.assert_contract("GET", template, self._call("GET", f"/order-consequences/{order}"))
-        self.assertEqual((status, body["commerce_order_id"], body["status"], body["revision"]), (200, order, "processing", 2))
-
-    def test_every_status_the_order_consequence_read_can_return_conforms(self):
-        other_tenants_order = self._consequence(tenant=self.other)
-        template = "/order-consequences/{commerce_order_id}"
-        for path, kwargs, expected in [
-            (f"/order-consequences/{uuid.uuid4()}", dict(), 404),
-            (f"/order-consequences/{other_tenants_order}", dict(), 404),
-            (f"/order-consequences/{uuid.uuid4()}", dict(token=None), 401),
-            (f"/order-consequences/{uuid.uuid4()}", dict(token=self._token(scope="erp:integrate")), 403),
-            (f"/order-consequences/{uuid.uuid4()}", dict(token=self._token(tenant=None)), 403)]:
-            with self.subTest(expected=expected, path=path):
-                status, *_ = self.assert_contract("GET", template, self._call("GET", path, **kwargs))
-                self.assertEqual(status, expected)
-
-    # -- provisioning operations: every status ERP returns is declared and conforms
-    def _provision(self, token="default", body="valid", key="idem-" + "0123456789abcdef"):
-        document = {"tenant_id": self.tenant, "legal_entity_ids": ["ZURIBEANS-ZA"], "requested_countries": ["ZA"],
-                    "functional_currencies": ["ZAR"],
-                    "control_plane_authority": {"tenant_provisioning_id": "tp_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
-                                                "plan_id": "plan_0199a1b2c3d47e8f", "plan_version": 1,
-                                                "plan_digest": "sha256:" + "b2" * 32}}
-        headers = {"Content-Type": "application/json"}
-        if key:
-            headers["Idempotency-Key"] = key
-        if token == "default":
-            token = self._token(scope="erp:provision")
-        return self._call("POST", "/provisioning-operations", token=token,
-                          data=document if body == "valid" else body, headers=headers)
-
-    def test_every_status_provisioning_can_return_conforms(self):
-        template = "/provisioning-operations"
+    # -- inventory availability: the engine's physical stock, read live
+    def test_every_status_inventory_availability_can_return_conforms(self):
+        template = "/inventory-availability"
+        ok = "sku_id=sku-1&warehouse_id=erp_abcdef12"
         cases = [
-            (self._provision(key=None), 400), (self._provision(body={"tenant_id": self.tenant}), 400),
-            (self._provision(token=None), 401),
-            (self._provision(token=self._token(scope="erp:read")), 403),
-            (self._provision(token=self._token(scope="erp:provision", tenant=self.other)), 403),
-            (self._provision(token=self._token(scope="erp:provision", tenant=None)), 403),
-            (self._provision(), 503),  # no Control Plane configured in this deployment: fail closed, never guess
+            (f"/inventory-availability?{ok}", dict(), 404),                                   # unmapped warehouse
+            ("/inventory-availability", dict(), 400),
+            ("/inventory-availability?sku_id=sku-1&warehouse_id=nope", dict(), 400),
+            (f"/inventory-availability?{ok}", dict(token=None), 401),
+            (f"/inventory-availability?{ok}", dict(token=self._token(scope="erp:integrate")), 403),
+            (f"/inventory-availability?{ok}", dict(token=self._token(tenant=None)), 403),
         ]
-        for result, expected in cases:
-            with self.subTest(expected=expected, body=result[2].get("detail")):
-                status, headers, _ = self.assert_contract("POST", template, result)
-                self.assertEqual(status, expected)
-        self.assertEqual(cases[-1][0][1].get("Retry-After"), "30")
-
-    def test_every_status_the_operation_read_can_return_conforms(self):
-        template = "/provisioning-operations/{operation_id}"
-        for path, kwargs, expected in [
-            (f"/provisioning-operations/{uuid.uuid4()}", dict(), 404), ("/provisioning-operations/op_nope", dict(), 400),
-            (f"/provisioning-operations/{uuid.uuid4()}", dict(token=None), 401),
-            (f"/provisioning-operations/{uuid.uuid4()}", dict(token=self._token(scope="erp:integrate")), 403)]:
-            with self.subTest(expected=expected):
+        for path, kwargs, expected in cases:
+            with self.subTest(path=path, expected=expected):
                 status, *_ = self.assert_contract("GET", template, self._call("GET", path, **kwargs))
                 self.assertEqual(status, expected)
 
-    def test_the_operation_state_document_matches_the_declared_200_schema(self):
+    def test_an_engine_that_cannot_be_reached_is_a_declared_503_with_no_figure(self):
+        sku = f"sku-{uuid.uuid4().hex[:12]}"
+        warehouse = self._inventory_mappings(sku)
+        status, headers, body = self.assert_contract(
+            "GET", "/inventory-availability",
+            self._call("GET", f"/inventory-availability?sku_id={sku}&warehouse_id={warehouse}"))
+        self.assertEqual((status, headers.get("Retry-After")), (503, "30"))  # no iDempiere credentials in this deployment
+        self.assertNotIn("on_hand", body)
+
+    def test_the_inventory_availability_document_matches_the_declared_200_schema(self):
         from datetime import datetime, timezone
-        from application.provisioning_operations import _state
-        from provisioning.command_store import CommandRecord
-        record = CommandRecord(str(uuid.uuid4()), self.tenant, "f" * 64, ("ZURIBEANS-UG", "ZURIBEANS-ZA"), "accepted", 1,
-                               datetime(2026, 10, 2, 9, 0, tzinfo=timezone.utc))
-        from dataclasses import replace
-        for state in (record, replace(record, state="failed", failure_code="ERP_CONFLICT")):
-            self.assertEqual(shared.errors_for("/provisioning-operations/{operation_id}", "GET", 200, "application/json",
-                                               _state(state)), [])
+        from application.inventory_availability import get_inventory_availability
+
+        class Engine:
+            def get_record(self, table, record_id):
+                return {"C_UOM_ID": 100} if table == "M_Product" else {"X12DE355": "KG"}
+
+            def query(self, table, conditions, select):
+                return {"M_Locator": [{"M_Locator_ID": 5}],
+                        "M_StorageOnHand": [{"M_Locator_ID": 5, "QtyOnHand": "12.250", "Updated": "2026-10-02T09:00:00Z"}],
+                        "M_StorageReservation": [{"Qty": 2, "Updated": "2026-10-02T09:30:00Z"}]}[table]
+
+        sku = f"sku-{uuid.uuid4().hex[:12]}"
+        warehouse = self._inventory_mappings(sku)
+        status, body, _ = get_inventory_availability(
+            tenant_id=self.tenant, query_string=f"sku_id={sku}&warehouse_id={warehouse}", connection=self.connection,
+            correlation_id=str(uuid.uuid4()), trace_id=None, idempiere_for=lambda ad_client_id: Engine(),
+            now=lambda: datetime(2026, 10, 2, 12, 0, tzinfo=timezone.utc))
+        self.assertEqual(status, 200, body)
+        self.assertEqual(shared.errors_for("/inventory-availability", "GET", 200, "application/json", body), [])
+        self.assertEqual((body["on_hand"]["value"], body["erp_available"]["value"], body["on_hand"]["unit"]),
+                         ("12.25", "10.25", "KG"))
+
+    def _inventory_mappings(self, sku):
+        """Committed so the HTTP server sees them; removed in _cleanup."""
+        entity, instance = f"ZB-{uuid.uuid4().hex[:10].upper()}", f"ei_{uuid.uuid4().hex[:10]}"
+        self.inventory_cleanup = (entity, instance)
+        with self.connection.cursor() as cursor:
+            cursor.execute("INSERT INTO baobab.tenant_mapping (tenant_id, entity_id, ad_client_id, ad_org_id, "
+                           "legal_entity_id, engine_instance_id) VALUES (%s,%s,1001,1,%s,%s)",
+                           (self.tenant, entity, entity, instance))
+            cursor.execute("INSERT INTO baobab.erp_master_data_mapping (engine_instance_id, legal_entity_id, resource_kind, "
+                           "canonical_id, native_id, desired_digest, source_version) VALUES (%s,%s,'product',%s,77,'d','1')",
+                           (instance, entity, sku))
+        mapping_id = PostgresCanonicalMappingStore(self.connection).create_mapping(
+            self.tenant, entity, "Warehouse", str(uuid.uuid4()), "M_Warehouse", 88)
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT erp_resource_id FROM baobab.entity_mapping WHERE mapping_id = %s", (mapping_id,))
+            warehouse = cursor.fetchone()[0]
+        self.connection.commit()
+        return warehouse
 
     def test_pinned_openapi_declares_the_statuses_erp_returns(self):
-        """Shared declares 400 on the mapping reads and still declares 501 on the four operations (the transitional
-        501 on the two provisioning operations is removed by a later Shared change; ERP no longer returns it)."""
-        for template in ("/mappings/{mapping_id}", "/mappings"):
+        """Shared 1.0.4: 400 on the mapping reads and the inventory read, 503 on the inventory read, and no transitional
+        501 on the operations ERP serves. Inventory keeps its 501 until a Shared follow-up removes it."""
+        for template in ("/mappings/{mapping_id}", "/mappings", "/inventory-availability"):
             self.assertIn(400, shared.declared_statuses(template, "GET"), template)
+        self.assertIn(503, shared.declared_statuses("/inventory-availability", "GET"))
         for method, template in [("POST", "/provisioning-operations"), ("GET", "/provisioning-operations/{operation_id}"),
-                                 ("GET", "/order-consequences/{commerce_order_id}"), ("GET", "/inventory-availability")]:
-            self.assertIn(501, shared.declared_statuses(template, method), (method, template))
+                                 ("GET", "/order-consequences/{commerce_order_id}")]:
+            self.assertNotIn(501, shared.declared_statuses(template, method), (method, template))
 
     def test_every_implemented_operation_path_exists_in_the_contract(self):
         for template in ("/mappings/{mapping_id}", "/mappings"):

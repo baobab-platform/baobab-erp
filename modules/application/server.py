@@ -312,6 +312,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                     idempotency_key=self.headers.get("Idempotency-Key"),
                     principal=identity.principal,
                     provisioning=config.provisioning,
+                    idempiere_for=self._build_idempiere_client,
                 )
             status, body, *rest = result
             content_type = "application/problem+json" if status >= 400 else "application/json"

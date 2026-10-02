@@ -211,14 +211,20 @@ class BoundaryApiTests(unittest.TestCase):
         self.assertProblem(*self._call("GET", "/mappings/bad", headers={"traceparent": "00-zz-b7ad6b7169203331-01"}),
                            400, "ERP_INVALID_REQUEST")
 
-    # -- declared but not implemented: never fabricated
-    def test_unimplemented_operations_answer_501_problem_json(self):
-        cases = [("GET", f"/inventory-availability?sku_id=sku-1&warehouse_id=erp_{uuid.uuid4().hex}", "erp:read"),
-                 ]
-        for method, path, scope in cases:
-            status, headers, body = self._call(method, path, token=self._token(scope=scope, tenant=None))
-            self.assertProblem(status, headers, body, 501, "ERP_OPERATION_NOT_IMPLEMENTED")
-            self.assertProblem(*self._call(method, path, token=self._token(scope="erp:integrate")), 403, "ERP_FORBIDDEN")
+    # -- every operation of the contract is served; the 501 route stays only for a later declared-but-unbuilt operation
+    def test_no_contract_operation_answers_501(self):
+        from application import boundary
+        for method, path in [("GET", "/mappings"), ("GET", "/mappings/map_abcdef12"), ("GET", "/order-consequences/x"),
+                             ("GET", "/inventory-availability"), ("POST", "/provisioning-operations"),
+                             ("GET", "/provisioning-operations/x")]:
+            route = boundary.match(method, path)
+            self.assertIsNotNone(route, (method, path))
+            self.assertIsNot(route.handler, boundary.not_implemented, (method, path))
+
+    def test_inventory_availability_requires_the_read_scope_then_validates_the_query(self):
+        self.assertProblem(*self._call("GET", "/inventory-availability?sku_id=a", token=self._token(scope="erp:integrate")),
+                           403, "ERP_FORBIDDEN")
+        self.assertProblem(*self._call("GET", "/inventory-availability?sku_id=a"), 400, "ERP_INVALID_REQUEST")
 
     @staticmethod
     def _provisioning_request(tenant):

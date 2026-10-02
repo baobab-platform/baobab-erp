@@ -269,3 +269,26 @@ driver text; the `error` member is gone (the Java client was updated to read `de
 * **Identifiers.** `erp_order_id` and `invoice_id` are the public `erp_` identifiers of the active mappings, never native ids.
 * **Statuses.** 200, 404 (unknown order, another tenant's order, or an order without a record), 401, 403. A malformed
   `commerce_order_id` is 404 as well, because the pinned OpenAPI does not declare a 400 on this operation.
+
+## 17. `GET /inventory-availability` reads the engine's physical stock live
+
+* **Authority** (ADR-ERP-015). iDempiere owns physical stock. ERP keeps no stock table and no cache, takes nothing from Trade,
+  and never treats a commerce reservation as an ERP allocation. Trade derives its own sellable availability from this figure.
+* **Resolution.** The warehouse is the `erp_` identifier of an active `M_Warehouse` mapping of the token's tenant (which also
+  names the legal entity). The SKU is the canonical SKU id mapped to an `M_Product` through the legal entity's engine-instance
+  master-data mapping. An identifier with no mapping is 404 and the engine is not called.
+* **Reads** (`modules/inventory/availability.py`, through a new constrained `RestIdempiereClient.query`): on hand is
+  `M_StorageOnHand.QtyOnHand` summed over the warehouse's `M_Locator` rows; allocated is `M_StorageReservation.Qty` for sales
+  reservations of the product in the warehouse; available is on hand less allocated, floored at zero; the unit is the
+  product's `C_UOM.X12DE355`; `revision` is the latest `Updated` instant (epoch seconds) over the rows read, so it changes when
+  the engine's stock facts change (1 when it holds no row).
+* **Query safety.** Filters are typed `Eq` conditions: the column must be a plain AD name and a string value is quoted and
+  escaped. Callers cannot supply filter text. Results page through `$top/$skip` and a result over 5000 records is an error, never
+  a truncated total.
+* **Failure.** Engine unreachable, timing out, no AD_Client credentials, or an answer without the expected shape: `503` with
+  `Retry-After` and no figure. Nothing stale or estimated is substituted. A malformed or unknown query parameter is `400`.
+* **Not live-verified.** Like the rest of `integration/idempiere_client`, this has never run against a live iDempiere instance;
+  the AD column names are the first thing to confirm there.
+* **Mappings it needs.** Nothing yet records an ERP-minted `erp_` identifier for a provisioned `M_Warehouse` (the warehouse
+  provisioner keeps its own provisioning-scoped key), so until that mapping is written every warehouse answers 404. Recording it
+  is part of wiring warehouse provisioning, not of this read.

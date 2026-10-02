@@ -5,14 +5,14 @@
 #
 # Pin history: 2da1a42 (legacy nabhold-contract-consumption-lock, migrated unchanged) ->
 # 739f0ca (EA-01 ERP-COMPAT-07, 2026-10-02) -> 92accac (erp/v1 OpenAPI 1.0.1: 400 on the mapping reads, 501 on the
-# four unavailable operations; Shared#198) -> 6c6bd17 (control-plane/v1 ErpAssignment projection, Shared#200/#201) -> 5eb3c17 (control_plane_authority on the provisioning request; 503 and 400 on the provisioning operations; Shared#202+). The move is proven by tests/conformance/, which runs in CI
+# four unavailable operations; Shared#198) -> 6c6bd17 (control-plane/v1 ErpAssignment projection, Shared#200/#201) -> 5eb3c17 (control_plane_authority on the provisioning request; 503 and 400 on the provisioning operations; Shared#202+) -> 1b21a52 (erp/v1 OpenAPI 1.0.4: served operations drop the transitional 501; inventory read declares 400 and 503; Shared#204). The move is proven by tests/conformance/, which runs in CI
 # against a checkout of exactly this commit and refuses any other (ERP-COMPAT-06). The semantic delta
 # between the two pins is in docs/migration/erp-compat-01-semantic-delta.md.
 schema: baobab-contract-consumer-lock
 version: "1.0"
 source:
   repository: baobab-platform/shared
-  commit: 5eb3c17521d93f70447471f4b93aa64ac98aff06
+  commit: 1b21a521c111c922757fd84a12537293c15b997c
 contracts:
   # Tenant and legal-entity identifier grammars; the access-token claim set whose tenant_id is the
   # Boundary API's only tenant authority.

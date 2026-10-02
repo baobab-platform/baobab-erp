@@ -3,10 +3,10 @@
 Pure request -> (status, body) logic; server.py owns HTTP, authentication and the connection.
 The resolved tenant claim is the only tenant authority: nothing in a request can widen it.
 
-Implemented: GET /mappings/{mapping_id}, GET /mappings, GET /order-consequences/{commerce_order_id}, POST /provisioning-operations and
+Implemented: GET /mappings/{mapping_id}, GET /mappings, GET /order-consequences/{commerce_order_id},
+GET /inventory-availability (application.inventory_availability), POST /provisioning-operations and
 GET /provisioning-operations/{operation_id} (application.provisioning_operations).
-Declared but not implemented (answered 501 problem+json after authorisation, never fabricated):
-GET /inventory-availability.
+Every operation of the contract is served; ``not_implemented`` remains for an operation a later contract declares before it is built.
 See architecture/conformance.yaml (ADR-ERP-005) for what each is waiting on.
 """
 
@@ -17,6 +17,7 @@ from urllib.parse import parse_qs
 
 from application.problem import problem
 from order_to_cash.consequence_store import PostgresOrderConsequenceStore
+from application.inventory_availability import get_inventory_availability
 from application.provisioning_operations import get_provisioning_operation, request_provisioning
 from mapping import identifiers
 from mapping.model import CANONICAL_OWNERS
@@ -26,9 +27,7 @@ _RESOURCE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 _MAPPING_PATH = re.compile(r"^/mappings/([^/]+)$")
 _ORDER_CONSEQUENCE = re.compile(r"^/order-consequences/([^/]+)$")
 _PROVISIONING_OPERATION = re.compile(r"^/provisioning-operations/([^/]+)$")
-_NOT_IMPLEMENTED = (
-    re.compile(r"^/inventory-availability$"),
-)
+_NOT_IMPLEMENTED: tuple[re.Pattern, ...] = ()
 SCOPE_READ = "erp:read"
 
 
@@ -50,6 +49,8 @@ def match(method: str, path: str) -> BoundaryRoute | None:
             return BoundaryRoute(SCOPE_READ, get_mapping, found.group(1))
     if method == "POST" and path == "/provisioning-operations":
         return BoundaryRoute("erp:provision", request_provisioning)
+    if method == "GET" and path == "/inventory-availability":
+        return BoundaryRoute(SCOPE_READ, get_inventory_availability)
     if method == "GET":
         consequence = _ORDER_CONSEQUENCE.fullmatch(path)
         if consequence:
