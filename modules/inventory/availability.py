@@ -21,7 +21,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
-from typing import Any, Callable
+from typing import Any
 
 from integration.idempiere_client import Eq, IdempiereClient
 

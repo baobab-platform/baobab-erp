@@ -63,7 +63,8 @@ class _Handler(BaseHTTPRequestHandler):
         params = {k: v[0] for k, v in parse_qs(split.query).items()}
         self.state.requests.append((split.path, params))
         if self.state.list_body is not None:
-            return self._send(200, self.state.list_body)
+            self._send(200, self.state.list_body)
+            return
         skip, top = int(params["$skip"]), int(params["$top"])
         records = [{"id": n} for n in range(skip, min(skip + top, self.state.total))]
         self._send(200, {"page-count": 1, "records-size": len(records), "skip-records": skip,
