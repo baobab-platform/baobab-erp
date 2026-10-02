@@ -79,6 +79,11 @@ real Postgres database, same discipline as today.
 
 ## Phase 2 -- Mapping/provisioning data model
 
+> **Superseded in part (2026-10-02, ERP-COMPAT-02):** the "small Control Plane client resolving
+> `legalEntityId` given `tenant_id`" idea below is withdrawn. A tenant can hold several legal entities
+> (ADR-BCP-018); `legal_entity_id` arrives from the CP-issued provisioning/context and ERP only validates and
+> persists it. See `docs/migration/erp-compat-01-semantic-delta.md` sections 6-7.
+
 **Target**: `contracts/erp/v1/mapping.schema.json` --
 `erp_`-prefixed `canonicalResourceId`/`erpResourceId` (opaque, pattern-constrained,
 minted by the declared owner, never a leaked iDempiere id), `mappingId`

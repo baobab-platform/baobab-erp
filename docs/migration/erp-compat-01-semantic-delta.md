@@ -73,3 +73,42 @@ These are lock additions for ERP-COMPAT-07, each justified by a conformance test
 ```
 git -C shared diff 2da1a429 739f0ca -- <each path in contracts.lock.yaml>
 ```
+
+## 6. Owner decisions (2026-10-02)
+
+* **iDempiere CVE-2026-89425 (nested jackson-core 2.15.2 in the Hazelcast bundle):** wait for or pin an
+  upstream image that already ships the fix; no further jar surgery. On 2026-10-02 the only release tag
+  (`13-release`) is the current pin (2026-04-07); `13-daily` (2026-10-01) is a nightly, not a release,
+  and is not pinned without explicit approval and a scan. ERP merges stay gated on `foundation / container`.
+* **Legal-entity source (ERP-COMPAT-02):** Control Plane is the authority; ERP adds **no**
+  `tenant_id -> legal_entity_id` lookup (a tenant may have several legal entities via explicit
+  TenantLegalEntityMapping, ADR-BCP-018) and does not use the administrative `GET /tenants/{id}`.
+
+## 7. ERP-COMPAT-02 implementation (migration 0012)
+
+| Source of `legal_entity_id` | Rule |
+|---|---|
+| ERP provisioning | `legal_entity_ids[]` of the canonical provisioning request |
+| Mapping created in provisioning | the specific legal entity being provisioned |
+| Runtime request | the legal entity of the trusted resolved context |
+| Event / projection | explicit canonical `legal_entity_id` where the contract requires it |
+| Historical rows | separate reconciliation against Control Plane; never defaulted from the tenant |
+| Manual input, Shared registry (reference only), ERP DB inference, names | never authoritative |
+
+* `baobab.entity_mapping` gains `mapping_id` (`map_…`), `erp_resource_id` (`erp_…`, boundary-minted, never an
+  iDempiere id), `canonical_owner` (with `canonical_type`/`canonical_id` = `canonical_reference`) and
+  `quarantine_reason`; status widens to `pending|active|suspended|retired|quarantined` (`superseded` -> `retired`).
+* Legacy `active` rows with no legal entity become `quarantined` (verified on a pre-0012 database: active/no
+  legal entity -> quarantined, superseded -> retired, active with legal entity unchanged). Quarantined rows never
+  resolve (`find_native`/`find_canonical` serve `active` only). A live mapping without a legal entity is refused
+  by a CHECK.
+* `tn_…` tenant and canonical legal-entity grammars are enforced for every new or changed row (`NOT VALID`
+  constraint; legacy rows are reported, not rewritten) and in `mapping.identifiers`.
+* `mapping.context.ControlPlaneContextPort.validate_context(tenant_id, legal_entity_id)` is the seam: it
+  validates an explicit pair and has no lookup-by-tenant method. A real workload-facing implementation needs a
+  narrow CP relation contract (not the admin API, not the CP database) and is out of scope here.
+* `Mapping.to_contract()` renders the public mapping without vendor bindings and refuses to publish an
+  unreconciled one.
+
+Remaining for later steps: the `/mappings` HTTP surface and `replaces_mapping_id` as a `map_` id on the wire
+(03), exact-pin schema validation of `to_contract()` output (06), and the CP backfill process for quarantined rows.
