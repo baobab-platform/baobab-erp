@@ -147,6 +147,16 @@ class PostgresCanonicalMappingStore:
             row = cursor.fetchone()
         return NativeRecordRef(table=row[0], record_id=row[1]) if row else None
 
+    def erp_resource_id(self, tenant_id: str, canonical_type: str, canonical_id: str) -> str | None:
+        """The public erp_ identifier of the active mapping for a canonical resource, never the native id."""
+        with self._connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT erp_resource_id FROM baobab.entity_mapping "
+                "WHERE tenant_id = %s AND canonical_type = %s AND canonical_id = %s::uuid AND status = 'active'",
+                (tenant_id, canonical_type, canonical_id))
+            row = cursor.fetchone()
+        return row[0] if row else None
+
     def find_canonical(self, tenant_id: str, table: str, record_id: int) -> str | None:
         with self._connection.cursor() as cursor:
             cursor.execute(

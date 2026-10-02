@@ -253,3 +253,19 @@ driver text; the `error` member is gone (the Java client was updated to read `de
   `ERP_CONTROL_PLANE_CLIENT_SECRET`, `ERP_PROVISIONING_CONFIG_PATH` (see `config/provisioning/deployment.template.json`), or
   none (503). Partial configuration fails startup. The live call needs IAM to grant `erp-assignment:read` to the ERP
   workload client; that grant is a separate IAM change and has not been made.
+
+## 16. `GET /order-consequences/{commerce_order_id}` is served from an ERP-owned read model
+
+* **Source.** `baobab.order_consequence` (migration 0016), maintained by the order-to-cash steps in the same transaction as the
+  mapping and outbox rows they write. The GET is a tenant-scoped lookup of that record. It never queries iDempiere and never
+  mirrors a native `DocStatus` (ADR-ERP-016).
+* **Derivation** (`modules/order_to_cash/consequence.py`, pure): the table stores the facts ERP observed (order completed,
+  shipment completed, invoice posted) and the status derived from them. Created -> `accepted`; order completed ->
+  `processing`; shipment completed -> inventory `fulfilled`; invoice posted -> accounting `posted`; both -> `posted`.
+  `allocated`, `backordered`, `needs_review`, `rejected`, `compensated` and `failed` are representable (and a problem status
+  requires an `exception_code`) but are never inferred: they wait for an observed outcome, which is the held-events gate.
+* **`order_version`.** It is a new optional input on `POST /sales-orders`. An order created without it has no record, and its
+  read answers 404. ERP never guesses a version.
+* **Identifiers.** `erp_order_id` and `invoice_id` are the public `erp_` identifiers of the active mappings, never native ids.
+* **Statuses.** 200, 404 (unknown order, another tenant's order, or an order without a record), 401, 403. A malformed
+  `commerce_order_id` is 404 as well, because the pinned OpenAPI does not declare a 400 on this operation.

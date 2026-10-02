@@ -213,8 +213,7 @@ class BoundaryApiTests(unittest.TestCase):
 
     # -- declared but not implemented: never fabricated
     def test_unimplemented_operations_answer_501_problem_json(self):
-        cases = [("GET", "/order-consequences/ord-123", "erp:read"),
-                 ("GET", f"/inventory-availability?sku_id=sku-1&warehouse_id=erp_{uuid.uuid4().hex}", "erp:read"),
+        cases = [("GET", f"/inventory-availability?sku_id=sku-1&warehouse_id=erp_{uuid.uuid4().hex}", "erp:read"),
                  ]
         for method, path, scope in cases:
             status, headers, body = self._call(method, path, token=self._token(scope=scope, tenant=None))
