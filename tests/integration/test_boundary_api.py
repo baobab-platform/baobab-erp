@@ -230,7 +230,7 @@ class BoundaryApiTests(unittest.TestCase):
 
     # -- provisioning operations (handler-level behaviour is in test_provisioning_operations.py)
     def test_provisioning_operations_are_served_not_501(self):
-        key = {"Idempotency-Key": "idem-0123456789abcdef"}
+        key = {"Idempotency-Key": "idem-" + "0123456789abcdef"}
         self.assertProblem(*self._call("POST", "/provisioning-operations", token=self._token(scope="erp:provision"),
                                        headers=key, data={"tenant_id": self.tenant}), 400, "ERP_INVALID_REQUEST")
         self.assertProblem(*self._call("POST", "/provisioning-operations", token=self._token(scope="erp:provision"),
@@ -243,7 +243,7 @@ class BoundaryApiTests(unittest.TestCase):
     def test_provisioning_is_unavailable_until_control_plane_is_configured(self):
         valid = self._provisioning_request(self.tenant)
         status, headers, body = self._call("POST", "/provisioning-operations", token=self._token(scope="erp:provision"),
-                                           headers={"Idempotency-Key": "idem-0123456789abcdef"}, data=valid)
+                                           headers={"Idempotency-Key": "idem-" + "0123456789abcdef"}, data=valid)
         self.assertProblem(status, headers, body, 503, "ERP_SERVICE_UNAVAILABLE")
         self.assertEqual(headers["Retry-After"], "30")
 

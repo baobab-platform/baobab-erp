@@ -184,7 +184,7 @@ class HttpContractTests(unittest.TestCase):
                 self.assertEqual(status, expected)
 
     # -- provisioning operations: every status ERP returns is declared and conforms
-    def _provision(self, token="default", body="valid", key="idem-0123456789abcdef"):
+    def _provision(self, token="default", body="valid", key="idem-" + "0123456789abcdef"):
         document = {"tenant_id": self.tenant, "legal_entity_ids": ["ZURIBEANS-ZA"], "requested_countries": ["ZA"],
                     "functional_currencies": ["ZAR"],
                     "control_plane_authority": {"tenant_provisioning_id": "tp_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",

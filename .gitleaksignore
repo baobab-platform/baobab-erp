@@ -21,3 +21,9 @@ c4920c48af20deb860cb8b965346e74aa4c6969b:tests/integration/test_postgres_inbox_s
 67faa5b7607f5d59df7cb62091d047d7a32620a8:tests/conformance/test_http_contract.py:generic-api-key:152
 67faa5b7607f5d59df7cb62091d047d7a32620a8:tests/integration/test_boundary_api.py:generic-api-key:234
 67faa5b7607f5d59df7cb62091d047d7a32620a8:tests/integration/test_boundary_api.py:generic-api-key:247
+# The same four literals, as they appear in the squash commit that merged them to main (the fingerprints above name a
+# branch commit that main does not contain). The tests now build the value at runtime.
+3070e1fa4a26d1e928da175bb9b3fa3db56048a7:tests/integration/test_provisioning_operations.py:generic-api-key:24
+3070e1fa4a26d1e928da175bb9b3fa3db56048a7:tests/conformance/test_http_contract.py:generic-api-key:152
+3070e1fa4a26d1e928da175bb9b3fa3db56048a7:tests/integration/test_boundary_api.py:generic-api-key:234
+3070e1fa4a26d1e928da175bb9b3fa3db56048a7:tests/integration/test_boundary_api.py:generic-api-key:247
