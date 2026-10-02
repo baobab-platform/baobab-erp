@@ -14,7 +14,16 @@ _KNOWN = {
     "tenant_context_required": (403, "Tenant context required", False, "ERP_TENANT_CONTEXT_REQUIRED"),
     "not_found": (404, "Resource not found", False, "ERP_RESOURCE_NOT_FOUND"),
     "not_implemented": (501, "Operation not implemented", False, "ERP_OPERATION_NOT_IMPLEMENTED"),
+    "upstream_rejected": (502, "Upstream system rejected the request", False, "ERP_UPSTREAM_REJECTED"),
+    "unavailable": (503, "Service unavailable", True, "ERP_SERVICE_UNAVAILABLE"),
+    "internal": (500, "Internal error", True, "ERP_INTERNAL_ERROR"),
 }
+_BY_STATUS = {400: "invalid_request", 401: "unauthenticated", 403: "forbidden", 404: "not_found",
+              501: "not_implemented", 502: "upstream_rejected", 503: "unavailable", 500: "internal"}
+
+
+def kind_for_status(status: int) -> str:
+    return _BY_STATUS[status]
 
 
 def correlation_id_from(header: str | None) -> str | None:

@@ -46,6 +46,7 @@ request against an unconfigured AD_Client gets a clear 503, not a crash.
 """
 
 import json
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -56,7 +57,7 @@ import psycopg
 
 from application import boundary
 from application.health import liveness, readiness
-from application.problem import correlation_id_from, problem, trace_id_from
+from application.problem import correlation_id_from, kind_for_status, problem, trace_id_from
 from context.model import ContextResolutionError
 from context.postgres_store import PostgresTenantMappingStore
 from context.resolver import resolve_context, resolve_tenant
@@ -207,6 +208,25 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             self.end_headers()
             self.wfile.write(payload)
 
+        def _request_correlation_id(self) -> str:
+            """The caller's X-Correlation-ID when it is a valid UUID, otherwise a fresh one. Legacy
+            routes never reject a bad header (only the contract-defined boundary does); they
+            just do not echo it."""
+            if not hasattr(self, "_correlation"):
+                self._correlation = correlation_id_from(self.headers.get("X-Correlation-ID")) or str(uuid.uuid4())
+            return self._correlation
+
+        def _error(self, status: int, detail: str | None = None) -> None:
+            """Every error response is RFC 9457 application/problem+json (contracts/errors/v1).
+            Legacy callers get flat documents (scalar members only): the iDempiere-side client
+            parses flat JSON. `detail` is a safe, short description; internals are never echoed
+            for 401/500."""
+            correlation_id = self._request_correlation_id()
+            _, trace_id = trace_id_from(self.headers.get("traceparent"))
+            _, body = problem(kind_for_status(status), correlation_id=correlation_id, trace_id=trace_id,
+                              detail=detail)
+            self._send_json(status, body, content_type="application/problem+json", correlation_id=correlation_id)
+
         def _serve_boundary(self, method: str, split) -> bool:
             """contracts/erp/v1/openapi.yaml surface (served with or without the /v1 base path).
             Returns False when the path is not a boundary route so legacy routing continues.
@@ -270,14 +290,28 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                     key_resolver=resolver,
                 )
             except TokenValidationError as exc:
-                self._send_json(401, {"error": str(exc)})
+                self._error(401)
                 return False
             if not identity.has_role(required_scope):
-                self._send_json(403, {"error": "workload token does not grant the required scope"})
+                self._error(403, "workload token does not grant the required scope")
                 return False
             return True
 
+        def _guarded(self, handler) -> None:
+            """An unexpected exception becomes a 500 problem document (no internals echoed, details go
+            to the log) rather than the stdlib's HTML error page."""
+            try:
+                handler()
+            except (BrokenPipeError, ConnectionResetError):
+                raise
+            except Exception:  # noqa: BLE001 - last-resort boundary
+                logging.getLogger("baobab.erp").exception("unhandled error serving %s %s", self.command, self.path)
+                self._error(500)
+
         def do_GET(self) -> None:  # noqa: N802 - stdlib method name
+            self._guarded(self._do_get)
+
+        def _do_get(self) -> None:
             split = urlsplit(self.path)
             query = parse_qs(split.query)
 
@@ -289,7 +323,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                     with psycopg.connect(config.database_url) as connection:
                         self._send_json(200, readiness(PsycopgProbe(connection)))
                 except Exception as exc:  # noqa: BLE001 - reported as a 503, not raised
-                    self._send_json(503, {"status": "not_ready", "error": str(exc)})
+                    self._error(503, "the database is not reachable")
                 return
             if self._serve_boundary("GET", split):
                 return
@@ -308,7 +342,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             if split.path == "/mapping/resolve-canonical":
                 self._handle_mapping_resolve_canonical(query)
                 return
-            self._send_json(404, {"error": "not found"})
+            self._error(404, "not found")
 
         def _query_param(self, query: dict, name: str) -> str | None:
             values = query.get(name)
@@ -317,12 +351,15 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
         def _handle_context_resolve(self, query: dict) -> None:
             tenant_id = self._query_param(query, "tenant_id")
             entity_id = self._query_param(query, "entity_id")
+            if not tenant_id or not entity_id:
+                self._error(400, "tenant_id and entity_id are both required")
+                return
             try:
                 with psycopg.connect(config.database_url) as connection:
                     store = PostgresTenantMappingStore(connection)
                     context = resolve_context(tenant_id, entity_id, store)
             except ContextResolutionError as exc:
-                self._send_json(404, {"error": str(exc)})
+                self._error(404, str(exc))
                 return
             self._send_json(200, {"ad_client_id": context.ad_client_id, "ad_org_id": context.ad_org_id})
 
@@ -330,14 +367,14 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             ad_client_id = self._query_param(query, "ad_client_id")
             ad_org_id = self._query_param(query, "ad_org_id")
             if not ad_client_id or not ad_client_id.isdigit() or not ad_org_id or not ad_org_id.isdigit():
-                self._send_json(400, {"error": "numeric ad_client_id and ad_org_id are both required"})
+                self._error(400, "numeric ad_client_id and ad_org_id are both required")
                 return
             try:
                 with psycopg.connect(config.database_url) as connection:
                     store = PostgresTenantMappingStore(connection)
                     context = resolve_tenant(int(ad_client_id), int(ad_org_id), store)
             except ContextResolutionError as exc:
-                self._send_json(404, {"error": str(exc)})
+                self._error(404, str(exc))
                 return
             self._send_json(200, {"tenant_id": context.tenant_id, "entity_id": context.entity_id})
 
@@ -346,16 +383,14 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             canonical_type = self._query_param(query, "canonical_type")
             canonical_id = self._query_param(query, "canonical_id")
             if not tenant_id or not canonical_type or not canonical_id:
-                self._send_json(
-                    400, {"error": "tenant_id, canonical_type and canonical_id are all required"}
-                )
+                self._error(400, "tenant_id, canonical_type and canonical_id are all required")
                 return
             try:
                 with psycopg.connect(config.database_url) as connection:
                     store = PostgresCanonicalMappingStore(connection)
                     ref = resolve_to_native(tenant_id, canonical_type, canonical_id, store)
             except MappingNotFoundError as exc:
-                self._send_json(404, {"error": str(exc)})
+                self._error(404, str(exc))
                 return
             self._send_json(200, {"table": ref.table, "record_id": ref.record_id})
 
@@ -364,20 +399,21 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             table = self._query_param(query, "table")
             record_id = self._query_param(query, "record_id")
             if not tenant_id or not table or not record_id or not record_id.isdigit():
-                self._send_json(
-                    400, {"error": "tenant_id, table and a numeric record_id are all required"}
-                )
+                self._error(400, "tenant_id, table and a numeric record_id are all required")
                 return
             try:
                 with psycopg.connect(config.database_url) as connection:
                     store = PostgresCanonicalMappingStore(connection)
                     canonical_id = resolve_to_canonical(tenant_id, table, int(record_id), store)
             except MappingNotFoundError as exc:
-                self._send_json(404, {"error": str(exc)})
+                self._error(404, str(exc))
                 return
             self._send_json(200, {"canonical_id": canonical_id})
 
         def do_POST(self) -> None:  # noqa: N802 - stdlib method name
+            self._guarded(self._do_post)
+
+        def _do_post(self) -> None:
             if self._serve_boundary("POST", urlsplit(self.path)):
                 return
             if self.path == "/events/inbound":
@@ -392,7 +428,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                     return
                 self._route_post(self.path, body)
                 return
-            self._send_json(404, {"error": "not found"})
+            self._error(404, "not found")
 
         def _handle_inbound_event(self) -> None:
             length = int(self.headers.get("Content-Length", "0"))
@@ -403,10 +439,10 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                     store = PostgresInboxStore(connection)
                     envelope = receive(body, signature, config.event_signing_secret, store)
             except InvalidSignatureError:
-                self._send_json(401, {"error": "invalid signature"})
+                self._error(401, "invalid signature")
                 return
             except ValueError as exc:
-                self._send_json(400, {"error": str(exc)})
+                self._error(400, str(exc))
                 return
             self._send_json(200, {"status": "accepted", "event_id": envelope.event_id})
 
@@ -414,15 +450,15 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             length = int(self.headers.get("Content-Length", "0"))
             raw = self.rfile.read(length) if length else b""
             if not raw:
-                self._send_json(400, {"error": "a JSON request body is required"})
+                self._error(400, "a JSON request body is required")
                 return None
             try:
                 parsed = json.loads(raw)
             except json.JSONDecodeError as exc:
-                self._send_json(400, {"error": f"invalid JSON body: {exc}"})
+                self._error(400, f"invalid JSON body: {exc}")
                 return None
             if not isinstance(parsed, dict):
-                self._send_json(400, {"error": "request body must be a JSON object"})
+                self._error(400, "request body must be a JSON object")
                 return None
             return parsed
 
@@ -449,10 +485,10 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             required = ("event_type", "tenant_id", "entity_id", "correlation_id", "payload")
             missing = [name for name in required if name not in body]
             if missing:
-                self._send_json(400, {"error": f"missing required fields: {', '.join(missing)}"})
+                self._error(400, f"missing required fields: {', '.join(missing)}")
                 return
             if not isinstance(body["payload"], dict):
-                self._send_json(400, {"error": "payload must be a JSON object"})
+                self._error(400, "payload must be a JSON object")
                 return
             envelope = EventEnvelope(
                 event_id=str(uuid.uuid4()),
@@ -474,13 +510,13 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             tenant_id = body.get("tenant_id")
             entity_id = body.get("entity_id")
             if not tenant_id or not entity_id:
-                self._send_json(400, {"error": "tenant_id and entity_id are both required"})
+                self._error(400, "tenant_id and entity_id are both required")
                 return None
             try:
                 store = PostgresTenantMappingStore(connection)
                 context = resolve_context(tenant_id, entity_id, store)
             except ContextResolutionError as exc:
-                self._send_json(404, {"error": str(exc)})
+                self._error(404, str(exc))
                 return None
             return TenantScope(
                 tenant_id=tenant_id, legal_entity_id=entity_id,
@@ -498,7 +534,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             that into a clean 400 instead of a crashed connection."""
             malformed = [name for name in field_names if name in body and not _looks_like_uuid(body[name])]
             if malformed:
-                self._send_json(400, {"error": f"not a valid UUID: {', '.join(malformed)}"})
+                self._error(400, f"not a valid UUID: {', '.join(malformed)}")
                 return False
             return True
 
@@ -510,10 +546,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
 
         def _process_ids_or_503(self):
             if config.order_to_cash_process_ids is None:
-                self._send_json(
-                    503,
-                    {"error": "order-to-cash native process IDs are not configured for this deployment"},
-                )
+                self._error(503, "order-to-cash native process IDs are not configured for this deployment")
                 return None
             return config.order_to_cash_process_ids
 
@@ -521,7 +554,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             required = ("commerce_order_canonical_id", "business_partner_native_id", "document_currency", "lines")
             missing = [name for name in required if name not in body]
             if missing:
-                self._send_json(400, {"error": f"missing required fields: {', '.join(missing)}"})
+                self._error(400, f"missing required fields: {', '.join(missing)}")
                 return
             if not self._validate_uuid_fields(body, "commerce_order_canonical_id"):
                 return
@@ -535,7 +568,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                     for line in body["lines"]
                 )
             except (KeyError, TypeError):
-                self._send_json(400, {"error": "each line requires product_canonical_id, quantity, unit_price"})
+                self._error(400, "each line requires product_canonical_id, quantity, unit_price")
                 return
             try:
                 with psycopg.connect(config.database_url) as connection:
@@ -554,10 +587,10 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                         mappings=mappings,
                     )
             except OrderToCashError as exc:
-                self._send_json(400, {"error": str(exc)})
+                self._error(400, str(exc))
                 return
             except IdempiereClientError as exc:
-                self._send_json(502, {"error": f"iDempiere rejected the request: {exc}"})
+                self._error(502, f"iDempiere rejected the request: {exc}")
                 return
             self._send_json(201, {"canonical_id": ref.canonical_id, "table": ref.table, "native_id": ref.native_id})
 
@@ -575,7 +608,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             required = ("shipment_canonical_id", "commerce_order_canonical_id")
             missing = [name for name in required if name not in body]
             if missing:
-                self._send_json(400, {"error": f"missing required fields: {', '.join(missing)}"})
+                self._error(400, f"missing required fields: {', '.join(missing)}")
                 return
             if not self._validate_uuid_fields(body, "shipment_canonical_id", "commerce_order_canonical_id"):
                 return
@@ -592,13 +625,13 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                         idempiere=idempiere, mappings=mappings,
                     )
             except MappingNotFoundError as exc:
-                self._send_json(404, {"error": str(exc)})
+                self._error(404, str(exc))
                 return
             except OrderToCashError as exc:
-                self._send_json(400, {"error": str(exc)})
+                self._error(400, str(exc))
                 return
             except IdempiereClientError as exc:
-                self._send_json(502, {"error": f"iDempiere rejected the request: {exc}"})
+                self._error(502, f"iDempiere rejected the request: {exc}")
                 return
             self._send_json(201, {"canonical_id": ref.canonical_id, "table": ref.table, "native_id": ref.native_id})
 
@@ -614,7 +647,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
 
         def _handle_create_customer_invoice(self, body: dict) -> None:
             if "commerce_order_canonical_id" not in body:
-                self._send_json(400, {"error": "missing required field: commerce_order_canonical_id"})
+                self._error(400, "missing required field: commerce_order_canonical_id")
                 return
             if not self._validate_uuid_fields(body, "commerce_order_canonical_id"):
                 return
@@ -630,13 +663,13 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                         idempiere=idempiere, mappings=mappings,
                     )
             except MappingNotFoundError as exc:
-                self._send_json(404, {"error": str(exc)})
+                self._error(404, str(exc))
                 return
             except OrderToCashError as exc:
-                self._send_json(400, {"error": str(exc)})
+                self._error(400, str(exc))
                 return
             except IdempiereClientError as exc:
-                self._send_json(502, {"error": f"iDempiere rejected the request: {exc}"})
+                self._error(502, f"iDempiere rejected the request: {exc}")
                 return
             self._send_json(201, {"canonical_id": ref.canonical_id, "table": ref.table, "native_id": ref.native_id})
 
@@ -654,7 +687,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             required = ("payment_canonical_id", "business_partner_native_id", "amount", "currency")
             missing = [name for name in required if name not in body]
             if missing:
-                self._send_json(400, {"error": f"missing required fields: {', '.join(missing)}"})
+                self._error(400, f"missing required fields: {', '.join(missing)}")
                 return
             if not self._validate_uuid_fields(body, "payment_canonical_id"):
                 return
@@ -672,10 +705,10 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                         idempiere=idempiere, mappings=mappings,
                     )
             except OrderToCashError as exc:
-                self._send_json(400, {"error": str(exc)})
+                self._error(400, str(exc))
                 return
             except IdempiereClientError as exc:
-                self._send_json(502, {"error": f"iDempiere rejected the request: {exc}"})
+                self._error(502, f"iDempiere rejected the request: {exc}")
                 return
             self._send_json(201, {"canonical_id": ref.canonical_id, "table": ref.table, "native_id": ref.native_id})
 
@@ -693,7 +726,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             required = ("payment_canonical_id", "invoice_canonical_id", "amount")
             missing = [name for name in required if name not in body]
             if missing:
-                self._send_json(400, {"error": f"missing required fields: {', '.join(missing)}"})
+                self._error(400, f"missing required fields: {', '.join(missing)}")
                 return
             if not self._validate_uuid_fields(body, "payment_canonical_id", "invoice_canonical_id"):
                 return
@@ -715,13 +748,13 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                         idempiere=idempiere, mappings=mappings, outbox=outbox,
                     )
             except MappingNotFoundError as exc:
-                self._send_json(404, {"error": str(exc)})
+                self._error(404, str(exc))
                 return
             except OrderToCashError as exc:
-                self._send_json(400, {"error": str(exc)})
+                self._error(400, str(exc))
                 return
             except IdempiereClientError as exc:
-                self._send_json(502, {"error": f"iDempiere rejected the request: {exc}"})
+                self._error(502, f"iDempiere rejected the request: {exc}")
                 return
             self._send_json(200, {"status": "allocated"})
 
@@ -730,7 +763,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             process_ids (or 503), run the given order_to_cash call inside one
             connection/transaction, translate its exceptions the same way every time."""
             if required_id_field not in body:
-                self._send_json(400, {"error": f"missing required field: {required_id_field}"})
+                self._error(400, f"missing required field: {required_id_field}")
                 return
             if not self._validate_uuid_fields(body, required_id_field):
                 return
@@ -748,13 +781,13 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                     outbox = PostgresOutboxStore(connection)
                     run(scope, idempiere, mappings, outbox, process_ids, correlation_id)
             except MappingNotFoundError as exc:
-                self._send_json(404, {"error": str(exc)})
+                self._error(404, str(exc))
                 return
             except OrderToCashError as exc:
-                self._send_json(400, {"error": str(exc)})
+                self._error(400, str(exc))
                 return
             except IdempiereClientError as exc:
-                self._send_json(502, {"error": f"iDempiere rejected the request: {exc}"})
+                self._error(502, f"iDempiere rejected the request: {exc}")
                 return
             self._send_json(200, {"status": "completed"})
 

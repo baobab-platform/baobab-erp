@@ -128,6 +128,8 @@ adrs:
       - modules/application/boundary.py
       - modules/application/problem.py
       - tests/integration/test_boundary_api.py
+      - tests/integration/test_legacy_problem_details.py
+      - tests/integration/_problem.py
       - tests/unit/test_idempiere_client.py
       - tests/integration/test_http_server.py
       - idempiere/Dockerfile
@@ -171,6 +173,16 @@ adrs:
       erp:read and erp:provision scopes and a tenant_id claim on ERP-bound tokens are not
       granted by Baobab IAM today (only erp:integrate), so these routes fail closed until the
       owner grants them.
+
+      ERP-COMPAT-04: every error from the pre-contract routes (context, mapping, outbox, order-to-cash,
+      inbound events, readiness) is now RFC 9457 application/problem+json with the correlation id echoed
+      (a valid X-Correlation-ID is kept, otherwise one is generated) and trace_id from traceparent;
+      legacy documents are flat because the iDempiere-side client parses flat JSON only (BaobabAppClient
+      reads detail, then title, then the old error member). Unexpected failures answer a 500 problem, never
+      the stdlib HTML page; 401 never echoes validator text, readiness 503 never echoes driver errors.
+      A missing context/resolve parameter is now 400 (was 404). Proven by negative cases in
+      test_legacy_problem_details.py against a structural check of the Shared schema; exact-pin schema
+      validation is ERP-COMPAT-06.
 
   - id: ADR-ERP-006
     title: ERP canonical event architecture
