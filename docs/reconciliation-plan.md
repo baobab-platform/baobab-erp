@@ -27,6 +27,9 @@ mappings. Each phase below says explicitly what it's blocked on.
 
 ## Phase 1 -- Event envelope: CloudEvents 1.0
 
+> **Done in part (2026-10-02, ERP-COMPAT-05):** the envelope, storage, dedup and registry guard are in
+> (see `docs/events.md`). Wiring real `com.baobab-platform.erp.*` payloads from the domain flows remains open.
+
 **Target**: `contracts/events/v1/envelope.schema.json` (CloudEvents 1.0 structured
 JSON profile). Required fields: `specversion` (const `"1.0"`), `id` (uuid, paired
 with `source` as the delivery-dedup key), `type` (reverse-DNS + version, pattern

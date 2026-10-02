@@ -437,14 +437,14 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             try:
                 with psycopg.connect(config.database_url) as connection:
                     store = PostgresInboxStore(connection)
-                    envelope = receive(body, signature, config.event_signing_secret, store)
+                    event = receive(body, signature, config.event_signing_secret, store)
             except InvalidSignatureError:
                 self._error(401, "invalid signature")
                 return
             except ValueError as exc:
                 self._error(400, str(exc))
                 return
-            self._send_json(200, {"status": "accepted", "event_id": envelope.event_id})
+            self._send_json(200, {"status": "accepted", "event_id": event.id})
 
         def _read_json_body(self) -> dict | None:
             length = int(self.headers.get("Content-Length", "0"))
@@ -504,7 +504,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             with psycopg.connect(config.database_url) as connection:
                 store = PostgresOutboxStore(connection)
                 store.record(envelope)
-            self._send_json(202, {"status": "accepted", "event_id": envelope.event_id})
+            self._send_json(202, {"status": "accepted", "delivery": "held", "event_id": envelope.event_id})
 
         def _resolve_tenant_scope(self, connection, body: dict) -> TenantScope | None:
             tenant_id = body.get("tenant_id")

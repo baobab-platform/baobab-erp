@@ -1,9 +1,8 @@
 # Baobab ERP Interface Contracts
 
-`nabhold/shared` remains canonical for organisation-wide governance identities and obligations. This directory contains only ERP Engine interface profiles and examples.
-
-- `events/envelope.schema.json` defines the common signed event envelope.
-- `events/trade/` and `events/pulse/` are reserved for approved versioned event payload schemas.
-- Breaking changes create a new major-version schema; existing schemas remain available while consumers migrate.
+`baobab-platform/shared` is canonical for every contract ERP implements or consumes (see `contracts.lock.yaml`
+for the pinned commit). ERP keeps no schema of its own for events: the envelope is
+`contracts/events/v1/envelope.schema.json` in Shared and the registered event types are indexed in
+`modules/events/registry.py`.
 
 Payload schemas must never contain database table names or require another engine to understand iDempiere internals.

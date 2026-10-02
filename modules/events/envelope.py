@@ -5,7 +5,12 @@ from typing import Any
 
 @dataclass(frozen=True, slots=True)
 class EventEnvelope:
-    """The common signed event envelope shape for canonical Baobab events (ADR-ERP-006)."""
+    """LEGACY internal event shape (pre-CloudEvents, ADR-ERP-006 as first written).
+
+    Shared archives this shape as rejected for cross-engine delivery
+    (contracts/events/v1/compatibility/legacy-trade-erp-event.json). It survives only as the input of ERP's own
+    domain recorders (order-to-cash, /outbox/record), whose rows are stored as 'held' and never delivered.
+    New code publishes events.cloudevent.CloudEvent."""
 
     event_id: str
     event_type: str

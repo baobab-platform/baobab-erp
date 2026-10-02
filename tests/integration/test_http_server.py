@@ -124,17 +124,17 @@ class HttpServerIntegrationTests(unittest.TestCase):
         self.assertEqual(status, 404)
 
     def test_inbound_event_end_to_end(self):
+        from events import registry
+
         event_id = str(uuid.uuid4())
+        order_placed = "com.baobab-platform.trade.order.placed.v1"
         payload = {
-            "event_id": event_id,
-            "event_type": "trade.order.accepted",
-            "schema_version": "1.0",
-            "occurred_at": "2026-09-06T12:00:00Z",
-            "source": "baobab-trade",
-            "correlation_id": "cor-1",
-            "tenant_id": "tenant-1",
-            "entity_id": "THAMANI-GLOBAL",
-            "payload": {},
+            "specversion": "1.0", "id": event_id, "type": order_placed,
+            "source": "urn:baobab-platform:service:trade", "subject": "order:order_01k4n6w5",
+            "time": "2026-09-06T12:00:00Z", "datacontenttype": "application/json",
+            "dataschema": registry.dataschema_for(order_placed), "baobabscope": "tenant",
+            "correlationid": str(uuid.uuid4()), "tenantid": f"tn_{uuid.uuid4().hex[:16]}",
+            "data": {"commerce_order_id": "order_01k4n6w5"},
         }
         body = json.dumps(payload).encode()
         signature = "sha256=" + hmac.new(SECRET.encode(), body, hashlib.sha256).hexdigest()
@@ -146,10 +146,23 @@ class HttpServerIntegrationTests(unittest.TestCase):
             # duplicate delivery is accepted, not reprocessed
             status, response_body = self._post_event(body, signature)
             self.assertEqual(status, 200)
+            with psycopg.connect(os.environ["DATABASE_URL"]) as connection, connection.cursor() as cursor:
+                cursor.execute("SELECT count(*) FROM baobab.event_inbox WHERE event_id = %s::uuid", (event_id,))
+                self.assertEqual(cursor.fetchone()[0], 1)
         finally:
             with psycopg.connect(os.environ["DATABASE_URL"]) as connection, connection.cursor() as cursor:
                 cursor.execute("DELETE FROM baobab.event_inbox WHERE event_id = %s::uuid", (event_id,))
                 connection.commit()
+
+    def test_inbound_legacy_envelope_is_a_400_problem(self):
+        legacy = {"event_id": str(uuid.uuid4()), "event_type": "trade.order.accepted", "schema_version": "1.0",
+                  "occurred_at": "2026-09-06T12:00:00Z", "source": "baobab-trade", "correlation_id": "cor-1",
+                  "tenant_id": "tenant-1", "entity_id": "THAMANI-GLOBAL", "payload": {}}
+        body = json.dumps(legacy).encode()
+        signature = "sha256=" + hmac.new(SECRET.encode(), body, hashlib.sha256).hexdigest()
+        status, response = self._post_event(body, signature)
+        self.assertEqual((status, response["code"]), (400, "ERP_INVALID_REQUEST"))
+        self.assertIn("unknown envelope members", response["detail"])
 
     def test_invalid_signature_is_rejected(self):
         body = json.dumps({"event_id": "whatever"}).encode()

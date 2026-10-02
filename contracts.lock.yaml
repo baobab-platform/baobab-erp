@@ -43,14 +43,8 @@ contracts:
   # RFC 9457 application/problem+json. Not yet the error shape returned by
   # modules/application/server.py.
   - contracts/errors/v1/problem-details.schema.json
-  # CloudEvents 1.0 structured JSON profile. baobab-erp's own
-  # modules/events/envelope.py and contracts/events/envelope.schema.json
-  # predate this and are archived by nabhold/shared itself as the legacy shape
-  # (contracts/events/v1/compatibility/legacy-trade-erp-event.json). See
-  # docs/reconciliation-plan.md (Phase 1) for the field-level plan and why the
-  # wrapper migration is sequenced behind canonical-id work (Phase 2), not
-  # done ahead of it -- Trade has not integrated contracts/erp/v1 either, so
-  # this is readiness work, not blocking live traffic today.
+  # CloudEvents 1.0 structured JSON profile. Implemented by modules/events/cloudevent.py
+  # (ERP-COMPAT-05); the legacy shape survives only as 'held' internal records (docs/events.md).
   - contracts/events/v1/envelope.schema.json
   - contracts/idempotency/v1/policy.yaml
 policy:
