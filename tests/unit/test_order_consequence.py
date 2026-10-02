@@ -1,7 +1,6 @@
 import unittest
 from datetime import datetime, timezone
 
-from mapping.model import NativeRecordRef
 from order_to_cash import service
 from order_to_cash.consequence import Fact, Facts, OrderConsequence, derive
 from order_to_cash.model import OrderLine, TenantScope
