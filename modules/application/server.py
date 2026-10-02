@@ -54,7 +54,9 @@ from urllib.parse import parse_qs, urlsplit
 
 import psycopg
 
+from application import boundary
 from application.health import liveness, readiness
+from application.problem import correlation_id_from, problem, trace_id_from
 from context.model import ContextResolutionError
 from context.postgres_store import PostgresTenantMappingStore
 from context.resolver import resolve_context, resolve_tenant
@@ -194,13 +196,63 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
         def log_message(self, format: str, *args) -> None:  # noqa: A002 - stdlib signature
             pass  # structured logging is deployment configuration, not hard-coded here
 
-        def _send_json(self, status: int, body: dict) -> None:
+        def _send_json(self, status: int, body: dict, *, content_type: str = "application/json",
+                       correlation_id: str | None = None) -> None:
             payload = json.dumps(body).encode()
             self.send_response(status)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(payload)))
+            if correlation_id:
+                self.send_header("X-Correlation-ID", correlation_id)
             self.end_headers()
             self.wfile.write(payload)
+
+        def _serve_boundary(self, method: str, split) -> bool:
+            """contracts/erp/v1/openapi.yaml surface (served with or without the /v1 base path).
+            Returns False when the path is not a boundary route so legacy routing continues.
+            Every response, including errors, is contract-shaped: JSON, or RFC 9457
+            application/problem+json with the correlation id echoed."""
+            path = split.path[3:] if split.path.startswith("/v1/") else split.path
+            route = boundary.match(method, path)
+            if route is None:
+                return False
+            supplied = correlation_id_from(self.headers.get("X-Correlation-ID"))
+            correlation_id = supplied or str(uuid.uuid4())
+            traceparent_ok, trace_id = trace_id_from(self.headers.get("traceparent"))
+
+            def fail(kind: str, detail: str | None = None) -> bool:
+                status, body = problem(kind, correlation_id=correlation_id, trace_id=trace_id, detail=detail)
+                self._send_json(status, body, content_type="application/problem+json", correlation_id=correlation_id)
+                return True
+
+            try:
+                identity = verify_workload_token(
+                    self.headers.get("Authorization"),
+                    issuer=config.workload_oidc_issuer,
+                    audience=config.workload_oidc_audience,
+                    key_resolver=resolver,
+                )
+            except TokenValidationError:
+                return fail("unauthenticated")
+            if supplied is None or not traceparent_ok:
+                return fail("invalid_request", "X-Correlation-ID must be a UUID and traceparent a W3C trace context")
+            if not identity.has_role(route.scope):
+                return fail("forbidden")
+            tenant_scoped = route.handler is not boundary.not_implemented
+            if tenant_scoped and identity.tenant_id is None:
+                return fail("tenant_context_required", "the token carries no resolved tenant")
+            with psycopg.connect(config.database_url) as connection:
+                status, body = route.handler(
+                    tenant_id=identity.tenant_id,
+                    store=PostgresCanonicalMappingStore(connection),
+                    argument=route.argument,
+                    query_string=split.query,
+                    correlation_id=correlation_id,
+                    trace_id=trace_id,
+                )
+            content_type = "application/problem+json" if status >= 400 else "application/json"
+            self._send_json(status, body, content_type=content_type, correlation_id=correlation_id)
+            return True
 
         def _authorize_workload(self, required_scope: str) -> bool:
             """Returns True and lets the caller proceed, or sends a 401/403 itself
@@ -238,6 +290,8 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                         self._send_json(200, readiness(PsycopgProbe(connection)))
                 except Exception as exc:  # noqa: BLE001 - reported as a 503, not raised
                     self._send_json(503, {"status": "not_ready", "error": str(exc)})
+                return
+            if self._serve_boundary("GET", split):
                 return
             required_scope = _WORKLOAD_REQUIRED_SCOPES.get(split.path)
             if required_scope is not None and not self._authorize_workload(required_scope):
@@ -324,6 +378,8 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             self._send_json(200, {"canonical_id": canonical_id})
 
         def do_POST(self) -> None:  # noqa: N802 - stdlib method name
+            if self._serve_boundary("POST", urlsplit(self.path)):
+                return
             if self.path == "/events/inbound":
                 self._handle_inbound_event()
                 return

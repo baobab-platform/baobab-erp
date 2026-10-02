@@ -8,6 +8,8 @@ modules/mapping, and casts explicitly in SQL rather than relying on implicit
 driver-side UUID adaptation.
 """
 
+import uuid
+
 import psycopg
 
 from mapping import identifiers
@@ -95,6 +97,29 @@ class PostgresCanonicalMappingStore:
             erp_resource_id=row[6], status=MappingStatus(row[7]), revision=row[8],
             effective_from=row[9], effective_to=row[10], replaces_mapping_id=row[11],
         )
+
+    def find_mappings(self, tenant_id: str, owner: str, resource_type: str, resource_id: str) -> list[Mapping]:
+        """Every temporal mapping (any status) of one canonical resource within the tenant,
+        newest revision first. Quarantined or owner-less rows are not publishable and are
+        omitted. resource_id is stored as a UUID, so any other form cannot match."""
+        try:
+            uuid.UUID(resource_id)
+        except ValueError:
+            return []
+        with self._connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT mapping_id FROM baobab.entity_mapping
+                WHERE tenant_id = %s AND canonical_owner = %s AND canonical_type = %s
+                  AND canonical_id = %s::uuid AND legal_entity_id IS NOT NULL
+                  AND status <> 'quarantined'
+                ORDER BY revision DESC, effective_from DESC, id DESC
+                LIMIT 100
+                """,
+                (tenant_id, owner, resource_type, resource_id),
+            )
+            ids = [row[0] for row in cursor.fetchall()]
+        return [m for m in (self.get_mapping(tenant_id, i) for i in ids) if m is not None]
 
     def quarantined_count(self, tenant_id: str) -> int:
         """Mappings awaiting reconciliation against Control Plane (legacy rows without a

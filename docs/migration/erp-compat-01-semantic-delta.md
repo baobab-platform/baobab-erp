@@ -112,3 +112,25 @@ git -C shared diff 2da1a429 739f0ca -- <each path in contracts.lock.yaml>
 
 Remaining for later steps: the `/mappings` HTTP surface and `replaces_mapping_id` as a `map_` id on the wire
 (03), exact-pin schema validation of `to_contract()` output (06), and the CP backfill process for quarantined rows.
+
+## 8. ERP-COMPAT-03a — Boundary API read surface
+
+Implemented against `contracts/erp/v1/openapi.yaml` (Shared 739f0ca): `GET /mappings/{mapping_id}` and
+`GET /mappings`, behind authentication (401) -> header validation (400) -> scope (403) -> tenant claim (403),
+with the tenant taken only from the token's `tenant_id` claim, public mapping documents with no vendor binding,
+RFC 9457 problem documents (`application/problem+json`, correlation id echoed, `trace_id` from `traceparent`).
+Response and problem bodies were validated against the Shared 739f0ca schemas in a one-off check; the permanent
+exact-pin proof is ERP-COMPAT-06.
+
+Declared but not implemented (501 problem+json, never fabricated) and what each waits on:
+
+| Operation | Waiting on |
+|---|---|
+| `POST /provisioning-operations` | a Control Plane assignment source and governed finance baseline (the contract request is thin; ERP's internal request is not), boundary-minted `op_` operation id |
+| `GET /provisioning-operations/{id}` | the `op_` operation id and tenant column on `erp_provisioning_operation`, state mapping |
+| `GET /order-consequences/{commerce_order_id}` | a consequence read model over the order-to-cash flow |
+| `GET /inventory-availability` | an iDempiere stock query and warehouse id mapping |
+
+External dependency: Baobab IAM grants ERP workloads only `erp:integrate`. `erp:read` / `erp:provision` and a
+`tenant_id` claim on ERP-bound tokens must be granted by the owner before these routes serve traffic; they fail
+closed until then. No scope was added to IAM here.

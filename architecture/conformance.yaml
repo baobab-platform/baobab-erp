@@ -125,6 +125,9 @@ adrs:
       - modules/integration/idempiere_client.py
       - modules/integration/delivery_transport.py
       - modules/application/server.py
+      - modules/application/boundary.py
+      - modules/application/problem.py
+      - tests/integration/test_boundary_api.py
       - tests/unit/test_idempiere_client.py
       - tests/integration/test_http_server.py
       - idempiere/Dockerfile
@@ -152,6 +155,22 @@ adrs:
       is not yet the boundary API nabhold/shared publishes at contracts/erp/v1/openapi.yaml
       -- see contracts.lock.yaml and docs/reconciliation-plan.md (Phase 3) for the
       gap and what blocks closing it (no HTTP framework chosen yet, no auth).
+
+      ERP-COMPAT-03a (contracts/erp/v1/openapi.yaml, Shared 739f0ca): GET /mappings/{mapping_id}
+      and GET /mappings are served (with or without the /v1 base path) from
+      baobab.entity_mapping, authenticated and scoped (erp:read), tenant taken only from the
+      token's tenant_id claim (a request value never widens it; another tenant's mapping is
+      404), vendor bindings never returned, errors as application/problem+json with the
+      correlation id echoed. Declared but NOT implemented, answered 501 problem+json after
+      authorisation rather than fabricated: POST /provisioning-operations (needs a
+      Control Plane assignment source and a governed finance baseline, and a boundary-minted
+      op_ operation id on baobab.erp_provisioning_operation), GET
+      /provisioning-operations/{operation_id} (same op_ id), GET
+      /order-consequences/{commerce_order_id} (no consequence read model), GET
+      /inventory-availability (no iDempiere stock query). Dependencies outside this repo: the
+      erp:read and erp:provision scopes and a tenant_id claim on ERP-bound tokens are not
+      granted by Baobab IAM today (only erp:integrate), so these routes fail closed until the
+      owner grants them.
 
   - id: ADR-ERP-006
     title: ERP canonical event architecture
