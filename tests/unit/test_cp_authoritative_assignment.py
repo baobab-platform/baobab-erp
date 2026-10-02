@@ -21,7 +21,7 @@ def payload(entity="ZURIBEANS-ZA", market="ZA", **overrides) -> dict:
     body = {
         "tenant_id": "tn_01k4zuribeans",
         "tenant_provisioning_id": "tp_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
-        "plan_digest": DIGEST,
+        "plan_id": "plan_0199a1b2c3d47e8f", "plan_version": 3, "plan_digest": DIGEST,
         "legal_entity": {
             "legal_entity_id": entity, "legal_name": f"{entity} (Pty) Ltd", "jurisdiction_code": market,
             "registration_identifiers": [{"type": "COMPANY_REGISTRATION", "value": f"REG-{entity}", "verified": True}],
@@ -112,7 +112,7 @@ class AssignmentParsingTests(unittest.TestCase):
             assignment_from_payload({**payload(), "surprise": 1})
 
     def test_every_required_member_is_required(self):
-        for field in ("tenant_id", "tenant_provisioning_id", "plan_digest", "legal_entity", "markets", "engine_id",
+        for field in ("tenant_id", "tenant_provisioning_id", "plan_id", "plan_version", "plan_digest", "legal_entity", "markets", "engine_id",
                       "engine_instance_id", "isolation_requirement", "capabilities", "issued_at", "expires_at"):
             with self.subTest(field):
                 body = payload()
@@ -188,7 +188,7 @@ class NativePlacementTests(unittest.TestCase):
 class AuthoritativeProvisioningRequestFactoryTests(unittest.TestCase):
     def test_build_materialises_a_request_from_the_cp_assignment_and_erp_owned_inputs(self):
         request = build(payload())
-        self.assertEqual(request.provisioning_id, "tp_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b")
+        self.assertEqual(request.provisioning_id, "tp_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b.ZURIBEANS-ZA.v3")
         self.assertEqual(request.legal_entity_id, "ZURIBEANS-ZA")
         self.assertEqual(request.registration_identifier, "REG-ZURIBEANS-ZA")
         self.assertEqual(request.plan_digest, DIGEST)
@@ -204,11 +204,21 @@ class AuthoritativeProvisioningRequestFactoryTests(unittest.TestCase):
         self.assertEqual(market.participation_capabilities, frozenset({"selling", "importing"}))
         self.assertEqual((market.currencies, market.localisation_profile, market.warehouse_codes), (("ZAR", "USD"), "za-v1", ("JNB",)))
 
+    def test_plan_version_must_be_a_positive_integer(self):
+        for bad in (0, -1, True):
+            with self.subTest(bad):
+                with self.assertRaisesRegex(AssignmentError, "plan_version"):
+                    assignment_from_payload(payload(plan_version=bad)).validate(NOW)
+
     def test_the_idempotency_key_is_erp_derived_stable_and_bound_to_the_approved_plan(self):
         first, again = build(payload()), build(payload())
         self.assertEqual(first.idempotency_key, again.idempotency_key)
         self.assertTrue(first.idempotency_key.startswith("erp-prov-"))
         self.assertNotEqual(first.idempotency_key, build(payload(plan_digest="sha256:" + "c3" * 32)).idempotency_key)
+        # A replan is a new approved plan, so it is a new provisioning, not a rewrite of the old one.
+        self.assertNotEqual(first.idempotency_key, build(payload(plan_version=4)).idempotency_key)
+        self.assertNotEqual(first.provisioning_id, build(payload(plan_version=4)).provisioning_id)
+        self.assertNotEqual(first.provisioning_id, build(payload("ZURIBEANS-UG", "UG")).provisioning_id)
         self.assertNotEqual(first.idempotency_key, build(payload("ZURIBEANS-UG", "UG")).idempotency_key)
 
     def test_a_cross_boundary_assignment_is_refused_whatever_it_validates_as(self):

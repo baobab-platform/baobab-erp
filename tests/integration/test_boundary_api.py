@@ -78,12 +78,13 @@ class BoundaryApiTests(unittest.TestCase):
         body.update(claims)
         return jwt.encode(body, self.private_key, algorithm="RS256")
 
-    def _call(self, method, path, token="default", headers=None):
+    def _call(self, method, path, token="default", headers=None, data=None):
         token = self._token() if token == "default" else token
         h = dict(headers or {})
         if token:
             h["Authorization"] = f"Bearer {token}"
-        request = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", method=method, headers=h)
+        request = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", method=method, headers=h,
+                                         data=None if data is None else json.dumps(data).encode())
         try:
             with urllib.request.urlopen(request) as response:
                 return response.status, dict(response.headers), json.loads(response.read())
@@ -214,12 +215,38 @@ class BoundaryApiTests(unittest.TestCase):
     def test_unimplemented_operations_answer_501_problem_json(self):
         cases = [("GET", "/order-consequences/ord-123", "erp:read"),
                  ("GET", f"/inventory-availability?sku_id=sku-1&warehouse_id=erp_{uuid.uuid4().hex}", "erp:read"),
-                 ("GET", f"/provisioning-operations/op_{uuid.uuid4().hex}", "erp:read"),
-                 ("POST", "/provisioning-operations", "erp:provision")]
+                 ]
         for method, path, scope in cases:
             status, headers, body = self._call(method, path, token=self._token(scope=scope, tenant=None))
             self.assertProblem(status, headers, body, 501, "ERP_OPERATION_NOT_IMPLEMENTED")
             self.assertProblem(*self._call(method, path, token=self._token(scope="erp:integrate")), 403, "ERP_FORBIDDEN")
+
+    @staticmethod
+    def _provisioning_request(tenant):
+        return {"tenant_id": tenant, "legal_entity_ids": ["ZURIBEANS-ZA"], "requested_countries": ["ZA"],
+                "functional_currencies": ["ZAR"],
+                "control_plane_authority": {"tenant_provisioning_id": "tp_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+                                            "plan_id": "plan_0199a1b2c3d47e8f", "plan_version": 1,
+                                            "plan_digest": "sha256:" + "b2" * 32}}
+
+    # -- provisioning operations (handler-level behaviour is in test_provisioning_operations.py)
+    def test_provisioning_operations_are_served_not_501(self):
+        key = {"Idempotency-Key": "idem-0123456789abcdef"}
+        self.assertProblem(*self._call("POST", "/provisioning-operations", token=self._token(scope="erp:provision"),
+                                       headers=key, data={"tenant_id": self.tenant}), 400, "ERP_INVALID_REQUEST")
+        self.assertProblem(*self._call("POST", "/provisioning-operations", token=self._token(scope="erp:provision"),
+                                       headers=key, data=self._provisioning_request(self.other)), 403, "ERP_FORBIDDEN")
+        self.assertProblem(*self._call("POST", "/provisioning-operations", token=self._token(scope="erp:read"),
+                                       headers=key, data={}), 403, "ERP_FORBIDDEN")
+        self.assertProblem(*self._call("GET", f"/provisioning-operations/{uuid.uuid4()}"), 404, "ERP_RESOURCE_NOT_FOUND")
+        self.assertProblem(*self._call("GET", "/provisioning-operations/op_nope"), 400, "ERP_INVALID_REQUEST")
+
+    def test_provisioning_is_unavailable_until_control_plane_is_configured(self):
+        valid = self._provisioning_request(self.tenant)
+        status, headers, body = self._call("POST", "/provisioning-operations", token=self._token(scope="erp:provision"),
+                                           headers={"Idempotency-Key": "idem-0123456789abcdef"}, data=valid)
+        self.assertProblem(status, headers, body, 503, "ERP_SERVICE_UNAVAILABLE")
+        self.assertEqual(headers["Retry-After"], "30")
 
     def test_legacy_routes_are_untouched(self):
         status, _, body = self._call("GET", "/health/live", token=None)

@@ -15,12 +15,13 @@ _KNOWN = {
     "forbidden": (403, "Not authorised", False, "ERP_FORBIDDEN"),
     "tenant_context_required": (403, "Tenant context required", False, "ERP_TENANT_CONTEXT_REQUIRED"),
     "not_found": (404, "Resource not found", False, "ERP_RESOURCE_NOT_FOUND"),
+    "conflict": (409, "Conflict", False, "ERP_CONFLICT"),
     "not_implemented": (501, "Operation not implemented", False, "ERP_OPERATION_NOT_IMPLEMENTED"),
     "upstream_rejected": (502, "Upstream system rejected the request", False, "ERP_UPSTREAM_REJECTED"),
     "unavailable": (503, "Service unavailable", True, "ERP_SERVICE_UNAVAILABLE"),
     "internal": (500, "Internal error", True, "ERP_INTERNAL_ERROR"),
 }
-_BY_STATUS = {400: "invalid_request", 401: "unauthenticated", 403: "forbidden", 404: "not_found",
+_BY_STATUS = {400: "invalid_request", 401: "unauthenticated", 403: "forbidden", 404: "not_found", 409: "conflict",
               501: "not_implemented", 502: "upstream_rejected", 503: "unavailable", 500: "internal"}
 
 
@@ -48,8 +49,11 @@ def trace_id_from(traceparent: str | None) -> tuple[bool, str | None]:
 
 
 def problem(kind: str, *, correlation_id: str, trace_id: str | None = None, detail: str | None = None,
-            instance: str | None = None, errors: list[dict] | None = None) -> tuple[int, dict]:
-    status, title, retryable, code = _KNOWN[kind]
+            instance: str | None = None, errors: list[dict] | None = None, code: str | None = None) -> tuple[int, dict]:
+    """``code`` names the specific condition (e.g. PLAN_AUTHORITY_MISMATCH) where the contract names one; otherwise the
+    kind's generic code is used."""
+    status, title, retryable, kind_code = _KNOWN[kind]
+    code = code or kind_code
     body: dict = {
         "type": PROBLEM_BASE + kind.replace("_", "-"),
         "title": title,

@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "status": "draft-not-approved",
+  "markets": {
+    "ZA": {
+      "currencies": [
+        "REQUIRED_APPROVED_ZA_CURRENCIES"
+      ],
+      "localisation_profile": "REQUIRED_CERTIFIED_ZA_ERP_LOCALISATION",
+      "warehouse_codes": [
+        "REQUIRED_APPROVED_ZA_WAREHOUSE"
+      ]
+    },
+    "UG": {
+      "currencies": [
+        "REQUIRED_APPROVED_UG_CURRENCIES"
+      ],
+      "localisation_profile": "REQUIRED_CERTIFIED_UG_ERP_LOCALISATION",
+      "warehouse_codes": [
+        "REQUIRED_APPROVED_UG_WAREHOUSE"
+      ]
+    }
+  },
+  "target_environment": "production",
+  "native_placements": {
+    "ZURIBEANS-ZA": {
+      "native_client_key": "REQUIRED_APPROVED_NATIVE_CLIENT_KEY_ZA"
+    },
+    "ZURIBEANS-UG": {
+      "native_client_key": "REQUIRED_APPROVED_NATIVE_CLIENT_KEY_UG"
+    }
+  }
+}

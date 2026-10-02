@@ -232,3 +232,24 @@ driver text; the `error` member is gone (the Java client was updated to read `de
   means no request.
 * Nothing is seeded: ZuriBeans has no approved baseline until Finance approves one, and no migration invents one.
 
+
+## 15. Provisioning operations are served (ERP-COMPAT-03 gate: the four 501 operations, first two)
+
+`POST /provisioning-operations` and `GET /provisioning-operations/{operation_id}` no longer answer 501.
+
+* **Authority.** The request names the approved plan (`control_plane_authority`: provisioning, plan id, version, digest). ERP reads
+  Control Plane's `ErpAssignment` for every legal entity and compares tenant, provisioning, plan id, version, digest and
+  legal entity member by member; any difference, or no executable plan, is `409 PLAN_AUTHORITY_MISMATCH`. Countries and
+  currencies in the request are intent: they must equal the plan's markets and the Finance baselines' currencies.
+* **Inputs ERP owns.** Finance baseline (ADR-ERP-008), native placement and market configuration come from ERP's own
+  database and deployment configuration, never from the request or from tenant/legal-entity inference.
+* **Acceptance.** All legal entities are planned and recorded under one operation in one transaction (migration 0015), or
+  nothing is written. `202 accepted` means durably accepted and planned. No executor advances the state yet, so an
+  operation stays `accepted`; it is never reported as provisioned.
+* **Idempotency.** Scope (ERP, operation, token tenant, `Idempotency-Key`); the fingerprint includes the calling principal.
+  Same request: the original operation. Different request: `409 IDEMPOTENCY_KEY_REUSED`.
+* **Failure.** Control Plane unreachable, or provisioning not configured: `503` with `Retry-After`, nothing written.
+* **Configuration.** All of `ERP_CONTROL_PLANE_URL`, `ERP_CONTROL_PLANE_TOKEN_URL`, `ERP_CONTROL_PLANE_CLIENT_ID`,
+  `ERP_CONTROL_PLANE_CLIENT_SECRET`, `ERP_PROVISIONING_CONFIG_PATH` (see `config/provisioning/deployment.template.json`), or
+  none (503). Partial configuration fails startup. The live call needs IAM to grant `erp-assignment:read` to the ERP
+  workload client; that grant is a separate IAM change and has not been made.
