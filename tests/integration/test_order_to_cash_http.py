@@ -380,7 +380,9 @@ class OrderToCashHttpIntegrationTests(unittest.TestCase):
             "document_currency": "UGX", "lines": [{"product_canonical_id": "p", "quantity": "1", "unit_price": "1"}],
         })
         self.assertEqual(status, 502, body)
-        self.assertIn("error", body)
+        self.assertEqual(body["code"], "ERP_UPSTREAM_REJECTED")
+        self.assertIn("detail", body)
+        self.assertNotIn("error", body)
 
 
 if __name__ == "__main__":

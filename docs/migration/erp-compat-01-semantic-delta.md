@@ -152,3 +152,14 @@ that jar is dropped. The guard was exercised against a synthetic plugin tree (re
 a dependent plugin or a missing bundle fails). **Not verified here:** a full iDempiere boot without
 the bundle, because no CI job or environment boots the image; the owner should confirm before this
 reaches an environment that runs one.
+
+## 10. ERP-COMPAT-04 — Problem Details on every route
+
+All error responses are `application/problem+json` (`type`, `title`, `status`, `code`, `correlation_id`,
+`retryable`, optional `detail`/`trace_id`). Codes: `ERP_INVALID_REQUEST` 400, `ERP_AUTHENTICATION_REQUIRED` 401,
+`ERP_FORBIDDEN` 403, `ERP_RESOURCE_NOT_FOUND` 404, `ERP_OPERATION_NOT_IMPLEMENTED` 501,
+`ERP_UPSTREAM_REJECTED` 502 (iDempiere rejected the request), `ERP_SERVICE_UNAVAILABLE` 503 (retryable),
+`ERP_INTERNAL_ERROR` 500 (retryable; details logged, not returned). Behaviour changes callers can see:
+missing `/context/resolve` parameters are 400 instead of 404; 401/503/500 bodies no longer carry validator or
+driver text; the `error` member is gone (the Java client was updated to read `detail`). Negative-case proofs:
+`tests/integration/test_legacy_problem_details.py`.

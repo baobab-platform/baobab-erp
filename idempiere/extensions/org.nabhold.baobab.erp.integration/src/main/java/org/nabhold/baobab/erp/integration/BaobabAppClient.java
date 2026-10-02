@@ -93,7 +93,7 @@ public final class BaobabAppClient {
         if (response.statusCode() == 200) {
             return body;
         }
-        String detail = String.valueOf(body.getOrDefault("error", response.body()));
+        String detail = problemDetail(body, response.body());
         if (response.statusCode() == 404) {
             throw new BaobabAppNotFoundException(detail);
         }
@@ -141,7 +141,22 @@ public final class BaobabAppClient {
         if (response.statusCode() >= 200 && response.statusCode() < 300) {
             return responseBody;
         }
-        String detail = String.valueOf(responseBody.getOrDefault("error", response.body()));
+        String detail = problemDetail(responseBody, response.body());
         throw new BaobabAppClientException(response.statusCode() + " from " + request.uri() + ": " + detail);
+    }
+
+    /**
+     * The human-readable cause from an RFC 9457 problem document (baobab-app's error shape):
+     * {@code detail}, then {@code title}; the pre-problem {@code error} member and the raw body
+     * remain as fallbacks so an older baobab-app still produces a useful message.
+     */
+    static String problemDetail(Map<String, Object> body, String rawBody) {
+        for (String member : new String[] {"detail", "title", "error"}) {
+            Object value = body.get(member);
+            if (value != null) {
+                return String.valueOf(value);
+            }
+        }
+        return String.valueOf(rawBody);
     }
 }

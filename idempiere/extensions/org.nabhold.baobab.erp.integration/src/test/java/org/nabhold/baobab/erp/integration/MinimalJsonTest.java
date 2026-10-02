@@ -57,4 +57,23 @@ class MinimalJsonTest {
     void rejectsMalformedObject() {
         assertThrows(IllegalArgumentException.class, () -> MinimalJson.parseObject("{\"a\": 1"));
     }
+
+    @Test
+    void parsesAFlatProblemDocumentAndReadsItsDetail() {
+        String problem = "{\"type\": \"https://contracts.baobab-platform.com/problems/erp/not-found\","
+                + " \"title\": \"Resource not found\", \"status\": 404, \"code\": \"ERP_RESOURCE_NOT_FOUND\","
+                + " \"correlation_id\": \"0b9a7c1e-3b0e-4a57-9d4a-2a1d6a3f7e10\", \"retryable\": false,"
+                + " \"detail\": \"no active mapping\"}";
+        Map<String, Object> result = MinimalJson.parseObject(problem);
+        assertEquals(404L, result.get("status"));
+        assertEquals("no active mapping", BaobabAppClient.problemDetail(result, problem));
+    }
+
+    @Test
+    void problemDetailFallsBackToTitleThenLegacyErrorThenRawBody() {
+        assertEquals("Resource not found",
+                BaobabAppClient.problemDetail(Map.of("title", "Resource not found"), "raw"));
+        assertEquals("legacy", BaobabAppClient.problemDetail(Map.of("error", "legacy"), "raw"));
+        assertEquals("raw", BaobabAppClient.problemDetail(Map.of(), "raw"));
+    }
 }
