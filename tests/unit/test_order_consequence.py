@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 from order_to_cash import service
 from order_to_cash.consequence import Fact, Facts, OrderConsequence, derive
@@ -50,12 +51,21 @@ class DerivationTests(unittest.TestCase):
 
 
 class RecordingConsequences:
+    """Records the calls and answers like the Postgres store: a repeated fact reports changed=False."""
+
     def __init__(self):
         self.calls = []
         self.docs = {}
+        self.facts = set()
+        self.revision = 1
+
+    def _record(self, status="accepted"):
+        return OrderConsequence("tn_zuri", ORDER, "ZURIBEANS-ZA", 4, "erp_commerceorder", status, "pending", "pending",
+                                self.revision, datetime(2026, 10, 2, 9, 0, tzinfo=timezone.utc))
 
     def open_order(self, **kw):
         self.calls.append(("open", kw["commerce_order_id"], kw["order_version"], kw["erp_order_id"]))
+        return self._record()
 
     def link_document(self, *, tenant_id, document_type, document_id, commerce_order_id):
         self.docs[(document_type, document_id)] = commerce_order_id
@@ -67,6 +77,11 @@ class RecordingConsequences:
 
     def record_fact(self, *, tenant_id, commerce_order_id, fact, now, invoice_id=None):
         self.calls.append(("fact", fact, invoice_id))
+        changed = fact not in self.facts
+        self.facts.add(fact)
+        if changed:
+            self.revision += 1
+        return SimpleNamespace(record=self._record("processing"), changed=changed)
 
 
 class FakeMappings(FakeMappingStore):
@@ -83,7 +98,7 @@ class ServiceHookTests(unittest.TestCase):
         return service.create_sales_order(
             scope=SCOPE, commerce_order_canonical_id=ORDER, business_partner_native_id=1, document_currency="ZAR",
             lines=(OrderLine("p", "1", "1.00"),), idempiere=self.idempiere, mappings=self.mappings,
-            consequences=self.consequences, **kw)
+            consequences=self.consequences, outbox=self.outbox, **kw)
 
     def test_no_order_version_means_no_record_and_never_a_guessed_version(self):
         self.create()
@@ -111,6 +126,22 @@ class ServiceHookTests(unittest.TestCase):
         self.assertEqual(facts[2][2], "erp_customerinvoice", "the public erp_ id, never the native id")
         self.assertEqual(self.consequences.calls[0], ("open", ORDER, 4, "erp_commerceorder"))
 
+    def test_a_change_announces_the_registered_event_once_and_a_repeat_announces_nothing(self):
+        self.create(order_version=4, correlation_id="not-a-uuid")
+        for _ in range(2):
+            service.complete_sales_order(scope=SCOPE, commerce_order_canonical_id=ORDER, correlation_id="not-a-uuid",
+                                         process_ids=PROCESS_IDS, idempiere=self.idempiere, mappings=self.mappings,
+                                         outbox=self.outbox, consequences=self.consequences)
+        events = self.outbox.events
+        self.assertEqual([e.type for e in events], ["com.baobab-platform.erp.order.consequence-changed.v1"] * 2)
+        self.assertEqual([e.data["revision"] for e in events], [1, 2])
+        self.assertEqual(len({e.id for e in events}), 2)
+        self.assertEqual(len({e.correlationid for e in events}), 1, "one stable correlation for the order")
+
+    def test_an_order_without_a_record_announces_nothing(self):
+        self.create()
+        self.assertFalse(getattr(self.outbox, "events", []))
+
     def test_a_document_of_an_order_without_a_record_changes_nothing(self):
         self.create()  # no version -> nothing opened
         self.consequences.docs.clear()
@@ -122,3 +153,33 @@ class ServiceHookTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConsequenceEventTests(unittest.TestCase):
+    RECORD = OrderConsequence("tn_zuri", ORDER, "ZURIBEANS-ZA", 2, "erp_abc12345", "posted", "posted", "fulfilled", 4,
+                              datetime(2026, 10, 2, 9, 0, tzinfo=timezone.utc), invoice_id="erp_inv12345")
+
+    def test_the_event_is_the_registered_type_carrying_exactly_the_read_models_document(self):
+        from order_to_cash.consequence_events import EVENT_TYPE, consequence_changed_event
+        event = consequence_changed_event(self.RECORD, None)
+        self.assertEqual((event.type, event.subject, event.tenantid, event.baobabscope),
+                         (EVENT_TYPE, f"order:{ORDER}", "tn_zuri", "tenant"))
+        self.assertEqual(event.data, self.RECORD.to_contract())
+        self.assertEqual(event.time, self.RECORD.updated_at)
+        self.assertEqual(event.idempotencykey, f"erp-order-consequence-{ORDER}-r4")
+
+    def test_the_id_is_stable_per_revision_and_differs_between_revisions(self):
+        from dataclasses import replace
+        from order_to_cash.consequence_events import consequence_changed_event
+        first = consequence_changed_event(self.RECORD, None)
+        self.assertEqual(first.id, consequence_changed_event(self.RECORD, None).id)
+        self.assertNotEqual(first.id, consequence_changed_event(replace(self.RECORD, revision=5), None).id)
+        self.assertNotEqual(first.id, consequence_changed_event(replace(self.RECORD, commerce_order_id="x" * 8), None).id)
+
+    def test_a_uuid_correlation_is_kept_and_anything_else_is_derived_stably(self):
+        from order_to_cash.consequence_events import consequence_changed_event, correlation_uuid
+        supplied = "0b1f3a52-6a4b-4f4e-9d52-1a2b3c4d5e6f"
+        self.assertEqual(consequence_changed_event(self.RECORD, supplied).correlationid, supplied)
+        derived = correlation_uuid("tn_zuri", ORDER, "corr-9")
+        self.assertEqual(derived, correlation_uuid("tn_zuri", ORDER, ""))
+        self.assertNotEqual(derived, correlation_uuid("tn_other", ORDER, "corr-9"))

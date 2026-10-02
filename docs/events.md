@@ -33,6 +33,22 @@ shape as rejected and no registered canonical event exists yet for those facts (
 iDempiere native ids). They are delivered only once an outcome projection maps them to registered events with
 canonical payloads.
 
+## Produced from the order-consequence read model
+
+`com.baobab-platform.erp.order.consequence-changed.v1` is produced whenever the order-consequence read model changes
+(`modules/order_to_cash/consequence_events.py`): when ERP opens a record for an order, and whenever an observed fact (order
+completed, shipment completed, invoice posted) changes it. The payload is the read model's contract document, so the event and
+`GET /order-consequences/{commerce_order_id}` are two projections of one record and cannot disagree. It is recorded in the same
+transaction as the change, and a repeated fact (which changes nothing) announces nothing. The event id is derived from
+(tenant, order, revision), so a revision is announced once however often its transaction is retried; the idempotency key is
+`erp-order-consequence-{commerce_order_id}-r{revision}`. A correlation id that is not a UUID is replaced by one derived from the
+order, so related events share a correlation without inventing one per call.
+
+Still not produced: `invoice.changed` and `payment.accounting-changed`. Their registered payloads need facts ERP does not hold yet
+(invoice number, total and due date; payment amount and capture id), and ERP does not invent them; they follow once those facts
+are recorded as ERP-owned projections. The legacy-shaped rows the order-to-cash steps record are still stored as `held` beside the
+canonical event and are never delivered.
+
 ## Delivery
 
 `modules/outbox.service.dispatch_pending` drains pending/retry canonical rows through an `EventTransport`;

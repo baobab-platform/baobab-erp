@@ -52,6 +52,9 @@ class FakeOutboxStore:
     def record(self, envelope):
         self.recorded.append(envelope)
 
+    def record_event(self, event):
+        self.events = getattr(self, "events", []) + [event]
+
 
 class SalesOrderTests(unittest.TestCase):
     def setUp(self):

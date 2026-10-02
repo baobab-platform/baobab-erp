@@ -81,6 +81,50 @@ class OrderConsequenceTests(unittest.TestCase):
         self.assertEqual(body["invoice_id"], self.mappings.erp_resource_id(self.tenant, "CustomerInvoice", invoice.canonical_id))
         self.assertNotIn("C_", str(body), "no native table or id reaches the contract")
 
+    def outbox_rows(self, connection=None):
+        with (connection or self.connection).cursor() as cursor:
+            cursor.execute("SELECT event_type, status, envelope_format, payload_json->>'revision', ce_subject, "
+                           "ce_idempotency_key FROM baobab.event_outbox WHERE tenant_id = %s ORDER BY occurred_at, id",
+                           (self.tenant,))
+            return cursor.fetchall()
+
+    def test_each_change_announces_the_registered_event_in_the_same_transaction(self):
+        self.create_order(order_version=3, outbox=self.outbox, correlation_id="corr-1")
+        shipment = str(uuid.uuid4())
+        self.step(service.complete_sales_order, commerce_order_canonical_id=self.order, correlation_id="corr-1",
+                  process_ids=PROCESS_IDS, outbox=self.outbox)
+        self.step(service.create_shipment, shipment_canonical_id=shipment, commerce_order_canonical_id=self.order)
+        self.step(service.complete_shipment, shipment_canonical_id=shipment, correlation_id="corr-1",
+                  process_ids=PROCESS_IDS, outbox=self.outbox)
+        invoice = self.step(service.create_customer_invoice, commerce_order_canonical_id=self.order)
+        self.step(service.post_customer_invoice, invoice_canonical_id=invoice.canonical_id, correlation_id="corr-1",
+                  process_ids=PROCESS_IDS, outbox=self.outbox)
+        canonical = [r for r in self.outbox_rows() if r[2] == "cloudevents"]
+        self.assertEqual([r[3] for r in canonical], ["1", "2", "3", "4"])
+        self.assertTrue(all(r[0] == "com.baobab-platform.erp.order.consequence-changed.v1" and r[1] == "pending"
+                            and r[4] == f"order:{self.order}" for r in canonical))
+        self.assertEqual(canonical[3][5], f"erp-order-consequence-{self.order}-r4")
+        # the legacy held rows are still recorded alongside, and are never delivered
+        self.assertTrue(all(r[1] == "held" for r in self.outbox_rows() if r[2] == "legacy"))
+        # nothing is visible to anyone else until the caller's transaction commits
+        other = connect()
+        self.addCleanup(other.close)
+        self.assertEqual(self.outbox_rows(other), [])
+        # and the dispatcher would pick up exactly the canonical rows
+        self.assertEqual(len([r for r in self.outbox.pending(100) if r.event.subject == f"order:{self.order}"]), 4)
+
+    def test_a_repeated_fact_announces_nothing_and_an_order_without_a_record_announces_nothing(self):
+        self.create_order(order_version=1, outbox=self.outbox)
+        for _ in range(2):
+            self.step(service.complete_sales_order, commerce_order_canonical_id=self.order, correlation_id="c",
+                      process_ids=PROCESS_IDS, outbox=self.outbox)
+        self.assertEqual([r[3] for r in self.outbox_rows() if r[2] == "cloudevents"], ["1", "2"])
+        self.order = str(uuid.uuid4())
+        self.create_order(outbox=self.outbox)
+        self.step(service.complete_sales_order, commerce_order_canonical_id=self.order, correlation_id="c",
+                  process_ids=PROCESS_IDS, outbox=self.outbox)
+        self.assertEqual(len([r for r in self.outbox_rows() if r[2] == "cloudevents"]), 2)
+
     def test_a_repeated_fact_does_not_bump_the_revision(self):
         self.create_order(order_version=1)
         for _ in range(2):
