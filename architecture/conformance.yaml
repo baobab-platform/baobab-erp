@@ -185,12 +185,13 @@ adrs:
       test_legacy_problem_details.py against a structural check of the Shared schema; exact-pin schema
       validation is ERP-COMPAT-06.
 
-      ERP-COMPAT-06/07: contracts.lock.yaml now pins baobab-platform/shared 739f0ca and tests/conformance/
-      (CI job shared-conformance) validates the live Boundary API responses and problem documents against the
-      OpenAPI and problem-details schemas at exactly that commit. Statuses ERP returns that the pinned OpenAPI
-      does not declare (400 on the two mapping reads; 501 on the four operations whose backing capability is
-      missing) are listed as KNOWN_UNDECLARED, asserted to be problem documents and asserted to stay undeclared,
-      so closing the Shared gap forces the list to shrink.
+      ERP-COMPAT-06/07: tests/conformance/ (CI job shared-conformance) validates the live Boundary API responses and
+      problem documents against the OpenAPI and problem-details schemas at exactly the commit contracts.lock.yaml pins.
+      The pin is baobab-platform/shared 92accac (erp/v1 OpenAPI 1.0.1), which declares 400 on the two mapping reads and
+      a reusable 501 Not Implemented on the four operations whose backing capability is absent from this engine release.
+      The suite is strict: any status ERP returns that the pinned OpenAPI does not declare fails, and the 501s are
+      transitional (501 = capability absent, not production readiness; an engine release claiming a capability and
+      answering 501 stays uncertified).
 
   - id: ADR-ERP-006
     title: ERP canonical event architecture

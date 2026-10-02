@@ -195,6 +195,8 @@ driver text; the `error` member is gone (the Java client was updated to read `de
   current code fails 18 tests; at the new pin it passes; three mutations (drop a required mapping member, rename
   `correlation_id`, point `invoice.changed` at the wrong payload schema) each fail the expected tests.
 * 06 and 07 land together because the new code cannot conform to the old pin (the namespace and envelope changed).
-* Shared contract gaps found, tracked in `KNOWN_UNDECLARED` (not accepted silently): `GET /mappings/{mapping_id}` and
-  `GET /mappings` return 400 for malformed input but the OpenAPI declares no 400; the four unimplemented operations
-  return 501, also undeclared.
+* Shared contract gaps found by the suite (`GET /mappings/{mapping_id}` and `GET /mappings` returned 400, and the four
+  unimplemented operations returned 501, none declared at 739f0ca) were closed in Shared by OpenAPI 1.0.1
+  (baobab-platform/shared#198, merge `92accac`; namespace stays `erp/v1`). `contracts.lock.yaml` now pins `92accac`, the
+  `KNOWN_UNDECLARED` tracking list is deleted, and the suite fails on any undeclared status. The 501s remain a
+  transitional capability-absent signal: implementing the four operations, held events and the IAM grants stay separate gates.
