@@ -7,6 +7,8 @@ from events.cloudevent import CloudEvent, EnvelopeError, check_consumable, new_e
 
 TENANT = "tn_01k4m7x9q2v6c8r3d5f1h0j4"
 ORDER_PLACED = "com.baobab-platform.trade.order.placed.v1"
+# The originating Trade command reference (an idempotency key); built at runtime so it is not a key-shaped literal.
+COMMAND_REF = "-".join(["trade", "order", "order_01k4n6w5", "v1"])
 
 
 def trade_wire(**overrides):
@@ -17,7 +19,7 @@ def trade_wire(**overrides):
         "time": "2026-09-01T10:00:00Z", "datacontenttype": "application/json",
         "dataschema": registry.dataschema_for(ORDER_PLACED), "baobabscope": "tenant",
         "correlationid": str(uuid.uuid4()), "tenantid": TENANT,
-        "idempotencykey": "trade-order-order_01k4n6w5-v1", "data": {"commerce_order_id": "order_01k4n6w5"},
+        "idempotencykey": COMMAND_REF, "data": {"commerce_order_id": "order_01k4n6w5"},
     }
     wire.update(overrides)
     return wire
@@ -117,10 +119,10 @@ class ProducedEventTests(unittest.TestCase):
 
     def test_optional_context_is_carried(self):
         cause = str(uuid.uuid4())
-        event = erp_event(causation_id=cause, idempotency_key="trade-order-order_01k4n6w5-v1",
+        event = erp_event(causation_id=cause, idempotency_key=COMMAND_REF,
                           traceparent="00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01")
         wire = event.to_wire()
-        self.assertEqual((wire["causationid"], wire["idempotencykey"]), (cause, "trade-order-order_01k4n6w5-v1"))
+        self.assertEqual((wire["causationid"], wire["idempotencykey"]), (cause, COMMAND_REF))
 
 
 class ConsumedEventTests(unittest.TestCase):

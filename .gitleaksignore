@@ -7,3 +7,12 @@
 # false positive is allowlisted here instead of purged from history.
 6614ee891b74e8e701b2396c4e58f6093b0e8572:config/provisioning/localisation.registry.example.json:generic-api-key:4
 6614ee891b74e8e701b2396c4e58f6093b0e8572:config/provisioning/localisation.registry.example.json:generic-api-key:13
+
+# ERP-COMPAT-05 test fixtures at c4920c4: the originating-command reference used as an idempotency key in the
+# CloudEvents tests ("trade-order-order_01k4n6w5-v1") is the public example value from Shared's
+# erp/v1/examples, not a credential; the generic-api-key rule matched it because the member is named
+# idempotency_key. The fixtures now build the value at runtime (next commit). c4920c4 is already pushed to the
+# PR branch and is not rewritten, so the false positives are allowlisted here, as above.
+c4920c48af20deb860cb8b965346e74aa4c6969b:tests/unit/test_cloudevent.py:generic-api-key:20
+c4920c48af20deb860cb8b965346e74aa4c6969b:tests/unit/test_cloudevent.py:generic-api-key:120
+c4920c48af20deb860cb8b965346e74aa4c6969b:tests/integration/test_postgres_inbox_store.py:generic-api-key:41

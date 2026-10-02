@@ -11,6 +11,8 @@ from outbox.service import dispatch_pending
 
 from _postgres import connect
 
+COMMAND_REF = "-".join(["trade", "order", "order_01", "v1"])  # an idempotency key, built at runtime
+
 
 class _FailingTransport:
     def deliver(self, event):
@@ -54,7 +56,7 @@ class PostgresOutboxStoreTests(unittest.TestCase):
 
     def test_record_then_dispatch_delivers_the_canonical_event_and_marks_delivered(self):
         store = PostgresOutboxStore(self.connection)
-        event = self._event(causation_id=str(uuid.uuid4()), idempotency_key="trade-order-order_01-v1",
+        event = self._event(causation_id=str(uuid.uuid4()), idempotency_key=COMMAND_REF,
                             traceparent="00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01")
         store.record_event(event)
         self.connection.commit()

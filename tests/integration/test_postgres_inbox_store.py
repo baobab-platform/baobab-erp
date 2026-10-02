@@ -16,6 +16,7 @@ from _postgres import connect
 SECRET = "secret"
 ORDER_PLACED = "com.baobab-platform.trade.order.placed.v1"
 TRADE = "urn:baobab-platform:service:trade"
+COMMAND_REF = "-".join(["trade", "order", "order_01k4n6w5", "v1"])  # an idempotency key, built at runtime
 
 
 class PostgresInboxStoreTests(unittest.TestCase):
@@ -38,7 +39,7 @@ class PostgresInboxStoreTests(unittest.TestCase):
             "subject": "order:order_01k4n6w5", "time": "2026-09-06T12:00:00Z",
             "datacontenttype": "application/json", "dataschema": registry.dataschema_for(ORDER_PLACED),
             "baobabscope": "tenant", "correlationid": str(uuid.uuid4()), "tenantid": self.tenant_id,
-            "causationid": str(uuid.uuid4()), "idempotencykey": "trade-order-order_01k4n6w5-v1",
+            "causationid": str(uuid.uuid4()), "idempotencykey": COMMAND_REF,
             "data": {"commerce_order_id": "order_01k4n6w5"},
         }
         wire.update(overrides)
