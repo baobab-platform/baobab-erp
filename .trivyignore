@@ -17,9 +17,6 @@
 # directly in idempiere/Dockerfile via `apt-get upgrade`, which doesn't touch
 # iDempiere itself and needs no risk acceptance.
 
-# jackson-core (bundled in org.idempiere.hazelcast.service) -- fixed 2.18.8/2.21.4
-GHSA-r7wm-3cxj-wff9
-
 # jackson-databind -- fixed 2.18.8/2.21.4/3.1.4
 CVE-2026-54512
 CVE-2026-54513

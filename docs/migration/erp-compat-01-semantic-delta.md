@@ -134,3 +134,21 @@ Declared but not implemented (501 problem+json, never fabricated) and what each 
 External dependency: Baobab IAM grants ERP workloads only `erp:integrate`. `erp:read` / `erp:provision` and a
 `tenant_id` claim on ERP-bound tokens must be granted by the owner before these routes serve traffic; they fail
 closed until then. No scope was added to IAM here.
+
+## 9. CVE-2026-89425 — alternative solution (ADR-ERP-004 section 5 mitigation)
+
+Evidence (CI probe, `scripts/probe-idempiere-image.sh`, run on `13-release` and `13-daily`):
+the vulnerable jackson-core 2.15.2 is Hazelcast 5.3.7's own shaded copy
+(`com/hazelcast/shaded/com/fasterxml/jackson`) inside `lib/hazelcast.jar` of
+`org.idempiere.hazelcast.service`. Neither `13-release` (2026-04-07) nor the `13-daily` build of
+2026-10-01 fixes it, so waiting for an upstream image does not resolve it today.
+
+The bundle only provides iDempiere's optional cluster service: `bundles.info` lists it at start
+level 4 with autostart `false`, no plugin in the image requires or imports from it, and ERP runs one
+iDempiere node per EngineInstance (ADR-ERP-003). `idempiere/Dockerfile` therefore removes the unused
+component (no jar is modified, no scan exception is added) behind a guard that fails the build if
+the bundle set changes or any plugin starts to depend on it. The obsolete `.trivyignore` entry for
+that jar is dropped. The guard was exercised against a synthetic plugin tree (removal succeeds;
+a dependent plugin or a missing bundle fails). **Not verified here:** a full iDempiere boot without
+the bundle, because no CI job or environment boots the image; the owner should confirm before this
+reaches an environment that runs one.
