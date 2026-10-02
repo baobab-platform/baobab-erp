@@ -7,13 +7,17 @@ from provisioning.cp_contract import (
     CpErpAssignment,
     CpMarketAssignment,
     FinanceBaseline,
-    NativeClientMode,
     assignment_from_payload,
 )
-from provisioning.legal_entity_policy import native_boundary
+from provisioning.legal_entity_policy import (
+    ConfiguredNativePlacementPolicy,
+    NativeClientMode,
+    NativePlacement,
+    native_boundary,
+)
 
 
-def assignment(code: str, entity: str, market: str, country: str, mode: NativeClientMode = NativeClientMode.DEDICATED_CLIENT) -> CpErpAssignment:
+def assignment(code: str, entity: str, market: str, country: str) -> CpErpAssignment:
     now = datetime.now(timezone.utc)
     return CpErpAssignment(
         assignment_version="v1", provisioning_id=f"prov-{code}",
@@ -22,12 +26,18 @@ def assignment(code: str, entity: str, market: str, country: str, mode: NativeCl
         registration_identifier=f"REG-{code}", jurisdiction_code=country,
         engine_instance_id="erp-af-01", isolation_profile_id="iso-zb",
         capability_binding_id=f"binding-{code}", target_environment="production",
-        effective_date=date(2026, 9, 1), native_client_mode=mode,
-        native_client_key=code,
+        effective_date=date(2026, 9, 1),
         markets=(CpMarketAssignment(market, country, frozenset({"selling", "procurement"}), ("ZAR",) if country == "ZA" else ("UGX",), f"{country.lower()}-v1"),),
         requested_capabilities=frozenset({"erp.accounting", "erp.accounts-payable", "erp.accounts-receivable", "erp.inventory", "erp.procurement"}),
         issued_at=now, expires_at=now + timedelta(hours=1),
     )
+
+
+def placement_policy(mode: NativeClientMode = NativeClientMode.DEDICATED_CLIENT) -> ConfiguredNativePlacementPolicy:
+    return ConfiguredNativePlacementPolicy({
+        "Zuribeans_ZA": NativePlacement("Zuribeans_ZA", mode),
+        "Zuribeans_UG": NativePlacement("Zuribeans_UG", mode),
+    })
 
 
 def finance_baseline() -> FinanceBaseline:
@@ -54,7 +64,8 @@ class CpErpAssignmentTests(unittest.TestCase):
         za.validate()
         ug.validate()
         self.assertNotEqual(za.legal_entity_id, ug.legal_entity_id)
-        self.assertNotEqual(za.native_client_key, ug.native_client_key)
+        policy = placement_policy()
+        self.assertNotEqual(native_boundary(za, policy).native_client_key, native_boundary(ug, policy).native_client_key)
 
     def test_expired_assignment_fails_closed(self):
         a = assignment("Zuribeans_ZA", "le-zb-za", "market-za", "ZA")
@@ -87,29 +98,45 @@ class CpErpAssignmentTests(unittest.TestCase):
             "legal_name": "Zuribeans_ZA", "registration_identifier": "REG-ZA", "jurisdiction_code": "ZA",
             "engine_instance_id": "erp-af-01", "isolation_profile_id": "iso-zb", "capability_binding_id": "binding-za",
             "target_environment": "production", "effective_date": "2026-09-01",
-            "native_client_mode": "dedicated_client", "native_client_key": "Zuribeans_ZA",
             "markets": [{"market_id": "market-za", "country_code": "ZA", "capabilities": ["selling"], "currencies": ["ZAR"], "localisation_profile": "za-v1"}],
             "requested_capabilities": ["erp.accounting"],
             "issued_at": datetime.now(timezone.utc).isoformat(),
         }
         result = assignment_from_payload(payload)
         self.assertEqual(result.legal_entity_id, "le-zb-za")
-        self.assertEqual(result.native_client_mode, NativeClientMode.DEDICATED_CLIENT)
+        self.assertFalse(hasattr(result, "native_client_key"))
 
 
-class NativeBoundaryTests(unittest.TestCase):
-    def test_native_boundary_does_not_infer_anything_beyond_the_assignment(self):
+class NativePlacementTests(unittest.TestCase):
+    def test_cp_must_not_send_erp_owned_native_placement(self):
+        for field in ("native_client_mode", "native_client_key"):
+            with self.subTest(field):
+                payload = {"assignment_version": "v1", field: "x"}
+                with self.assertRaises(AssignmentError):
+                    assignment_from_payload(payload)
+
+    def test_native_boundary_comes_from_the_erp_policy_not_the_assignment(self):
         a = assignment("Zuribeans_ZA", "le-zb-za", "market-za", "ZA")
-        boundary = native_boundary(a)
+        boundary = native_boundary(a, placement_policy())
         self.assertEqual(boundary.legal_entity_id, a.legal_entity_id)
-        self.assertEqual(boundary.native_client_key, a.native_client_key)
+        self.assertEqual(boundary.native_client_key, "Zuribeans_ZA")
         self.assertEqual(boundary.mode, NativeClientMode.DEDICATED_CLIENT)
+
+    def test_unconfigured_legal_entity_fails_closed_without_inference(self):
+        a = assignment("Zuribeans_KE", "le-zb-ke", "market-ke", "KE")
+        with self.assertRaises(AssignmentError):
+            native_boundary(a, placement_policy())
+
+    def test_empty_native_client_key_fails_closed(self):
+        a = assignment("Zuribeans_ZA", "le-zb-za", "market-za", "ZA")
+        with self.assertRaises(AssignmentError):
+            native_boundary(a, ConfiguredNativePlacementPolicy({"Zuribeans_ZA": NativePlacement(" ")}))
 
 
 class AuthoritativeProvisioningRequestFactoryTests(unittest.TestCase):
     def test_build_materializes_a_request_from_the_cp_assignment(self):
         a = assignment("Zuribeans_ZA", "le-zb-za", "market-za", "ZA")
-        factory = AuthoritativeProvisioningRequestFactory(control_plane=FakeControlPlane(a))
+        factory = AuthoritativeProvisioningRequestFactory(control_plane=FakeControlPlane(a), native_placement=placement_policy())
 
         request = factory.build(tenant_id="tenant-zuribeans", legal_entity_id="le-zb-za", finance=finance_baseline())
 
@@ -119,14 +146,15 @@ class AuthoritativeProvisioningRequestFactoryTests(unittest.TestCase):
 
     def test_build_rejects_a_cross_boundary_assignment(self):
         a = assignment("Zuribeans_UG", "le-zb-ug", "market-ug", "UG")
-        factory = AuthoritativeProvisioningRequestFactory(control_plane=FakeControlPlane(a))
+        factory = AuthoritativeProvisioningRequestFactory(control_plane=FakeControlPlane(a), native_placement=placement_policy())
 
         with self.assertRaises(ValueError):
             factory.build(tenant_id="tenant-zuribeans", legal_entity_id="le-zb-za", finance=finance_baseline())
 
     def test_build_rejects_existing_client_mode_the_adapter_cannot_honour(self):
-        a = assignment("Zuribeans_ZA", "le-zb-za", "market-za", "ZA", mode=NativeClientMode.EXISTING_CLIENT)
-        factory = AuthoritativeProvisioningRequestFactory(control_plane=FakeControlPlane(a))
+        a = assignment("Zuribeans_ZA", "le-zb-za", "market-za", "ZA")
+        factory = AuthoritativeProvisioningRequestFactory(
+            control_plane=FakeControlPlane(a), native_placement=placement_policy(NativeClientMode.EXISTING_CLIENT))
 
         with self.assertRaises(NotImplementedError):
             factory.build(tenant_id="tenant-zuribeans", legal_entity_id="le-zb-za", finance=finance_baseline())
