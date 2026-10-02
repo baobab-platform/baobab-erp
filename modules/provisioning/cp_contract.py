@@ -1,7 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
-from enum import StrEnum
 from typing import Any, Protocol
 
 from provisioning.model import AccountingConfiguration, ErpProvisioningRequest, MarketConfiguration
@@ -9,11 +8,6 @@ from provisioning.model import AccountingConfiguration, ErpProvisioningRequest, 
 
 class AssignmentError(ValueError):
     pass
-
-
-class NativeClientMode(StrEnum):
-    DEDICATED_CLIENT = "dedicated_client"
-    EXISTING_CLIENT = "existing_client"
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +26,8 @@ class CpErpAssignment:
 
     CP remains authority for canonical IDs, topology and isolation. ERP must not
     infer an EngineInstance, CapabilityBinding, LegalEntity or isolation profile.
+    Native AD_Client / AD_Org placement is deliberately absent: ADR-ERP-002 SS113/114 give it to ERP
+    (see provisioning.legal_entity_policy), constrained by the isolation profile CP assigns.
     """
     assignment_version: str
     provisioning_id: str
@@ -47,8 +43,6 @@ class CpErpAssignment:
     capability_binding_id: str
     target_environment: str
     effective_date: date
-    native_client_mode: NativeClientMode
-    native_client_key: str
     markets: tuple[CpMarketAssignment, ...]
     requested_capabilities: frozenset[str]
     issued_at: datetime
@@ -67,7 +61,6 @@ class CpErpAssignment:
             "engine_instance_id": self.engine_instance_id,
             "isolation_profile_id": self.isolation_profile_id,
             "capability_binding_id": self.capability_binding_id,
-            "native_client_key": self.native_client_key,
         }
         missing = [k for k, v in required.items() if not str(v).strip()]
         if missing:
@@ -145,6 +138,9 @@ def materialize_request(
 
 
 def assignment_from_payload(payload: dict[str, Any]) -> CpErpAssignment:
+    owned_by_erp = sorted({"native_client_mode", "native_client_key"} & payload.keys())
+    if owned_by_erp:
+        raise AssignmentError(f"native placement is ERP-owned (ADR-ERP-002 SS114); CP must not send {', '.join(owned_by_erp)}")
     markets = tuple(
         CpMarketAssignment(
             market_id=m["market_id"],
@@ -171,8 +167,6 @@ def assignment_from_payload(payload: dict[str, Any]) -> CpErpAssignment:
         capability_binding_id=payload["capability_binding_id"],
         target_environment=payload["target_environment"],
         effective_date=date.fromisoformat(payload["effective_date"]),
-        native_client_mode=NativeClientMode(payload["native_client_mode"]),
-        native_client_key=payload["native_client_key"],
         markets=markets,
         requested_capabilities=frozenset(payload["requested_capabilities"]),
         issued_at=datetime.fromisoformat(payload["issued_at"]),

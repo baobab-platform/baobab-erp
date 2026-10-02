@@ -65,12 +65,18 @@ adrs:
       native_client_mode other than dedicated_client, because the provisioning adapter
       (idempiere_adapter.py, Gate ZB-02) only ever creates a new AD_Client -- it has no
       "reuse an existing AD_Client" path, so silently accepting existing_client would
-      misprovision rather than fail closed. What's still open: no real baobab-cp
-      deployment exists to call (ControlPlaneAssignmentSource is a Protocol here,
-      exercised only against a fake in tests/unit/test_cp_authoritative_assignment.py);
-      FinanceBaseline is still supplied directly to the factory rather than sourced from
-      an authoritative Finance system; and native_client_mode itself has only one working
-      value end-to-end (dedicated_client) until the adapter gains an existing-client path.
+      misprovision rather than fail closed.
+
+      Correction (provisioning prerequisite): native AD_Client/AD_Org placement is NOT a CP projection field.
+      ADR-ERP-002 SS113 gives CP identities, mappings, EngineInstance, IsolationProfile, CapabilityBinding, context
+      resolution and routing; SS114 gives ERP the native AD_Client, AD_Org and configuration. CpErpAssignment no
+      longer carries native_client_mode/native_client_key (assignment_from_payload rejects them), and
+      provisioning.legal_entity_policy.ConfiguredNativePlacementPolicy is the ERP-owned, explicit, fail-closed
+      placement (ADR-ERP-021: one dedicated AD_Client per LegalEntity). What's still open: no real baobab-cp
+      deployment exists to call (ControlPlaneAssignmentSource is a Protocol here, exercised only against a fake
+      in tests/unit/test_cp_authoritative_assignment.py); FinanceBaseline is still supplied directly to the
+      factory rather than read from an ERP-owned, Finance-approved baseline store; and the existing-client path
+      does not exist in the adapter.
 
   - id: ADR-ERP-003
     title: ERP EngineInstance isolation, regional deployment and data residency
