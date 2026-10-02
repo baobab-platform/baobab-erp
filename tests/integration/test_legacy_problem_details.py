@@ -3,8 +3,6 @@
 Real Postgres + real HTTP server. Negative cases only: 400, 401, 403, 404, 500 (including an
 unexpected failure), 503, each with the correlation id echoed and no internal text leaked."""
 
-import hashlib
-import hmac
 import json
 import os
 import time
