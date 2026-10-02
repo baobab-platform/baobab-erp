@@ -180,3 +180,21 @@ driver text; the `error` member is gone (the Java client was updated to read `de
   registered canonical counterpart, so they are `held`, not delivered. Producing the registered `erp.*` events
   needs an outcome projection (order_version, revisions, totals, erp_ ids) and the consequence read model; until
   then ERP delivers no events.
+
+## 12. ERP-COMPAT-06/07 — exact-pin proof and re-pin
+
+* `contracts.lock.yaml`: `2da1a42` -> `739f0ca6ea52bc94bd0e5ca611c62cb6c6ad1ded` (current Shared main). The contract
+  list grows from 19 to 36: the buyer-organisation event contracts, access-token claims, capabilities,
+  inventory query, event registry, the archived legacy fixture and the nine example events.
+* `tests/conformance/` runs in CI job `shared-conformance` against a checkout of exactly the locked commit
+  (cross-repo checkout, as Trade's `shared-conformance`) and never skips: `BAOBAB_SHARED_PATH`, `DATABASE_URL` and the
+  checkout's `HEAD` are all asserted. 28 tests: pin and lock completeness, identifier and envelope grammars equal
+  Shared's, events (9 examples round-trip; envelope + dataschema validation; legacy rejected; registry equality),
+  and live HTTP responses validated against the OpenAPI response schemas and problem-details.
+* Proof that it bites: with the old lock the suite refuses a 739f0ca checkout; against the old pin `2da1a42` the
+  current code fails 18 tests; at the new pin it passes; three mutations (drop a required mapping member, rename
+  `correlation_id`, point `invoice.changed` at the wrong payload schema) each fail the expected tests.
+* 06 and 07 land together because the new code cannot conform to the old pin (the namespace and envelope changed).
+* Shared contract gaps found, tracked in `KNOWN_UNDECLARED` (not accepted silently): `GET /mappings/{mapping_id}` and
+  `GET /mappings` return 400 for malformed input but the OpenAPI declares no 400; the four unimplemented operations
+  return 501, also undeclared.

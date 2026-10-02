@@ -2,50 +2,61 @@
 # (EA Plan v2.0 EA-01A; schema: shared .baobab/contract-consumer-lock.schema.json).
 # Foundation checks that the commit is on Shared main and that every listed
 # contract exists and parses there, and reports drift in the job summary.
-# Migrated from the legacy nabhold-contract-consumption-lock pinned at
-# nabhold/shared@2da1a42. The pin and contract list are unchanged: moving the
-# pin needs its own compatibility PR (see the drift report).
+#
+# Pin history: 2da1a42 (legacy nabhold-contract-consumption-lock, migrated unchanged) ->
+# 739f0ca (EA-01 ERP-COMPAT-07, 2026-10-02). The move is proven by tests/conformance/, which runs in CI
+# against a checkout of exactly this commit and refuses any other (ERP-COMPAT-06). The semantic delta
+# between the two pins is in docs/migration/erp-compat-01-semantic-delta.md.
 schema: baobab-contract-consumer-lock
 version: "1.0"
 source:
   repository: baobab-platform/shared
-  commit: 2da1a429602d2f1421c498d412bb6c65a5626127
+  commit: 739f0ca6ea52bc94bd0e5ca611c62cb6c6ad1ded
 contracts:
-  # Source of tenantId (^tn_[a-z0-9]+) and legalEntityId pattern constraints.
-  # baobab-erp's own db/migrations tenant_id columns do not yet enforce this
-  # pattern.
+  # Tenant and legal-entity identifier grammars; the access-token claim set whose tenant_id is the
+  # Boundary API's only tenant authority.
+  - contracts/control-plane/v1/access-token-claims.schema.json
   - contracts/control-plane/v1/domain.schema.json
+  # ERP Boundary API (openapi), its events (asyncapi), payload and mapping schemas, the ownership matrix,
+  # capability definitions and the examples the conformance suite replays.
   - contracts/erp/v1/asyncapi.yaml
   - contracts/erp/v1/business-partner-projection.schema.json
+  - contracts/erp/v1/capabilities.yaml
   - contracts/erp/v1/commerce-order-consequence.schema.json
   - contracts/erp/v1/customer-projection.schema.json
   - contracts/erp/v1/domain.schema.json
+  - contracts/erp/v1/examples/business-partner-changed.json
+  - contracts/erp/v1/examples/commerce-order-placed.json
+  - contracts/erp/v1/examples/customer-projected.json
+  - contracts/erp/v1/examples/inventory-availability-changed.json
+  - contracts/erp/v1/examples/invoice-changed.json
+  - contracts/erp/v1/examples/order-consequence-changed.json
+  - contracts/erp/v1/examples/payment-accounting-changed.json
+  - contracts/erp/v1/examples/provisioning-changed.json
+  - contracts/erp/v1/examples/warehouse-changed.json
+  - contracts/erp/v1/inventory-availability-query.schema.json
   - contracts/erp/v1/inventory-availability.schema.json
   - contracts/erp/v1/invoice-outcome.schema.json
-  # Richer than baobab-erp's own db/migrations entity_mapping table today:
-  # adds legal_entity_id, mapping_id, a 5-value status enum, and temporal
-  # revision fields. Not yet reconciled.
   - contracts/erp/v1/mapping.schema.json
-  # Nabhold Baobab ERP Boundary API. baobab-erp's HTTP surface
-  # (modules/application/server.py) does not yet implement these paths -- see
-  # architecture/conformance.yaml (ADR-ERP-erp-boundary reconciliation) for
-  # the phased plan to close that gap.
   - contracts/erp/v1/openapi.yaml
   - contracts/erp/v1/order-consequence-status.schema.json
   - contracts/erp/v1/payment-outcome.schema.json
   - contracts/erp/v1/provisioning-request.schema.json
   - contracts/erp/v1/provisioning-state.schema.json
-  # Ownership matrix for 24 concepts. ERP is sole canonical owner for Business
-  # Partner, Supplier, Purchase Order, Invoice, Warehouse, Accounting Entry,
-  # and Asset only -- no record is implicitly bidirectional.
   - contracts/erp/v1/system-of-record.yaml
   - contracts/erp/v1/warehouse-projection.schema.json
-  # RFC 9457 application/problem+json. Not yet the error shape returned by
-  # modules/application/server.py.
+  # Buyer-organisation: baobab-erp is the registered producer of customer.buyer-commercial-profile.changed.v1.
+  - contracts/buyer-organisation/v1/asyncapi.yaml
+  - contracts/buyer-organisation/v1/domain.schema.json
+  - contracts/buyer-organisation/v1/events.schema.json
+  # RFC 9457 application/problem+json (ERP-COMPAT-04).
   - contracts/errors/v1/problem-details.schema.json
-  # CloudEvents 1.0 structured JSON profile. Implemented by modules/events/cloudevent.py
-  # (ERP-COMPAT-05); the legacy shape survives only as 'held' internal records (docs/events.md).
+  # CloudEvents 1.0 structured profile, the event registry ERP is checked against, and the archived legacy
+  # shape that must stay rejected (ERP-COMPAT-05).
+  - contracts/events/v1/compatibility/legacy-trade-erp-event.json
   - contracts/events/v1/envelope.schema.json
+  - contracts/events/v1/event-registry.yaml
+  # Delivery identity (source, id) and command idempotency.
   - contracts/idempotency/v1/policy.yaml
 policy:
   updates: explicit_pull_request

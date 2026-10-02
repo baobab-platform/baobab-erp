@@ -3,7 +3,9 @@
 import re
 import uuid
 
-_TRACEPARENT = re.compile(r"^00-(?!0{32})([0-9a-f]{32})-(?!0{16})[0-9a-f]{16}-[0-9a-f]{2}$")
+_TRACEPARENT = re.compile(
+    r"^00-(?!00000000000000000000000000000000)([0-9a-f]{32})-(?!0000000000000000)[0-9a-f]{16}-[0-9a-f]{2}$"
+)
 PROBLEM_BASE = "https://contracts.baobab-platform.com/problems/erp/"
 
 # status, title, retryable, code
