@@ -1,17 +1,17 @@
 from provisioning.model import PENDING_DATE, PENDING_DATETIME, ErpProvisioningRequest, ReadinessCheck
 
 
-_REQUIRED_CAPABILITIES = frozenset(
-    {
-        "erp.accounting",
-        "erp.accounts-payable",
-        "erp.accounts-receivable",
-        "erp.inventory",
-        "erp.procurement",
-    }
-)
+# Canonical capability keys (Shared capability/v1) this ERP release provisions. ERP, not Control Plane, decides which
+# of the capabilities an approved plan binds to it it can honour; an unsupported key fails closed. Shared registers
+# one ERP capability today; adding one here is an ERP release decision made together with its Shared registration.
+SUPPORTED_CAPABILITIES = frozenset({"finance.order-consequence.process"})
+# Control Plane's isolation strategies (Shared admission/v1 isolationStrategy), carried as the requirement the plan
+# was made under. ERP chooses its own native placement (ADR-ERP-021) and does not read this as a placement.
+ISOLATION_REQUIREMENTS = frozenset({"schema_per_tenant", "row_level_security"})
+# Shared's governed market participation vocabulary (control-plane/v1 marketParticipationCapability), lower-cased.
 _MARKET_CAPABILITIES = frozenset(
-    {"sourcing", "procurement", "selling", "warehousing", "distribution", "importing", "exporting"}
+    {"legal_presence", "sourcing", "procurement", "selling", "importing", "exporting", "warehousing",
+     "distribution", "fulfilment", "processing", "transit"}
 )
 
 
@@ -30,8 +30,8 @@ def validate_request(request: ErpProvisioningRequest) -> tuple[ReadinessCheck, .
         "registration_identifier": request.registration_identifier,
         "jurisdiction_code": request.jurisdiction_code,
         "engine_instance_id": request.engine_instance_id,
-        "isolation_profile_id": request.isolation_profile_id,
-        "capability_binding_id": request.capability_binding_id,
+        "isolation_requirement": request.isolation_requirement,
+        "plan_digest": request.plan_digest,
         "accounting.approved_by": request.accounting.approved_by,
     }
     for name, value in required_text.items():
@@ -55,8 +55,13 @@ def validate_request(request: ErpProvisioningRequest) -> tuple[ReadinessCheck, .
     for name, value in accounting_values.items():
         valid = bool(value.strip()) and not value.startswith("REQUIRED_")
         checks.append(ReadinessCheck(f"accounting.{name}", valid, "configured" if valid else "missing or placeholder"))
-    missing = sorted(_REQUIRED_CAPABILITIES - request.requested_capabilities)
-    checks.append(ReadinessCheck("capabilities.release1", not missing, "complete" if not missing else f"missing: {', '.join(missing)}"))
+    unsupported = sorted(request.requested_capabilities - SUPPORTED_CAPABILITIES)
+    capabilities_ok = bool(request.requested_capabilities) and not unsupported
+    detail = ("supported" if capabilities_ok else
+              "none requested" if not request.requested_capabilities else f"unsupported: {', '.join(unsupported)}")
+    checks.append(ReadinessCheck("capabilities.supported", capabilities_ok, detail))
+    checks.append(ReadinessCheck("isolation.requirement", request.isolation_requirement in ISOLATION_REQUIREMENTS,
+                                 request.isolation_requirement or "missing"))
     checks.append(
         ReadinessCheck(
             "accounting.fiscal_year",

@@ -69,14 +69,27 @@ adrs:
 
       Correction (provisioning prerequisite): native AD_Client/AD_Org placement is NOT a CP projection field.
       ADR-ERP-002 SS113 gives CP identities, mappings, EngineInstance, IsolationProfile, CapabilityBinding, context
-      resolution and routing; SS114 gives ERP the native AD_Client, AD_Org and configuration. CpErpAssignment no
-      longer carries native_client_mode/native_client_key (assignment_from_payload rejects them), and
-      provisioning.legal_entity_policy.ConfiguredNativePlacementPolicy is the ERP-owned, explicit, fail-closed
-      placement (ADR-ERP-021: one dedicated AD_Client per LegalEntity). What's still open: no real baobab-cp
-      deployment exists to call (ControlPlaneAssignmentSource is a Protocol here, exercised only against a fake
-      in tests/unit/test_cp_authoritative_assignment.py); FinanceBaseline is still supplied directly to the
-      factory rather than read from an ERP-owned, Finance-approved baseline store; and the existing-client path
-      does not exist in the adapter.
+      resolution and routing; SS114 gives ERP the native AD_Client, AD_Org and configuration.
+      ConfiguredNativePlacementPolicy is the ERP-owned, explicit, fail-closed placement, keyed by the canonical
+      legal_entity_id (ADR-ERP-021: one dedicated AD_Client per LegalEntity).
+
+      CpErpAssignment now IS Shared's control-plane/v1 ErpAssignment (shared#200/#201; served by baobab-cp#253 at
+      GET /v1/tenants/{id}/provisioning/{id}/erp-assignments/{legal_entity_id}, scope erp-assignment:read, granted to
+      no client yet). assignment_from_payload parses it with a closed member set and refuses Control Plane registry
+      identifiers (capability_binding_id, isolation_profile_id), native placement and ERP-owned configuration by name.
+      The request is built from CP's facts plus ERP-owned inputs only: native placement (policy), accounting
+      (FinanceBaseline), per-market currencies/localisation/warehouses (ErpMarketConfiguration), target environment,
+      and an ERP-derived idempotency key bound to the approved plan digest. Request is not authority: an assignment for
+      another tenant, provisioning or legal entity is refused. ERP decides which canonical capability keys it supports
+      (SUPPORTED_CAPABILITIES, a subset of what Shared registers for baobab-erp); the isolation requirement is carried as
+      provenance and validated against Shared's vocabulary, never read as a placement. tests/conformance/
+      test_erp_assignment.py holds the parser, those vocabularies and the rejected members to Shared at the pin.
+
+      What's still open: FinanceBaseline is supplied by the caller rather than read from an ERP-owned, Finance-approved
+      baseline store with approver and evidence; ErpMarketConfiguration has no persisted source; the provisioning
+      endpoints still answer 501; no real CP client calls the assignment endpoint (ControlPlaneAssignmentSource is a
+      Protocol exercised against a fake); IAM has not granted erp-assignment:read or put a tenant_id claim on ERP
+      tokens; and the existing-client path does not exist in the adapter.
 
   - id: ADR-ERP-003
     title: ERP EngineInstance isolation, regional deployment and data residency

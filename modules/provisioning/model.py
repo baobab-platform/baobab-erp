@@ -57,8 +57,8 @@ class ErpProvisioningRequest:
     registration_identifier: str
     jurisdiction_code: str
     engine_instance_id: str
-    isolation_profile_id: str
-    capability_binding_id: str
+    isolation_requirement: str
+    plan_digest: str
     target_environment: str
     effective_date: date
     accounting: AccountingConfiguration

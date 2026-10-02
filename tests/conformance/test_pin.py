@@ -20,6 +20,8 @@ CODE_DEPENDS_ON = {
     "contracts/idempotency/v1/policy.yaml",
     "contracts/control-plane/v1/domain.schema.json",
     "contracts/control-plane/v1/access-token-claims.schema.json",
+    "contracts/control-plane/v1/erp-assignment.schema.json",
+    "contracts/control-plane/v1/examples/erp-assignment.json",
     "contracts/buyer-organisation/v1/asyncapi.yaml",
 }
 

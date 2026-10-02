@@ -43,8 +43,8 @@ def load_request(path: str | Path) -> ErpProvisioningRequest:
         registration_identifier=payload["registration_identifier"],
         jurisdiction_code=payload["jurisdiction_code"],
         engine_instance_id=payload["engine_instance_id"],
-        isolation_profile_id=payload["isolation_profile_id"],
-        capability_binding_id=payload["capability_binding_id"],
+        isolation_requirement=payload["isolation_requirement"],
+        plan_digest=payload["plan_digest"],
         target_environment=payload["target_environment"],
         effective_date=_parse_date_or_pending(payload["effective_date"]),
         accounting=AccountingConfiguration(
