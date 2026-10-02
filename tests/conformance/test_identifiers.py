@@ -1,6 +1,5 @@
 """The identifier grammars ERP enforces are the ones Shared defines, not look-alikes."""
 
-import re
 import unittest
 
 import _shared as shared
