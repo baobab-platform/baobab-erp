@@ -638,6 +638,8 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                         mappings=mappings,
                         order_version=order_version,
                         consequences=PostgresOrderConsequenceStore(connection),
+                        outbox=PostgresOutboxStore(connection),
+                        correlation_id=body.get("correlation_id"),
                     )
             except OrderToCashError as exc:
                 self._error(400, str(exc))

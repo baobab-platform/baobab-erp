@@ -39,7 +39,9 @@ from typing import Any, Protocol
 
 from events.envelope import EventEnvelope
 from mapping.model import MappingNotFoundError, NativeRecordRef
+from events.cloudevent import CloudEvent
 from order_to_cash.consequence import Fact, OrderConsequence
+from order_to_cash.consequence_events import consequence_changed_event
 from order_to_cash.model import NativeDocumentRef, OrderLine, OrderToCashError, TenantScope
 
 _EVENT_SCHEMA_VERSION = "1.0"
@@ -93,22 +95,36 @@ class ConsequenceStore(Protocol):
     no consequence record, and its GET answers 404 rather than a guessed version. Same transaction as the mapping/outbox."""
 
     def open_order(self, *, tenant_id: str, legal_entity_id: str, commerce_order_id: str, order_version: int,
-                   erp_order_id: str, now: datetime) -> None: ...
+                   erp_order_id: str, now: datetime) -> OrderConsequence | None: ...
 
     def link_document(self, *, tenant_id: str, document_type: str, document_id: str, commerce_order_id: str) -> bool: ...
 
     def order_of_document(self, tenant_id: str, document_type: str, document_id: str) -> str | None: ...
 
     def record_fact(self, *, tenant_id: str, commerce_order_id: str, fact: Fact, now: datetime,
-                    invoice_id: str | None = None) -> OrderConsequence | None: ...
+                    invoice_id: str | None = None) -> "Recorded | None": ...
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class Recorded(Protocol):
+    record: OrderConsequence
+    changed: bool
+
+
+def _announce(outbox: "OutboxStore | None", record: OrderConsequence | None, correlation_id: str | None) -> None:
+    """Records the registered order.consequence-changed event for a record that changed, in the caller's transaction. A
+    record that did not change (a repeated fact, or an order ERP keeps no record for) announces nothing."""
+    if outbox is not None and record is not None:
+        outbox.record_event(consequence_changed_event(record, correlation_id))
+
+
 class OutboxStore(Protocol):
     def record(self, envelope: EventEnvelope) -> None: ...
+
+    def record_event(self, event: CloudEvent) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -195,6 +211,8 @@ def create_sales_order(
     mappings: MappingStore,
     order_version: int | None = None,
     consequences: ConsequenceStore | None = None,
+    outbox: "OutboxStore | None" = None,
+    correlation_id: str | None = None,
 ) -> NativeDocumentRef:
     """Creates a draft C_Order. Drafted, not yet accepted -- creation alone is
     not one of ADR-ERP-016 SS22's six distinct facts, so no event is emitted
@@ -228,9 +246,10 @@ def create_sales_order(
         erp_order_id = mappings.erp_resource_id(scope.tenant_id, "CommerceOrder", commerce_order_canonical_id)
         if erp_order_id is None:
             raise OrderToCashError("the order mapping just created has no ERP resource identifier")
-        consequences.open_order(tenant_id=scope.tenant_id, legal_entity_id=scope.legal_entity_id,
-                                commerce_order_id=commerce_order_canonical_id, order_version=order_version,
-                                erp_order_id=erp_order_id, now=_now())
+        opened = consequences.open_order(tenant_id=scope.tenant_id, legal_entity_id=scope.legal_entity_id,
+                                         commerce_order_id=commerce_order_canonical_id, order_version=order_version,
+                                         erp_order_id=erp_order_id, now=_now())
+        _announce(outbox, opened, correlation_id)
     return ref
 
 
@@ -262,8 +281,10 @@ def complete_sales_order(
         )
     )
     if consequences is not None:
-        consequences.record_fact(tenant_id=scope.tenant_id, commerce_order_id=commerce_order_canonical_id,
-                                 fact=Fact.ORDER_COMPLETED, now=_now())
+        recorded = consequences.record_fact(tenant_id=scope.tenant_id, commerce_order_id=commerce_order_canonical_id,
+                                            fact=Fact.ORDER_COMPLETED, now=_now())
+        if recorded is not None and recorded.changed:
+            _announce(outbox, recorded.record, correlation_id)
 
 
 # --- Shipment ------------------------------------------------------------
@@ -331,8 +352,10 @@ def complete_shipment(
     if consequences is not None:
         order_id = consequences.order_of_document(scope.tenant_id, "GoodsShipment", shipment_canonical_id)
         if order_id is not None:
-            consequences.record_fact(tenant_id=scope.tenant_id, commerce_order_id=order_id,
-                                     fact=Fact.SHIPMENT_COMPLETED, now=_now())
+            recorded = consequences.record_fact(tenant_id=scope.tenant_id, commerce_order_id=order_id,
+                                                fact=Fact.SHIPMENT_COMPLETED, now=_now())
+            if recorded is not None and recorded.changed:
+                _announce(outbox, recorded.record, correlation_id)
 
 
 # --- Customer Invoice ------------------------------------------------------
@@ -407,9 +430,11 @@ def post_customer_invoice(
     if consequences is not None:
         order_id = consequences.order_of_document(scope.tenant_id, "CustomerInvoice", invoice_canonical_id)
         if order_id is not None:
-            consequences.record_fact(
+            recorded = consequences.record_fact(
                 tenant_id=scope.tenant_id, commerce_order_id=order_id, fact=Fact.INVOICE_POSTED, now=_now(),
                 invoice_id=mappings.erp_resource_id(scope.tenant_id, "CustomerInvoice", invoice_canonical_id))
+            if recorded is not None and recorded.changed:
+                _announce(outbox, recorded.record, correlation_id)
 
 
 # --- Payment ---------------------------------------------------------------

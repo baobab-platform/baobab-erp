@@ -39,6 +39,22 @@ class EventConformanceTests(unittest.TestCase):
                 self.assertEqual(shared.errors(event.dataschema, event.data), [])
                 self.assertEqual(event.source, wire["source"])  # ERP identifies itself as the examples do
 
+    def test_the_order_consequence_event_erp_builds_is_valid_against_the_envelope_and_its_payload_schema(self):
+        from datetime import datetime, timezone
+        from order_to_cash.consequence import OrderConsequence
+        from order_to_cash.consequence_events import consequence_changed_event
+        order = str(uuid.uuid4())
+        for status, accounting, inventory, invoice in (("accepted", "pending", "pending", None),
+                                                        ("posted", "posted", "fulfilled", "erp_inv12345")):
+            with self.subTest(status):
+                record = OrderConsequence("tn_01k4m7x9q2v6c8r3d5f1h0j4", order, "ZURIBEANS", 2, "erp_abc12345", status,
+                                          accounting, inventory, 3, datetime(2026, 10, 2, 9, 0, tzinfo=timezone.utc),
+                                          invoice_id=invoice)
+                event = consequence_changed_event(record, None)
+                self.assertEqual(shared.errors(ENVELOPE, event.to_wire()), [])
+                self.assertEqual(shared.errors(event.dataschema, event.data), [])
+                self.assertEqual(CloudEvent.from_wire(event.to_wire()), event)
+
     def test_all_seven_erp_event_types_are_covered_by_examples(self):
         covered = {w["type"] for w in _examples().values()}
         self.assertEqual({t for t in registry.PRODUCED if t.startswith("com.baobab-platform.erp.")} - covered, set())

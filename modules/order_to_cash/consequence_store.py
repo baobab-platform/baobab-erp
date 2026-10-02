@@ -6,9 +6,19 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from dataclasses import dataclass
+
 import psycopg
 
 from order_to_cash.consequence import Fact, Facts, OrderConsequence, derive
+
+
+@dataclass(frozen=True, slots=True)
+class Recorded:
+    """The record after a fact was noted, and whether noting it changed anything (a repeated fact changes nothing)."""
+
+    record: OrderConsequence
+    changed: bool
 
 _FACT_COLUMN = {Fact.ORDER_COMPLETED: "order_completed_at", Fact.SHIPMENT_COMPLETED: "shipment_completed_at",
                 Fact.INVOICE_POSTED: "invoice_posted_at"}
@@ -21,7 +31,7 @@ class PostgresOrderConsequenceStore:
         self._connection = connection
 
     def open_order(self, *, tenant_id: str, legal_entity_id: str, commerce_order_id: str, order_version: int,
-                   erp_order_id: str, now: datetime) -> None:
+                   erp_order_id: str, now: datetime) -> OrderConsequence:
         derived = derive(Facts())
         with self._connection.cursor() as cursor:
             cursor.execute(
@@ -29,6 +39,7 @@ class PostgresOrderConsequenceStore:
                 "erp_order_id, status, accounting_status, inventory_status, updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (tenant_id, commerce_order_id, legal_entity_id, order_version, erp_order_id, derived.status,
                  derived.accounting_status, derived.inventory_status, now))
+        return self.get(tenant_id, commerce_order_id)
 
     def has_order(self, tenant_id: str, commerce_order_id: str) -> bool:
         with self._connection.cursor() as cursor:
@@ -57,9 +68,9 @@ class PostgresOrderConsequenceStore:
         return row[0] if row else None
 
     def record_fact(self, *, tenant_id: str, commerce_order_id: str, fact: Fact, now: datetime,
-                    invoice_id: str | None = None) -> OrderConsequence | None:
+                    invoice_id: str | None = None) -> Recorded | None:
         """Notes an observed fact and re-derives the status; None when ERP keeps no record for the order. Idempotent:
-        a fact already recorded keeps its first timestamp and does not bump the revision."""
+        a fact already recorded keeps its first timestamp, does not bump the revision and reports changed=False."""
         column = _FACT_COLUMN[fact]
         with self._connection.cursor() as cursor:
             cursor.execute(
@@ -70,7 +81,8 @@ class PostgresOrderConsequenceStore:
             if row is None:
                 return None
             already = {Fact.ORDER_COMPLETED: row[0], Fact.SHIPMENT_COMPLETED: row[1], Fact.INVOICE_POSTED: row[2]}
-            if already[fact] is None:
+            changed = already[fact] is None
+            if changed:
                 already[fact] = now
                 derived = derive(Facts(already[Fact.ORDER_COMPLETED] is not None,
                                        already[Fact.SHIPMENT_COMPLETED] is not None,
@@ -81,7 +93,7 @@ class PostgresOrderConsequenceStore:
                     "updated_at = %s WHERE tenant_id = %s AND commerce_order_id = %s",
                     (now, derived.status, derived.accounting_status, derived.inventory_status, invoice_id, now,
                      tenant_id, commerce_order_id))
-        return self.get(tenant_id, commerce_order_id)
+        return Recorded(self.get(tenant_id, commerce_order_id), changed)
 
     def get(self, tenant_id: str, commerce_order_id: str) -> OrderConsequence | None:
         with self._connection.cursor() as cursor:
