@@ -60,6 +60,9 @@ class HttpContractTests(unittest.TestCase):
 
     def _cleanup(self):
         with self.connection.cursor() as cursor:
+            cursor.execute("DELETE FROM baobab.order_consequence_document WHERE tenant_id = ANY(%s)",
+                           ([self.tenant, self.other],))
+            cursor.execute("DELETE FROM baobab.order_consequence WHERE tenant_id = ANY(%s)", ([self.tenant, self.other],))
             cursor.execute("DELETE FROM baobab.entity_mapping WHERE tenant_id = ANY(%s)", ([self.tenant, self.other],))
         self.connection.commit()
         self.connection.close()
@@ -140,7 +143,6 @@ class HttpContractTests(unittest.TestCase):
 
     def test_unimplemented_operations_answer_declared_501_problem_documents(self):
         for method, template, path in [
-            ("GET", "/order-consequences/{commerce_order_id}", "/order-consequences/ord-1"),
             ("GET", "/inventory-availability", "/inventory-availability?sku_id=s-1&warehouse_id=erp_abcdef12"),
         ]:
             with self.subTest(template):
@@ -148,8 +150,41 @@ class HttpContractTests(unittest.TestCase):
                 status, *_ = self.assert_contract(method, template, self._call(method, path, token=self._token(scope=scope, tenant=None)))
                 self.assertEqual(status, 501)
 
+    # -- order consequences
+    def _consequence(self, tenant=None, version=2):
+        from datetime import datetime, timezone
+        from order_to_cash.consequence import Fact
+        from order_to_cash.consequence_store import PostgresOrderConsequenceStore
+        order = str(uuid.uuid4())
+        store = PostgresOrderConsequenceStore(self.connection)
+        store.open_order(tenant_id=tenant or self.tenant, legal_entity_id="ZURIBEANS-ZA", commerce_order_id=order,
+                         order_version=version, erp_order_id="erp_" + uuid.uuid4().hex, now=datetime.now(timezone.utc))
+        store.record_fact(tenant_id=tenant or self.tenant, commerce_order_id=order, fact=Fact.ORDER_COMPLETED,
+                          now=datetime.now(timezone.utc))
+        self.connection.commit()
+        return order
+
+    def test_order_consequence_matches_the_declared_200_schema(self):
+        order = self._consequence()
+        template = "/order-consequences/{commerce_order_id}"
+        status, _, body = self.assert_contract("GET", template, self._call("GET", f"/order-consequences/{order}"))
+        self.assertEqual((status, body["commerce_order_id"], body["status"], body["revision"]), (200, order, "processing", 2))
+
+    def test_every_status_the_order_consequence_read_can_return_conforms(self):
+        other_tenants_order = self._consequence(tenant=self.other)
+        template = "/order-consequences/{commerce_order_id}"
+        for path, kwargs, expected in [
+            (f"/order-consequences/{uuid.uuid4()}", dict(), 404),
+            (f"/order-consequences/{other_tenants_order}", dict(), 404),
+            (f"/order-consequences/{uuid.uuid4()}", dict(token=None), 401),
+            (f"/order-consequences/{uuid.uuid4()}", dict(token=self._token(scope="erp:integrate")), 403),
+            (f"/order-consequences/{uuid.uuid4()}", dict(token=self._token(tenant=None)), 403)]:
+            with self.subTest(expected=expected, path=path):
+                status, *_ = self.assert_contract("GET", template, self._call("GET", path, **kwargs))
+                self.assertEqual(status, expected)
+
     # -- provisioning operations: every status ERP returns is declared and conforms
-    def _provision(self, token="default", body="valid", key="idem-0123456789abcdef"):
+    def _provision(self, token="default", body="valid", key="idem-" + "0123456789abcdef"):
         document = {"tenant_id": self.tenant, "legal_entity_ids": ["ZURIBEANS-ZA"], "requested_countries": ["ZA"],
                     "functional_currencies": ["ZAR"],
                     "control_plane_authority": {"tenant_provisioning_id": "tp_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",

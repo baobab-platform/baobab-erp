@@ -3,10 +3,10 @@
 Pure request -> (status, body) logic; server.py owns HTTP, authentication and the connection.
 The resolved tenant claim is the only tenant authority: nothing in a request can widen it.
 
-Implemented: GET /mappings/{mapping_id}, GET /mappings, POST /provisioning-operations and
+Implemented: GET /mappings/{mapping_id}, GET /mappings, GET /order-consequences/{commerce_order_id}, POST /provisioning-operations and
 GET /provisioning-operations/{operation_id} (application.provisioning_operations).
 Declared but not implemented (answered 501 problem+json after authorisation, never fabricated):
-GET /order-consequences/{commerce_order_id}, GET /inventory-availability.
+GET /inventory-availability.
 See architecture/conformance.yaml (ADR-ERP-005) for what each is waiting on.
 """
 
@@ -16,6 +16,7 @@ from typing import Callable
 from urllib.parse import parse_qs
 
 from application.problem import problem
+from order_to_cash.consequence_store import PostgresOrderConsequenceStore
 from application.provisioning_operations import get_provisioning_operation, request_provisioning
 from mapping import identifiers
 from mapping.model import CANONICAL_OWNERS
@@ -23,9 +24,9 @@ from mapping.model import CANONICAL_OWNERS
 _RESOURCE_TYPE = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
 _RESOURCE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 _MAPPING_PATH = re.compile(r"^/mappings/([^/]+)$")
+_ORDER_CONSEQUENCE = re.compile(r"^/order-consequences/([^/]+)$")
 _PROVISIONING_OPERATION = re.compile(r"^/provisioning-operations/([^/]+)$")
 _NOT_IMPLEMENTED = (
-    re.compile(r"^/order-consequences/[^/]+$"),
     re.compile(r"^/inventory-availability$"),
 )
 SCOPE_READ = "erp:read"
@@ -50,6 +51,10 @@ def match(method: str, path: str) -> BoundaryRoute | None:
     if method == "POST" and path == "/provisioning-operations":
         return BoundaryRoute("erp:provision", request_provisioning)
     if method == "GET":
+        consequence = _ORDER_CONSEQUENCE.fullmatch(path)
+        if consequence:
+            return BoundaryRoute(SCOPE_READ, get_order_consequence, consequence.group(1))
+    if method == "GET":
         operation = _PROVISIONING_OPERATION.fullmatch(path)
         if operation:
             return BoundaryRoute(SCOPE_READ, get_provisioning_operation, operation.group(1))
@@ -63,6 +68,15 @@ def not_implemented(*, correlation_id, trace_id, **_) -> tuple[int, dict]:
         "not_implemented", correlation_id=correlation_id, trace_id=trace_id,
         detail="This boundary operation is declared by the contract but its backing capability is not available yet.",
     )
+
+
+def get_order_consequence(*, tenant_id, argument, connection, correlation_id, trace_id, **_) -> tuple[int, dict]:
+    """ERP's own consequence record for a Trade order, scoped to the token's tenant. An order ERP keeps no record for
+    (never processed, or processed without an order_version) is 404; nothing is derived on the fly."""
+    record = PostgresOrderConsequenceStore(connection).get(tenant_id, argument)
+    if record is None:
+        return problem("not_found", correlation_id=correlation_id, trace_id=trace_id)
+    return 200, record.to_contract()
 
 
 def get_mapping(*, tenant_id, store, argument, correlation_id, trace_id, **_) -> tuple[int, dict]:

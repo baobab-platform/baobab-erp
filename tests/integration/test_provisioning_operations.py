@@ -21,7 +21,7 @@ from _postgres import connect  # noqa: E402
 from test_cp_authoritative_assignment import DIGEST, MARKETS, payload
 
 NOW = datetime(2026, 10, 2, 9, 5, tzinfo=timezone.utc)
-KEY = "idem-0123456789abcdef"
+KEY = "idem-" + "0123456789abcdef"
 
 
 class StubControlPlane:

@@ -39,6 +39,7 @@ from typing import Any, Protocol
 
 from events.envelope import EventEnvelope
 from mapping.model import MappingNotFoundError, NativeRecordRef
+from order_to_cash.consequence import Fact, OrderConsequence
 from order_to_cash.model import NativeDocumentRef, OrderLine, OrderToCashError, TenantScope
 
 _EVENT_SCHEMA_VERSION = "1.0"
@@ -83,6 +84,27 @@ class MappingStore(Protocol):
         native_table: str,
         native_id: int,
     ) -> object: ...
+
+    def erp_resource_id(self, tenant_id: str, canonical_type: str, canonical_id: str) -> str | None: ...
+
+
+class ConsequenceStore(Protocol):
+    """The order-consequence read model (db/migrations/0016). Optional: an order created without an ``order_version`` has
+    no consequence record, and its GET answers 404 rather than a guessed version. Same transaction as the mapping/outbox."""
+
+    def open_order(self, *, tenant_id: str, legal_entity_id: str, commerce_order_id: str, order_version: int,
+                   erp_order_id: str, now: datetime) -> None: ...
+
+    def link_document(self, *, tenant_id: str, document_type: str, document_id: str, commerce_order_id: str) -> bool: ...
+
+    def order_of_document(self, tenant_id: str, document_type: str, document_id: str) -> str | None: ...
+
+    def record_fact(self, *, tenant_id: str, commerce_order_id: str, fact: Fact, now: datetime,
+                    invoice_id: str | None = None) -> OrderConsequence | None: ...
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class OutboxStore(Protocol):
@@ -171,6 +193,8 @@ def create_sales_order(
     lines: tuple[OrderLine, ...],
     idempiere: IdempiereClient,
     mappings: MappingStore,
+    order_version: int | None = None,
+    consequences: ConsequenceStore | None = None,
 ) -> NativeDocumentRef:
     """Creates a draft C_Order. Drafted, not yet accepted -- creation alone is
     not one of ADR-ERP-016 SS22's six distinct facts, so no event is emitted
@@ -191,7 +215,7 @@ def create_sales_order(
             for line in lines
         ],
     }
-    return _create_and_map(
+    ref = _create_and_map(
         scope=scope,
         canonical_type="CommerceOrder",
         canonical_id=commerce_order_canonical_id,
@@ -200,6 +224,14 @@ def create_sales_order(
         idempiere=idempiere,
         mappings=mappings,
     )
+    if consequences is not None and order_version is not None:
+        erp_order_id = mappings.erp_resource_id(scope.tenant_id, "CommerceOrder", commerce_order_canonical_id)
+        if erp_order_id is None:
+            raise OrderToCashError("the order mapping just created has no ERP resource identifier")
+        consequences.open_order(tenant_id=scope.tenant_id, legal_entity_id=scope.legal_entity_id,
+                                commerce_order_id=commerce_order_canonical_id, order_version=order_version,
+                                erp_order_id=erp_order_id, now=_now())
+    return ref
 
 
 def complete_sales_order(
@@ -211,6 +243,7 @@ def complete_sales_order(
     idempiere: IdempiereClient,
     mappings: MappingStore,
     outbox: OutboxStore,
+    consequences: ConsequenceStore | None = None,
 ) -> None:
     native_id = _resolve_native(
         scope=scope,
@@ -228,6 +261,9 @@ def complete_sales_order(
             {"commerce_order_id": commerce_order_canonical_id, "erp_order_native_id": native_id},
         )
     )
+    if consequences is not None:
+        consequences.record_fact(tenant_id=scope.tenant_id, commerce_order_id=commerce_order_canonical_id,
+                                 fact=Fact.ORDER_COMPLETED, now=_now())
 
 
 # --- Shipment ------------------------------------------------------------
@@ -240,6 +276,7 @@ def create_shipment(
     commerce_order_canonical_id: str,
     idempiere: IdempiereClient,
     mappings: MappingStore,
+    consequences: ConsequenceStore | None = None,
 ) -> NativeDocumentRef:
     order_native_id = _resolve_native(
         scope=scope,
@@ -249,7 +286,7 @@ def create_shipment(
         mappings=mappings,
     )
     fields = {"C_Order_ID": order_native_id}
-    return _create_and_map(
+    ref = _create_and_map(
         scope=scope,
         canonical_type="GoodsShipment",
         canonical_id=shipment_canonical_id,
@@ -258,6 +295,10 @@ def create_shipment(
         idempiere=idempiere,
         mappings=mappings,
     )
+    if consequences is not None:
+        consequences.link_document(tenant_id=scope.tenant_id, document_type="GoodsShipment",
+                                   document_id=shipment_canonical_id, commerce_order_id=commerce_order_canonical_id)
+    return ref
 
 
 def complete_shipment(
@@ -269,6 +310,7 @@ def complete_shipment(
     idempiere: IdempiereClient,
     mappings: MappingStore,
     outbox: OutboxStore,
+    consequences: ConsequenceStore | None = None,
 ) -> None:
     native_id = _resolve_native(
         scope=scope,
@@ -286,6 +328,11 @@ def complete_shipment(
             {"shipment_id": shipment_canonical_id, "erp_shipment_native_id": native_id},
         )
     )
+    if consequences is not None:
+        order_id = consequences.order_of_document(scope.tenant_id, "GoodsShipment", shipment_canonical_id)
+        if order_id is not None:
+            consequences.record_fact(tenant_id=scope.tenant_id, commerce_order_id=order_id,
+                                     fact=Fact.SHIPMENT_COMPLETED, now=_now())
 
 
 # --- Customer Invoice ------------------------------------------------------
@@ -297,6 +344,7 @@ def create_customer_invoice(
     commerce_order_canonical_id: str,
     idempiere: IdempiereClient,
     mappings: MappingStore,
+    consequences: ConsequenceStore | None = None,
 ) -> NativeDocumentRef:
     """Mints a new canonical id for the invoice rather than accepting one from
     the caller: per the erp_system_of_record contract (nabhold/shared,
@@ -311,7 +359,7 @@ def create_customer_invoice(
         mappings=mappings,
     )
     fields = {"C_Order_ID": order_native_id}
-    return _create_and_map(
+    ref = _create_and_map(
         scope=scope,
         canonical_type="CustomerInvoice",
         canonical_id=_new_canonical_id(),
@@ -320,6 +368,10 @@ def create_customer_invoice(
         idempiere=idempiere,
         mappings=mappings,
     )
+    if consequences is not None:
+        consequences.link_document(tenant_id=scope.tenant_id, document_type="CustomerInvoice",
+                                   document_id=ref.canonical_id, commerce_order_id=commerce_order_canonical_id)
+    return ref
 
 
 def post_customer_invoice(
@@ -331,6 +383,7 @@ def post_customer_invoice(
     idempiere: IdempiereClient,
     mappings: MappingStore,
     outbox: OutboxStore,
+    consequences: ConsequenceStore | None = None,
 ) -> None:
     """Posts the invoice: AR is created, revenue/tax accounting happens, and
     the document becomes immutable (ADR-ERP-008 SS58-62) -- corrections from
@@ -351,6 +404,12 @@ def post_customer_invoice(
             {"invoice_id": invoice_canonical_id, "erp_invoice_native_id": native_id},
         )
     )
+    if consequences is not None:
+        order_id = consequences.order_of_document(scope.tenant_id, "CustomerInvoice", invoice_canonical_id)
+        if order_id is not None:
+            consequences.record_fact(
+                tenant_id=scope.tenant_id, commerce_order_id=order_id, fact=Fact.INVOICE_POSTED, now=_now(),
+                invoice_id=mappings.erp_resource_id(scope.tenant_id, "CustomerInvoice", invoice_canonical_id))
 
 
 # --- Payment ---------------------------------------------------------------

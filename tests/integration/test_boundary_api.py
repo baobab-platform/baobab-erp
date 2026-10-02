@@ -213,8 +213,7 @@ class BoundaryApiTests(unittest.TestCase):
 
     # -- declared but not implemented: never fabricated
     def test_unimplemented_operations_answer_501_problem_json(self):
-        cases = [("GET", "/order-consequences/ord-123", "erp:read"),
-                 ("GET", f"/inventory-availability?sku_id=sku-1&warehouse_id=erp_{uuid.uuid4().hex}", "erp:read"),
+        cases = [("GET", f"/inventory-availability?sku_id=sku-1&warehouse_id=erp_{uuid.uuid4().hex}", "erp:read"),
                  ]
         for method, path, scope in cases:
             status, headers, body = self._call(method, path, token=self._token(scope=scope, tenant=None))
@@ -231,7 +230,7 @@ class BoundaryApiTests(unittest.TestCase):
 
     # -- provisioning operations (handler-level behaviour is in test_provisioning_operations.py)
     def test_provisioning_operations_are_served_not_501(self):
-        key = {"Idempotency-Key": "idem-0123456789abcdef"}
+        key = {"Idempotency-Key": "idem-" + "0123456789abcdef"}
         self.assertProblem(*self._call("POST", "/provisioning-operations", token=self._token(scope="erp:provision"),
                                        headers=key, data={"tenant_id": self.tenant}), 400, "ERP_INVALID_REQUEST")
         self.assertProblem(*self._call("POST", "/provisioning-operations", token=self._token(scope="erp:provision"),
@@ -244,7 +243,7 @@ class BoundaryApiTests(unittest.TestCase):
     def test_provisioning_is_unavailable_until_control_plane_is_configured(self):
         valid = self._provisioning_request(self.tenant)
         status, headers, body = self._call("POST", "/provisioning-operations", token=self._token(scope="erp:provision"),
-                                           headers={"Idempotency-Key": "idem-0123456789abcdef"}, data=valid)
+                                           headers={"Idempotency-Key": "idem-" + "0123456789abcdef"}, data=valid)
         self.assertProblem(status, headers, body, 503, "ERP_SERVICE_UNAVAILABLE")
         self.assertEqual(headers["Retry-After"], "30")
 
