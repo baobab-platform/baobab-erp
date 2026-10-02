@@ -7,7 +7,6 @@ operations answer 501 problem+json instead of fabricating data.
 
 import json
 import os
-import re
 import time
 import unittest
 import urllib.error
