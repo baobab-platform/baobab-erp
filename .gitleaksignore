@@ -16,3 +16,8 @@
 c4920c48af20deb860cb8b965346e74aa4c6969b:tests/unit/test_cloudevent.py:generic-api-key:20
 c4920c48af20deb860cb8b965346e74aa4c6969b:tests/unit/test_cloudevent.py:generic-api-key:120
 c4920c48af20deb860cb8b965346e74aa4c6969b:tests/integration/test_postgres_inbox_store.py:generic-api-key:41
+# Idempotency-Key literals in provisioning tests: opaque test values the generic-api-key rule mistakes for secrets.
+67faa5b7607f5d59df7cb62091d047d7a32620a8:tests/integration/test_provisioning_operations.py:generic-api-key:19
+67faa5b7607f5d59df7cb62091d047d7a32620a8:tests/conformance/test_http_contract.py:generic-api-key:152
+67faa5b7607f5d59df7cb62091d047d7a32620a8:tests/integration/test_boundary_api.py:generic-api-key:234
+67faa5b7607f5d59df7cb62091d047d7a32620a8:tests/integration/test_boundary_api.py:generic-api-key:247

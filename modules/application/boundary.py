@@ -3,9 +3,9 @@
 Pure request -> (status, body) logic; server.py owns HTTP, authentication and the connection.
 The resolved tenant claim is the only tenant authority: nothing in a request can widen it.
 
-Implemented: GET /mappings/{mapping_id}, GET /mappings.
+Implemented: GET /mappings/{mapping_id}, GET /mappings, POST /provisioning-operations and
+GET /provisioning-operations/{operation_id} (application.provisioning_operations).
 Declared but not implemented (answered 501 problem+json after authorisation, never fabricated):
-POST /provisioning-operations, GET /provisioning-operations/{operation_id},
 GET /order-consequences/{commerce_order_id}, GET /inventory-availability.
 See architecture/conformance.yaml (ADR-ERP-005) for what each is waiting on.
 """
@@ -16,14 +16,15 @@ from typing import Callable
 from urllib.parse import parse_qs
 
 from application.problem import problem
+from application.provisioning_operations import get_provisioning_operation, request_provisioning
 from mapping import identifiers
 from mapping.model import CANONICAL_OWNERS
 
 _RESOURCE_TYPE = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
 _RESOURCE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 _MAPPING_PATH = re.compile(r"^/mappings/([^/]+)$")
+_PROVISIONING_OPERATION = re.compile(r"^/provisioning-operations/([^/]+)$")
 _NOT_IMPLEMENTED = (
-    re.compile(r"^/provisioning-operations(?:/[^/]+)?$"),
     re.compile(r"^/order-consequences/[^/]+$"),
     re.compile(r"^/inventory-availability$"),
 )
@@ -46,6 +47,12 @@ def match(method: str, path: str) -> BoundaryRoute | None:
         found = _MAPPING_PATH.fullmatch(path)
         if found:
             return BoundaryRoute(SCOPE_READ, get_mapping, found.group(1))
+    if method == "POST" and path == "/provisioning-operations":
+        return BoundaryRoute("erp:provision", request_provisioning)
+    if method == "GET":
+        operation = _PROVISIONING_OPERATION.fullmatch(path)
+        if operation:
+            return BoundaryRoute(SCOPE_READ, get_provisioning_operation, operation.group(1))
     if method in ("GET", "POST") and any(pattern.fullmatch(path) for pattern in _NOT_IMPLEMENTED):
         return BoundaryRoute(SCOPE_READ if method == "GET" else "erp:provision", not_implemented)
     return None

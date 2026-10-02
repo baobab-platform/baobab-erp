@@ -29,7 +29,7 @@ class AssignmentError(ValueError):
 # Shared erp-assignment.schema.json is closed (additionalProperties: false). Control Plane's registry identifiers and
 # ERP-owned decisions are rejected by name so the failure says why, not just "unexpected member".
 _ASSIGNMENT_MEMBERS = frozenset({
-    "tenant_id", "tenant_provisioning_id", "plan_digest", "legal_entity", "markets", "engine_id", "engine_instance_id",
+    "tenant_id", "tenant_provisioning_id", "plan_id", "plan_version", "plan_digest", "legal_entity", "markets", "engine_id", "engine_instance_id",
     "isolation_requirement", "capabilities", "issued_at", "expires_at",
 })
 _LEGAL_ENTITY_MEMBERS = frozenset({
@@ -54,6 +54,8 @@ class CpErpAssignment:
     """Authoritative CP projection consumed by baobab-erp (Shared ``ErpAssignment``)."""
     tenant_id: str
     tenant_provisioning_id: str
+    plan_id: str
+    plan_version: int
     plan_digest: str
     legal_entity_id: str
     legal_name: str
@@ -72,13 +74,16 @@ class CpErpAssignment:
         now = now or datetime.now(timezone.utc)
         required = {
             "tenant_id": self.tenant_id, "tenant_provisioning_id": self.tenant_provisioning_id,
-            "plan_digest": self.plan_digest, "legal_entity_id": self.legal_entity_id, "legal_name": self.legal_name,
+            "plan_id": self.plan_id, "plan_digest": self.plan_digest, "legal_entity_id": self.legal_entity_id,
+            "legal_name": self.legal_name,
             "jurisdiction_code": self.jurisdiction_code, "engine_instance_id": self.engine_instance_id,
             "isolation_requirement": self.isolation_requirement,
         }
         missing = [k for k, v in required.items() if not str(v).strip()]
         if missing:
             raise AssignmentError(f"missing authoritative assignment fields: {', '.join(missing)}")
+        if isinstance(self.plan_version, bool) or not isinstance(self.plan_version, int) or self.plan_version < 1:
+            raise AssignmentError("plan_version must be an integer >= 1")
         if self.engine_id != ERP_ENGINE_ID:
             raise AssignmentError(f"the assignment is for engine {self.engine_id!r}, not {ERP_ENGINE_ID!r}")
         if self.verification_state != "VERIFIED":
@@ -100,10 +105,16 @@ class CpErpAssignment:
             raise AssignmentError(f"the legal entity needs exactly one {_COMPANY_REGISTRATION} identifier, found {len(found)}")
         return str(found[0]["value"])
 
+    def provisioning_record_id(self) -> str:
+        """ERP's provisioning record for ONE legal entity under ONE approved plan version. The Control Plane provisioning id
+        alone would collide across a tenant's legal entities, and a replan is a new version, not a rewrite of the old."""
+        return f"{self.tenant_provisioning_id}.{self.legal_entity_id}.v{self.plan_version}"
+
     def idempotency_key(self) -> str:
         """ERP-owned: stable for one provisioning of one legal entity under one approved plan, new for a re-approved plan."""
         digest = hashlib.sha256(
-            f"{self.tenant_provisioning_id}|{self.legal_entity_id}|{self.plan_digest}".encode()).hexdigest()
+            f"{self.tenant_provisioning_id}|{self.legal_entity_id}|{self.plan_id}|{self.plan_version}|{self.plan_digest}"
+            .encode()).hexdigest()
         return f"erp-prov-{digest}"
 
 
@@ -155,7 +166,7 @@ def materialize_request(
             currencies=configured.currencies, localisation_profile=configured.localisation_profile,
             warehouse_codes=configured.warehouse_codes))
     return ErpProvisioningRequest(
-        provisioning_id=assignment.tenant_provisioning_id,
+        provisioning_id=assignment.provisioning_record_id(),
         idempotency_key=assignment.idempotency_key(),
         tenant_id=assignment.tenant_id,
         legal_entity_id=assignment.legal_entity_id,
@@ -219,7 +230,8 @@ def assignment_from_payload(payload: dict[str, Any]) -> CpErpAssignment:
         markets.append(CpMarketAssignment(market=item["market"], activities=frozenset(item["activities"])))
     result = CpErpAssignment(
         tenant_id=payload["tenant_id"], tenant_provisioning_id=payload["tenant_provisioning_id"],
-        plan_digest=payload["plan_digest"], legal_entity_id=entity["legal_entity_id"],
+        plan_id=payload["plan_id"], plan_version=payload["plan_version"], plan_digest=payload["plan_digest"],
+        legal_entity_id=entity["legal_entity_id"],
         legal_name=entity["legal_name"], jurisdiction_code=entity["jurisdiction_code"],
         registration_identifiers=tuple(dict(i) for i in entity.get("registration_identifiers", [])),
         verification_state=entity["verification_state"], markets=tuple(markets), engine_id=payload["engine_id"],

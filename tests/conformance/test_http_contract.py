@@ -73,12 +73,13 @@ class HttpContractTests(unittest.TestCase):
             claims["tenant_id"] = tenant
         return jwt.encode(claims, self.key, algorithm="RS256")
 
-    def _call(self, method, path, token="default"):
-        headers = {}
+    def _call(self, method, path, token="default", data=None, headers=None):
+        headers = dict(headers or {})
         token = self._token() if token == "default" else token
         if token:
             headers["Authorization"] = f"Bearer {token}"
-        request = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", method=method, headers=headers)
+        request = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", method=method, headers=headers,
+                                         data=None if data is None else json.dumps(data).encode())
         try:
             with urllib.request.urlopen(request) as response:
                 return response.status, dict(response.headers), json.loads(response.read())
@@ -141,16 +142,67 @@ class HttpContractTests(unittest.TestCase):
         for method, template, path in [
             ("GET", "/order-consequences/{commerce_order_id}", "/order-consequences/ord-1"),
             ("GET", "/inventory-availability", "/inventory-availability?sku_id=s-1&warehouse_id=erp_abcdef12"),
-            ("GET", "/provisioning-operations/{operation_id}", "/provisioning-operations/op_abcdef12"),
-            ("POST", "/provisioning-operations", "/provisioning-operations"),
         ]:
             with self.subTest(template):
                 scope = "erp:provision" if method == "POST" else "erp:read"
                 status, *_ = self.assert_contract(method, template, self._call(method, path, token=self._token(scope=scope, tenant=None)))
                 self.assertEqual(status, 501)
 
+    # -- provisioning operations: every status ERP returns is declared and conforms
+    def _provision(self, token="default", body="valid", key="idem-0123456789abcdef"):
+        document = {"tenant_id": self.tenant, "legal_entity_ids": ["ZURIBEANS-ZA"], "requested_countries": ["ZA"],
+                    "functional_currencies": ["ZAR"],
+                    "control_plane_authority": {"tenant_provisioning_id": "tp_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+                                                "plan_id": "plan_0199a1b2c3d47e8f", "plan_version": 1,
+                                                "plan_digest": "sha256:" + "b2" * 32}}
+        headers = {"Content-Type": "application/json"}
+        if key:
+            headers["Idempotency-Key"] = key
+        if token == "default":
+            token = self._token(scope="erp:provision")
+        return self._call("POST", "/provisioning-operations", token=token,
+                          data=document if body == "valid" else body, headers=headers)
+
+    def test_every_status_provisioning_can_return_conforms(self):
+        template = "/provisioning-operations"
+        cases = [
+            (self._provision(key=None), 400), (self._provision(body={"tenant_id": self.tenant}), 400),
+            (self._provision(token=None), 401),
+            (self._provision(token=self._token(scope="erp:read")), 403),
+            (self._provision(token=self._token(scope="erp:provision", tenant=self.other)), 403),
+            (self._provision(token=self._token(scope="erp:provision", tenant=None)), 403),
+            (self._provision(), 503),  # no Control Plane configured in this deployment: fail closed, never guess
+        ]
+        for result, expected in cases:
+            with self.subTest(expected=expected, body=result[2].get("detail")):
+                status, headers, _ = self.assert_contract("POST", template, result)
+                self.assertEqual(status, expected)
+        self.assertEqual(cases[-1][0][1].get("Retry-After"), "30")
+
+    def test_every_status_the_operation_read_can_return_conforms(self):
+        template = "/provisioning-operations/{operation_id}"
+        for path, kwargs, expected in [
+            (f"/provisioning-operations/{uuid.uuid4()}", dict(), 404), ("/provisioning-operations/op_nope", dict(), 400),
+            (f"/provisioning-operations/{uuid.uuid4()}", dict(token=None), 401),
+            (f"/provisioning-operations/{uuid.uuid4()}", dict(token=self._token(scope="erp:integrate")), 403)]:
+            with self.subTest(expected=expected):
+                status, *_ = self.assert_contract("GET", template, self._call("GET", path, **kwargs))
+                self.assertEqual(status, expected)
+
+    def test_the_operation_state_document_matches_the_declared_200_schema(self):
+        from datetime import datetime, timezone
+        from application.provisioning_operations import _state
+        from provisioning.command_store import CommandRecord
+        record = CommandRecord(str(uuid.uuid4()), self.tenant, "f" * 64, ("ZURIBEANS-UG", "ZURIBEANS-ZA"), "accepted", 1,
+                               datetime(2026, 10, 2, 9, 0, tzinfo=timezone.utc))
+        from dataclasses import replace
+        for state in (record, replace(record, state="failed", failure_code="ERP_CONFLICT")):
+            self.assertEqual(shared.errors_for("/provisioning-operations/{operation_id}", "GET", 200, "application/json",
+                                               _state(state)), [])
+
     def test_pinned_openapi_declares_the_statuses_erp_returns(self):
-        """Shared 1.0.1 declares 400 on the mapping reads and 501 on exactly the four unavailable operations."""
+        """Shared declares 400 on the mapping reads and still declares 501 on the four operations (the transitional
+        501 on the two provisioning operations is removed by a later Shared change; ERP no longer returns it)."""
         for template in ("/mappings/{mapping_id}", "/mappings"):
             self.assertIn(400, shared.declared_statuses(template, "GET"), template)
         for method, template in [("POST", "/provisioning-operations"), ("GET", "/provisioning-operations/{operation_id}"),

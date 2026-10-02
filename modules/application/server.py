@@ -58,6 +58,7 @@ import psycopg
 from application import boundary
 from application.health import liveness, readiness
 from application.problem import correlation_id_from, kind_for_status, problem, trace_id_from
+from application.provisioning_operations import MAX_BODY_BYTES, ProvisioningDependencies
 from context.model import ContextResolutionError
 from context.postgres_store import PostgresTenantMappingStore
 from context.resolver import resolve_context, resolve_tenant
@@ -93,6 +94,31 @@ class Config:
         self.workload_oidc_audience = os.environ.get("BAOBAB_IAM_OIDC_AUDIENCE", "baobab-erp")
         self.idempiere_credentials_by_ad_client = _load_idempiere_credentials()
         self.order_to_cash_process_ids = _load_order_to_cash_process_ids()
+        self.provisioning = _load_provisioning_dependencies()
+
+
+def _load_provisioning_dependencies() -> "ProvisioningDependencies | None":
+    """Provisioning needs Control Plane's ERP assignment (a workload client under erp-assignment:read) and ERP's own deployment
+    configuration (markets, native placements, environment). Unless ALL of it is set the operation answers 503 "not
+    configured", never a guess: partial configuration is a deployment error and fails startup."""
+    names = ("ERP_CONTROL_PLANE_URL", "ERP_CONTROL_PLANE_TOKEN_URL", "ERP_CONTROL_PLANE_CLIENT_ID",
+             "ERP_CONTROL_PLANE_CLIENT_SECRET", "ERP_PROVISIONING_CONFIG_PATH")
+    present = [name for name in names if os.environ.get(name)]
+    if not present:
+        return None
+    if len(present) != len(names):
+        raise RuntimeError("provisioning is partly configured; set all of " + ", ".join(names) + " or none")
+    from provisioning.control_plane_client import ClientCredentialsTokenProvider, HttpControlPlaneAssignmentSource
+    from provisioning.market_configuration import load_deployment_configuration
+
+    deployment = load_deployment_configuration(os.environ["ERP_PROVISIONING_CONFIG_PATH"])
+    tokens = ClientCredentialsTokenProvider(
+        os.environ["ERP_CONTROL_PLANE_TOKEN_URL"], os.environ["ERP_CONTROL_PLANE_CLIENT_ID"],
+        os.environ["ERP_CONTROL_PLANE_CLIENT_SECRET"], "erp-assignment:read")
+    return ProvisioningDependencies(
+        control_plane=HttpControlPlaneAssignmentSource(os.environ["ERP_CONTROL_PLANE_URL"], tokens),
+        native_placement=deployment.native_placement, market_configuration=deployment.markets,
+        target_environment=deployment.target_environment)
 
 
 def _require_env(name: str) -> str:
@@ -198,13 +224,15 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             pass  # structured logging is deployment configuration, not hard-coded here
 
         def _send_json(self, status: int, body: dict, *, content_type: str = "application/json",
-                       correlation_id: str | None = None) -> None:
+                       correlation_id: str | None = None, headers: dict | None = None) -> None:
             payload = json.dumps(body).encode()
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(payload)))
             if correlation_id:
                 self.send_header("X-Correlation-ID", correlation_id)
+            for name, value in (headers or {}).items():
+                self.send_header(name, value)
             self.end_headers()
             self.wfile.write(payload)
 
@@ -261,17 +289,33 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             tenant_scoped = route.handler is not boundary.not_implemented
             if tenant_scoped and identity.tenant_id is None:
                 return fail("tenant_context_required", "the token carries no resolved tenant")
+            raw_body = b""
+            if method == "POST":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                except ValueError:
+                    return fail("invalid_request", "Content-Length is not a number")
+                if length > MAX_BODY_BYTES:
+                    return fail("invalid_request", "the request body is too large")
+                raw_body = self.rfile.read(length) if length > 0 else b""
             with psycopg.connect(config.database_url) as connection:
-                status, body = route.handler(
+                result = route.handler(
                     tenant_id=identity.tenant_id,
                     store=PostgresCanonicalMappingStore(connection),
                     argument=route.argument,
                     query_string=split.query,
                     correlation_id=correlation_id,
                     trace_id=trace_id,
+                    connection=connection,
+                    body=raw_body,
+                    idempotency_key=self.headers.get("Idempotency-Key"),
+                    principal=identity.principal,
+                    provisioning=config.provisioning,
                 )
+            status, body, *rest = result
             content_type = "application/problem+json" if status >= 400 else "application/json"
-            self._send_json(status, body, content_type=content_type, correlation_id=correlation_id)
+            self._send_json(status, body, content_type=content_type, correlation_id=correlation_id,
+                            headers=rest[0] if rest else None)
             return True
 
         def _authorize_workload(self, required_scope: str) -> bool:
