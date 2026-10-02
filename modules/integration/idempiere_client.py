@@ -28,11 +28,13 @@ relying on the lowerCamelCase form.
 """
 
 import json
+import re
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Protocol, Sequence
 
 
 class IdempiereClientError(Exception):
@@ -51,8 +53,45 @@ class IdempiereApiError(IdempiereClientError):
         self.detail = detail
 
 
+_IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+_PAGE_SIZE = 100
+_MAX_RECORDS = 5000
+
+
+@dataclass(frozen=True, slots=True)
+class Eq:
+    """One ``column eq value`` condition. Conditions are typed and built here, never accepted as filter text, so a caller
+    can neither widen a query nor inject into it: the column must be a plain AD column name and the value a number, a
+    boolean or a string, which is quoted and escaped."""
+
+    column: str
+    value: int | bool | str
+
+
+def build_filter(conditions: Sequence[Eq]) -> str:
+    parts = []
+    for condition in conditions:
+        if not _IDENTIFIER.fullmatch(condition.column):
+            raise ValueError(f"not a column name: {condition.column!r}")
+        value = condition.value
+        if isinstance(value, bool):
+            rendered = "true" if value else "false"
+        elif isinstance(value, int):
+            rendered = str(value)
+        elif isinstance(value, str):
+            if any(ord(ch) < 32 for ch in value):
+                raise ValueError("control characters are not allowed in a filter value")
+            rendered = "'" + value.replace("'", "''") + "'"
+        else:
+            raise TypeError(f"unsupported filter value type: {type(value).__name__}")
+        parts.append(f"{condition.column} eq {rendered}")
+    return " and ".join(parts)
+
+
 class IdempiereClient(Protocol):
     def get_record(self, table: str, record_id: int) -> dict[str, Any]: ...
+
+    def query(self, table: str, conditions: Sequence[Eq], select: Sequence[str]) -> list[dict[str, Any]]: ...
 
     def create_record(self, table: str, fields: dict[str, Any]) -> int: ...
 
@@ -75,6 +114,9 @@ class UnconfiguredIdempiereClient:
         self._endpoint = endpoint
 
     def get_record(self, table: str, record_id: int) -> dict[str, Any]:
+        raise IdempiereClientError(f"No iDempiere client wired for {self._endpoint.base_url}")
+
+    def query(self, table: str, conditions: Sequence[Eq], select: Sequence[str]) -> list[dict[str, Any]]:
         raise IdempiereClientError(f"No iDempiere client wired for {self._endpoint.base_url}")
 
     def create_record(self, table: str, fields: dict[str, Any]) -> int:
@@ -123,6 +165,26 @@ class RestIdempiereClient:
 
     def get_record(self, table: str, record_id: int) -> dict[str, Any]:
         return self._call("GET", f"/models/{table}/{record_id}")
+
+    def query(self, table: str, conditions: Sequence[Eq], select: Sequence[str]) -> list[dict[str, Any]]:
+        """Every record matching the conditions, page by page ($filter/$select/$top/$skip of the REST plugin). A result
+        larger than the safety cap is an error, never silently truncated: a partial list would be a wrong total."""
+        if not _IDENTIFIER.fullmatch(table) or not all(_IDENTIFIER.fullmatch(c) for c in select):
+            raise ValueError("table and select must be plain AD names")
+        records: list[dict[str, Any]] = []
+        while True:
+            params = {"$filter": build_filter(conditions), "$select": ",".join(select), "$top": str(_PAGE_SIZE),
+                      "$skip": str(len(records))}
+            page = self._call("GET", f"/models/{table}?{urllib.parse.urlencode(params, quote_via=urllib.parse.quote)}")
+            batch = page.get("records")
+            if not isinstance(batch, list) or not all(isinstance(row, dict) for row in batch):
+                raise IdempiereClientError(f"unexpected list response for {table}: no records array")
+            records.extend(batch)
+            if len(records) > _MAX_RECORDS:
+                raise IdempiereClientError(f"{table} query exceeds {_MAX_RECORDS} records; refusing to truncate")
+            total = page.get("row-count")
+            if len(batch) < _PAGE_SIZE or (isinstance(total, int) and len(records) >= total):
+                return records
 
     def create_record(self, table: str, fields: dict[str, Any]) -> int:
         created = self._call("POST", f"/models/{table}", body=fields)
