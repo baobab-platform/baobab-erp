@@ -1,8 +1,10 @@
 """POST/GET /provisioning-operations against real Postgres (handler level: the append-only baseline and command
 tables are never committed, every test rolls back) plus HTTP-level checks of the wiring that need no committed data."""
 import json
+import sys
 import uuid
 import unittest
+from pathlib import Path
 from datetime import date, datetime, timezone
 
 from application.provisioning_operations import (
@@ -12,7 +14,10 @@ from provisioning.cp_contract import assignment_from_payload
 from provisioning.finance_baseline_store import PostgresFinanceBaselineStore
 from provisioning.legal_entity_policy import ConfiguredNativePlacementPolicy, NativeClientMode, NativePlacement
 
-from _postgres import connect
+# CI discovers this directory with only modules/ on the path; the assignment fixtures live with the unit tests.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "unit"))
+
+from _postgres import connect  # noqa: E402
 from test_cp_authoritative_assignment import DIGEST, MARKETS, payload
 
 NOW = datetime(2026, 10, 2, 9, 5, tzinfo=timezone.utc)
