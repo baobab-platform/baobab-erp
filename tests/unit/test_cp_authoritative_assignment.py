@@ -3,12 +3,8 @@ import unittest
 from datetime import date, datetime, timedelta, timezone
 
 from provisioning.authoritative_service import AuthoritativeProvisioningRequestFactory
-from provisioning.cp_contract import (
-    AssignmentError,
-    ErpMarketConfiguration,
-    FinanceBaseline,
-    assignment_from_payload,
-)
+from provisioning.cp_contract import AssignmentError, ErpMarketConfiguration, assignment_from_payload
+from provisioning.finance_baseline import FinancialConfigurationBaseline
 from provisioning.legal_entity_policy import (
     ConfiguredNativePlacementPolicy,
     NativeClientMode,
@@ -41,11 +37,24 @@ def payload(entity="ZURIBEANS-ZA", market="ZA", **overrides) -> dict:
     return body
 
 
-def finance_baseline() -> FinanceBaseline:
-    return FinanceBaseline(
-        functional_currency="ZAR", fiscal_year_start_month=1, chart_of_accounts_template="coa-zb-v1",
-        accounting_schema="ZB Primary", tax_profile="tax-za-v1", costing_method="average-po",
-        approved_by="finance-user", approved_at=datetime(2026, 9, 1, tzinfo=timezone.utc))
+def baseline(entity="ZURIBEANS-ZA", **overrides) -> FinancialConfigurationBaseline:
+    values = dict(
+        legal_entity_id=entity, version=2, functional_currency="ZAR", fiscal_year_start_month=1,
+        chart_of_accounts_template="coa-zb-v1", accounting_schema="ZB Primary", tax_profile="tax-za-v1",
+        costing_method="average-po", effective_from=date(2026, 10, 1), approved_by="Thandi Nkosi",
+        approved_at=datetime(2026, 9, 1, tzinfo=timezone.utc), evidence_reference="FIN-CHG-2026-114")
+    values.update(overrides)
+    return FinancialConfigurationBaseline(**values)
+
+
+class FakeFinance:
+    """Resolves the baseline in force like the store does: latest effective_from not after the date."""
+    def __init__(self, *baselines):
+        self.baselines = baselines
+
+    def effective(self, legal_entity_id, on):
+        eligible = [b for b in self.baselines if b.legal_entity_id == legal_entity_id and b.effective_from <= on]
+        return max(eligible, key=lambda b: (b.effective_from, b.version), default=None)
 
 
 MARKETS = {"ZA": ErpMarketConfiguration(("ZAR", "USD"), "za-v1", ("JNB",)),
@@ -65,17 +74,17 @@ class FakeControlPlane:
         return assignment_from_payload(self._body)
 
 
-def factory(body, mode=NativeClientMode.DEDICATED_CLIENT, markets=MARKETS):
+def factory(body, mode=NativeClientMode.DEDICATED_CLIENT, markets=MARKETS, finance=None):
     return AuthoritativeProvisioningRequestFactory(
         control_plane=FakeControlPlane(body), native_placement=placement(mode), market_configuration=markets,
+        finance=finance or FakeFinance(baseline(), baseline("ZURIBEANS-UG", functional_currency="UGX")),
         target_environment="production")
 
 
-def build(body, **kw):
+def build(body, on=date(2026, 10, 2), **kw):
     return factory(body, **kw).build(
         tenant_id=body["tenant_id"], tenant_provisioning_id=body["tenant_provisioning_id"],
-        legal_entity_id=body["legal_entity"]["legal_entity_id"], finance=finance_baseline(),
-        effective_date=date(2026, 10, 1), now=NOW)
+        legal_entity_id=body["legal_entity"]["legal_entity_id"], on=on, now=NOW)
 
 
 class AssignmentParsingTests(unittest.TestCase):
@@ -186,7 +195,9 @@ class AuthoritativeProvisioningRequestFactoryTests(unittest.TestCase):
         self.assertEqual(request.isolation_requirement, "row_level_security")
         self.assertEqual(request.requested_capabilities, frozenset({"finance.order-consequence.process"}))
         self.assertEqual(request.target_environment, "production")
+        # The effective date and the accounting configuration are the Finance baseline's, with its approver.
         self.assertEqual(request.effective_date, date(2026, 10, 1))
+        self.assertEqual((request.accounting.approved_by, request.accounting.functional_currency), ("Thandi Nkosi", "ZAR"))
         # Per-market configuration is ERP's; the activities are CP's, in ERP's lower-case vocabulary.
         market = request.markets[0]
         self.assertEqual((market.market_id, market.country_code), ("ZA", "ZA"))
@@ -208,7 +219,7 @@ class AuthoritativeProvisioningRequestFactoryTests(unittest.TestCase):
                 asked = {"tenant_id": body["tenant_id"], "tenant_provisioning_id": body["tenant_provisioning_id"],
                          "legal_entity_id": "ZURIBEANS-UG", **ask}
                 with self.assertRaisesRegex(AssignmentError, "cross-boundary"):
-                    factory(body).build(finance=finance_baseline(), effective_date=date(2026, 10, 1), now=NOW, **asked)
+                    factory(body).build(on=date(2026, 10, 2), now=NOW, **asked)
 
     def test_a_market_without_erp_configuration_cannot_be_provisioned(self):
         with self.assertRaisesRegex(AssignmentError, "no ERP market configuration for 'KE'"):
@@ -222,8 +233,27 @@ class AuthoritativeProvisioningRequestFactoryTests(unittest.TestCase):
         with self.assertRaisesRegex(AssignmentError, "expired"):
             factory(payload()).build(
                 tenant_id="tn_01k4zuribeans", tenant_provisioning_id="tp_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
-                legal_entity_id="ZURIBEANS-ZA", finance=finance_baseline(), effective_date=date(2026, 10, 1),
-                now=NOW + timedelta(hours=1))
+                legal_entity_id="ZURIBEANS-ZA", on=date(2026, 10, 2), now=NOW + timedelta(hours=1))
+
+    def test_without_a_finance_approved_baseline_in_force_nothing_is_provisioned(self):
+        with self.assertRaisesRegex(AssignmentError, "no Finance-approved baseline"):
+            build(payload(), finance=FakeFinance())
+        # A baseline not yet in force is not in force.
+        with self.assertRaisesRegex(AssignmentError, "no Finance-approved baseline"):
+            build(payload(), on=date(2026, 9, 30))
+
+    def test_another_legal_entitys_baseline_is_refused_even_if_the_source_returns_it(self):
+        class Wrong:
+            def effective(self, legal_entity_id, on):
+                return baseline("ZURIBEANS-UG")
+        with self.assertRaisesRegex(AssignmentError, "another legal entity"):
+            build(payload(), finance=Wrong())
+
+    def test_the_latest_version_in_force_wins(self):
+        newer = baseline(version=3, tax_profile="tax-za-v2", effective_from=date(2026, 10, 2))
+        request = build(payload(), finance=FakeFinance(baseline(), newer))
+        self.assertEqual(request.accounting.tax_profile, "tax-za-v2")
+        self.assertEqual(request.effective_date, date(2026, 10, 2))
 
 
 if __name__ == "__main__":

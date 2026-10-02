@@ -219,3 +219,16 @@ driver text; the `error` member is gone (the Java client was updated to read `de
   identifiers, unsupported capabilities, an unverified legal entity, an expired assignment and a cross-boundary assignment
   all fail closed.
 
+## 14. Finance-approved financial configuration baseline (ADR-ERP-008)
+
+* `db/migrations/0014_financial_configuration_baseline.sql`: an append-only, versioned-per-legal-entity table with
+  `effective_from`, a named `approved_by`, `approved_at` and an `evidence_reference`. CHECKs refuse placeholders
+  (`REQUIRED_*`), blank values, malformed currency/month and synthetic approvers (`system`, `bootstrap`, ...); a trigger refuses
+  UPDATE and DELETE. A change is a new version; history is kept.
+* `PostgresFinanceBaselineStore` (`record`, `effective`, `history`) never commits; the caller owns the transaction.
+  `effective(legal_entity_id, on)` returns the latest `effective_from` not after `on`, then the highest version, else `None`.
+* `AuthoritativeProvisioningRequestFactory` takes the baseline from this source instead of from the caller, refuses a
+  baseline for another legal entity, and uses its `effective_from` as the request's effective date. No baseline in force
+  means no request.
+* Nothing is seeded: ZuriBeans has no approved baseline until Finance approves one, and no migration invents one.
+
