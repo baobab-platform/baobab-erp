@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from provisioning.authoritative_service import AuthoritativeProvisioningRequestFactory
 from provisioning.cp_contract import AssignmentError, ErpMarketConfiguration, assignment_from_payload
-from provisioning.finance_baseline_store import FinancialConfigurationBaseline
+from provisioning.finance_baseline import FinancialConfigurationBaseline
 from provisioning.legal_entity_policy import (
     ConfiguredNativePlacementPolicy,
     NativeClientMode,

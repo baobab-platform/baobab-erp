@@ -9,7 +9,7 @@ from provisioning.cp_contract import (
     FinanceBaseline,
     materialize_request,
 )
-from provisioning.finance_baseline_store import FinanceBaselineSource
+from provisioning.finance_baseline import FinanceBaselineSource
 from provisioning.legal_entity_policy import NativeClientMode, NativePlacementPolicy, native_boundary
 from provisioning.model import ErpProvisioningRequest
 

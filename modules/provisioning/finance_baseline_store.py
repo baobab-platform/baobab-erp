@@ -1,42 +1,22 @@
 """Postgres store of Finance-approved financial configuration baselines (db/migrations/0014, ADR-ERP-008).
 
 Append-only and versioned per legal entity. Like the other ERP stores it never commits: the caller owns the transaction.
-Nothing here defaults or infers a value; a baseline exists only as recorded, with a named approver and evidence."""
+The baseline types live in provisioning.finance_baseline, which needs no database driver."""
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import date, datetime, timezone
-from typing import Protocol
 
 import psycopg
 
-# Actors that are not accountable people. The table refuses the same names; checking here reports it before the write.
-SYNTHETIC_APPROVERS = frozenset({"system", "service", "bootstrap", "automation", "auto", "unknown", "n/a", "none"})
+from provisioning.finance_baseline import (
+    SYNTHETIC_APPROVERS,
+    FinanceBaselineError,
+    FinanceBaselineSource,
+    FinancialConfigurationBaseline,
+)
 
-
-class FinanceBaselineError(ValueError):
-    pass
-
-
-@dataclass(frozen=True, slots=True)
-class FinancialConfigurationBaseline:
-    legal_entity_id: str
-    version: int
-    functional_currency: str
-    fiscal_year_start_month: int
-    chart_of_accounts_template: str
-    accounting_schema: str
-    tax_profile: str
-    costing_method: str
-    effective_from: date
-    approved_by: str
-    approved_at: datetime
-    evidence_reference: str
-
-
-class FinanceBaselineSource(Protocol):
-    def effective(self, legal_entity_id: str, on: date) -> FinancialConfigurationBaseline | None: ...
-
+__all__ = ["PostgresFinanceBaselineStore", "FinanceBaselineError", "FinanceBaselineSource",
+           "FinancialConfigurationBaseline", "SYNTHETIC_APPROVERS"]
 
 _COLUMNS = ("legal_entity_id, version, functional_currency, fiscal_year_start_month, chart_of_accounts_template, "
             "accounting_schema, tax_profile, costing_method, effective_from, approved_by, approved_at, evidence_reference")
