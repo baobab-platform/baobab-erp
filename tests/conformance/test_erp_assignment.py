@@ -6,7 +6,6 @@ import copy
 import unittest
 
 import _shared as shared
-from provisioning import legal_entity_policy  # noqa: F401 - imported so a broken module fails this suite
 from provisioning.cp_contract import ERP_ENGINE_ID, AssignmentError, assignment_from_payload
 from provisioning.validation import _MARKET_CAPABILITIES, ISOLATION_REQUIREMENTS, SUPPORTED_CAPABILITIES
 
