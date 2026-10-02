@@ -8,9 +8,18 @@ modules/mapping, and casts explicitly in SQL rather than relying on implicit
 driver-side UUID adaptation.
 """
 
+import uuid
+
 import psycopg
 
-from mapping.model import NativeRecordRef
+from mapping import identifiers
+from mapping.model import (
+    CANONICAL_OWNERS,
+    CanonicalReference,
+    Mapping,
+    MappingStatus,
+    NativeRecordRef,
+)
 
 
 class PostgresCanonicalMappingStore:
@@ -25,7 +34,8 @@ class PostgresCanonicalMappingStore:
         canonical_id: str,
         native_table: str,
         native_id: int,
-    ) -> None:
+        canonical_owner: str = "erp",
+    ) -> str:
         """Persists the FIRST mapping between a canonical entity and the
         native record that represents it. This is distinct from the "lazy
         creation" ADR-ERP-007 forbids: that rule is about never fabricating a
@@ -44,15 +54,82 @@ class PostgresCanonicalMappingStore:
         a distinct, not-yet-needed operation (see the `superseded` status and
         `replaces_mapping_id` column this table already reserves for it).
         """
+        identifiers.tenant_id(tenant_id)
+        identifiers.legal_entity_id(legal_entity_id)
+        if canonical_owner not in CANONICAL_OWNERS:
+            raise identifiers.IdentifierError(f"unknown canonical_owner {canonical_owner!r}")
         with self._connection.cursor() as cursor:
             cursor.execute(
                 """
                 INSERT INTO baobab.entity_mapping
-                    (tenant_id, legal_entity_id, canonical_type, canonical_id, native_table, native_id)
-                VALUES (%s, %s, %s, %s::uuid, %s, %s)
+                    (tenant_id, legal_entity_id, canonical_type, canonical_id,
+                     native_table, native_id, canonical_owner)
+                VALUES (%s, %s, %s, %s::uuid, %s, %s, %s)
+                RETURNING mapping_id
                 """,
-                (tenant_id, legal_entity_id, canonical_type, canonical_id, native_table, native_id),
+                (tenant_id, legal_entity_id, canonical_type, canonical_id, native_table, native_id, canonical_owner),
             )
+            return cursor.fetchone()[0]
+
+    def get_mapping(self, tenant_id: str, mapping_id: str) -> Mapping | None:
+        """The public mapping for a mapping_id, scoped to the tenant. Returns None for a mapping
+        that belongs to another tenant, so a caller cannot probe across tenants."""
+        with self._connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT mapping_id, tenant_id, legal_entity_id, canonical_owner, canonical_type,
+                       canonical_id::text, erp_resource_id, status, revision,
+                       effective_from, effective_to,
+                       (SELECT r.mapping_id FROM baobab.entity_mapping r WHERE r.id = m.replaces_mapping_id)
+                FROM baobab.entity_mapping m
+                WHERE m.tenant_id = %s AND m.mapping_id = %s
+                """,
+                (tenant_id, mapping_id),
+            )
+            row = cursor.fetchone()
+        if row is None:
+            return None
+        reference = (
+            CanonicalReference(owner=row[3], resource_type=row[4], resource_id=row[5]) if row[3] else None
+        )
+        return Mapping(
+            mapping_id=row[0], tenant_id=row[1], legal_entity_id=row[2], canonical_reference=reference,
+            erp_resource_id=row[6], status=MappingStatus(row[7]), revision=row[8],
+            effective_from=row[9], effective_to=row[10], replaces_mapping_id=row[11],
+        )
+
+    def find_mappings(self, tenant_id: str, owner: str, resource_type: str, resource_id: str) -> list[Mapping]:
+        """Every temporal mapping (any status) of one canonical resource within the tenant,
+        newest revision first. Quarantined or owner-less rows are not publishable and are
+        omitted. resource_id is stored as a UUID, so any other form cannot match."""
+        try:
+            uuid.UUID(resource_id)
+        except ValueError:
+            return []
+        with self._connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT mapping_id FROM baobab.entity_mapping
+                WHERE tenant_id = %s AND canonical_owner = %s AND canonical_type = %s
+                  AND canonical_id = %s::uuid AND legal_entity_id IS NOT NULL
+                  AND status <> 'quarantined'
+                ORDER BY revision DESC, effective_from DESC, id DESC
+                LIMIT 100
+                """,
+                (tenant_id, owner, resource_type, resource_id),
+            )
+            ids = [row[0] for row in cursor.fetchall()]
+        return [m for m in (self.get_mapping(tenant_id, i) for i in ids) if m is not None]
+
+    def quarantined_count(self, tenant_id: str) -> int:
+        """Mappings awaiting reconciliation against Control Plane (legacy rows without a
+        legal_entity_id). They are never resolved by find_native / find_canonical."""
+        with self._connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT count(*) FROM baobab.entity_mapping WHERE tenant_id = %s AND status = 'quarantined'",
+                (tenant_id,),
+            )
+            return cursor.fetchone()[0]
 
     def find_native(self, tenant_id: str, canonical_type: str, canonical_id: str) -> NativeRecordRef | None:
         with self._connection.cursor() as cursor:

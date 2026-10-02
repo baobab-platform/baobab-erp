@@ -82,7 +82,7 @@ class MappingStore(Protocol):
         canonical_id: str,
         native_table: str,
         native_id: int,
-    ) -> None: ...
+    ) -> object: ...
 
 
 class OutboxStore(Protocol):

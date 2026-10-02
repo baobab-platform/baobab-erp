@@ -215,17 +215,17 @@ class HttpServerIntegrationTests(unittest.TestCase):
                 connection.commit()
 
     def test_mapping_resolve_end_to_end(self):
-        tenant_id = f"test-tenant-{uuid.uuid4()}"
+        tenant_id = f"tn_{uuid.uuid4().hex[:16]}"
         canonical_id = str(uuid.uuid4())
         with psycopg.connect(os.environ["DATABASE_URL"]) as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
                     INSERT INTO baobab.entity_mapping
-                        (tenant_id, canonical_type, canonical_id, native_table, native_id)
-                    VALUES (%s, %s, %s::uuid, %s, %s)
+                        (tenant_id, legal_entity_id, canonical_type, canonical_id, native_table, native_id)
+                    VALUES (%s, %s, %s, %s::uuid, %s, %s)
                     """,
-                    (tenant_id, "Party", canonical_id, "C_BPartner", 1001),
+                    (tenant_id, "TEST-LE-A", "Party", canonical_id, "C_BPartner", 1001),
                 )
             connection.commit()
             try:

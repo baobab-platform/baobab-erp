@@ -176,8 +176,8 @@ class OrderToCashHttpIntegrationTests(unittest.TestCase):
     def _register_tenant(self) -> tuple[str, str]:
         """Inserts a real baobab.tenant_mapping row so context resolution has
         something real to find, matching test_http_server.py's own pattern."""
-        tenant_id = f"test-o2c-tenant-{uuid.uuid4()}"
-        entity_id = f"test-o2c-entity-{uuid.uuid4()}"
+        tenant_id = f"tn_{uuid.uuid4().hex[:16]}"
+        entity_id = f"TEST-O2C-{uuid.uuid4().hex[:12].upper()}"
         with psycopg.connect(os.environ["DATABASE_URL"]) as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
@@ -193,8 +193,8 @@ class OrderToCashHttpIntegrationTests(unittest.TestCase):
         """A tenant mapped to an AD_Client this test's IDEMPIERE_CLIENT_CREDENTIALS_JSON
         does NOT cover -- proves the UnconfiguredIdempiereClient fail-closed path end
         to end, not just in the unit tests."""
-        tenant_id = f"test-o2c-unconfigured-{uuid.uuid4()}"
-        entity_id = f"test-o2c-unconfigured-entity-{uuid.uuid4()}"
+        tenant_id = f"tn_{uuid.uuid4().hex[:16]}"
+        entity_id = f"TEST-O2C-UNCONF-{uuid.uuid4().hex[:12].upper()}"
         unconfigured_ad_client_id = random.randint(1_000_000, 9_999_999)
         with psycopg.connect(os.environ["DATABASE_URL"]) as connection:
             with connection.cursor() as cursor:

@@ -3,6 +3,7 @@ from typing import Protocol
 import jwt
 
 from identity.service import ServiceIdentity
+from mapping import identifiers
 
 
 class TokenValidationError(Exception):
@@ -62,4 +63,10 @@ def verify_workload_token(
 
     scope = claims.get("scope", "")
     roles = frozenset(scope.split()) if scope else frozenset()
-    return ServiceIdentity(principal=principal, roles=roles)
+    tenant_claim = claims.get("tenant_id")
+    if tenant_claim is not None:
+        try:
+            identifiers.tenant_id(tenant_claim)
+        except identifiers.IdentifierError as exc:
+            raise TokenValidationError("Token tenant_id claim is not a canonical tenant identifier") from exc
+    return ServiceIdentity(principal=principal, roles=roles, tenant_id=tenant_claim)

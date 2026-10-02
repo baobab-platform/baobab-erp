@@ -144,6 +144,42 @@ RUN set -eu; \
     [ "$left" = "com.fasterxml.jackson.datatype.jackson-datatype-joda" ] || { echo "unexpected Jackson ${old} bundles left: ${left}" >&2; exit 1; }; \
     rm -rf /tmp/jackson
 
+# ADR-ERP-004 section 5 emergency mitigation: remove the unused Hazelcast clustering bundle.
+#   reason:   org.idempiere.hazelcast.service carries Hazelcast 5.3.7's own shaded
+#             jackson-core 2.15.2 (com/hazelcast/shaded/...) inside lib/hazelcast.jar, HIGH
+#             CVE-2026-89425. No upstream image fixes it: 13-release (2026-04-07) and the
+#             13-daily build of 2026-10-01 both still ship it (scripts/probe-idempiere-image.sh).
+#   why safe: the bundle only provides iDempiere's optional cluster service. It starts at
+#             level 4 with autostart false, no other plugin requires or imports from it, and
+#             Baobab runs one iDempiere node per EngineInstance (ADR-ERP-003), so clustering
+#             is not used. Deleting the component removes the finding instead of patching or
+#             ignoring it; no jar is modified.
+#   owner:    ERP engineering; approval is recorded on the pull request that introduced it.
+#   removal:  delete this step once the pinned iDempiere image ships Hazelcast with
+#             jackson-core >= 2.18.11, or if ERP ever needs clustering (then replace it with
+#             a vetted Hazelcast upgrade).
+# The guard fails the build if the base image stops shipping exactly this one bundle with
+# exactly one bundles.info entry, or if any other plugin now requires it.
+RUN set -eu; \
+    info="${IDEMPIERE_HOME}/configuration/org.eclipse.equinox.simpleconfigurator/bundles.info"; \
+    set -- "${IDEMPIERE_PLUGINS_DIR}"/org.idempiere.hazelcast.service_*.jar; \
+    [ "$#" = 1 ] && [ -f "$1" ] || { echo "expected exactly one org.idempiere.hazelcast.service bundle" >&2; exit 1; }; \
+    hz="$1"; \
+    [ "$(grep -c '^org\.idempiere\.hazelcast\.service,' "$info")" = 1 ] || { echo "bundles.info has no single hazelcast.service entry" >&2; exit 1; }; \
+    apt-get update && apt-get install -y --no-install-recommends unzip; \
+    for jar in "${IDEMPIERE_PLUGINS_DIR}"/*.jar; do \
+      [ "$jar" = "$hz" ] && continue; \
+      if unzip -p "$jar" META-INF/MANIFEST.MF 2>/dev/null | tr -d '\r' | sed ':a;N;$!ba;s/\n //g' \
+           | grep -Eq '^(Require-Bundle|Import-Package|DynamicImport-Package):.*org\.idempiere\.hazelcast'; then \
+        echo "$(basename "$jar") now depends on the Hazelcast bundle; revisit this mitigation" >&2; exit 1; \
+      fi; \
+    done; \
+    apt-get purge -y unzip && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*; \
+    rm -f "$hz"; \
+    sed -i '/^org\.idempiere\.hazelcast\.service,/d' "$info"; \
+    if grep -q 'hazelcast' "$info"; then echo "hazelcast still listed in bundles.info" >&2; exit 1; fi; \
+    if ls "${IDEMPIERE_PLUGINS_DIR}"/org.idempiere.hazelcast.service_*.jar >/dev/null 2>&1; then echo "hazelcast bundle still present" >&2; exit 1; fi
+
 COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.integration/target/org.nabhold.baobab.erp.integration-*.jar ${IDEMPIERE_PLUGINS_DIR}/
 COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.context/target/org.nabhold.baobab.erp.context-*.jar ${IDEMPIERE_PLUGINS_DIR}/
 COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.mapping/target/org.nabhold.baobab.erp.mapping-*.jar ${IDEMPIERE_PLUGINS_DIR}/

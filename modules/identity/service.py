@@ -13,6 +13,9 @@ class ServiceIdentity:
 
     principal: str
     roles: frozenset[str]
+    tenant_id: str | None = None
+    """The resolved tenant claim, when the token carries one. Authoritative: a request-supplied
+    tenant_id must never override it (contracts/erp/v1/openapi.yaml, workloadOidc)."""
 
     def has_role(self, role: str) -> bool:
         return role in self.roles
