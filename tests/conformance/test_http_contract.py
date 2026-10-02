@@ -215,13 +215,13 @@ class HttpContractTests(unittest.TestCase):
         return warehouse
 
     def test_pinned_openapi_declares_the_statuses_erp_returns(self):
-        """Shared 1.0.4: 400 on the mapping reads and the inventory read, 503 on the inventory read, and no transitional
-        501 on the operations ERP serves. Inventory keeps its 501 until a Shared follow-up removes it."""
+        """Shared 1.0.5: 400 on the mapping reads and the inventory read, 503 on the inventory read, and no transitional
+        501 on any operation, because ERP serves every one."""
         for template in ("/mappings/{mapping_id}", "/mappings", "/inventory-availability"):
             self.assertIn(400, shared.declared_statuses(template, "GET"), template)
         self.assertIn(503, shared.declared_statuses("/inventory-availability", "GET"))
         for method, template in [("POST", "/provisioning-operations"), ("GET", "/provisioning-operations/{operation_id}"),
-                                 ("GET", "/order-consequences/{commerce_order_id}")]:
+                                 ("GET", "/order-consequences/{commerce_order_id}"), ("GET", "/inventory-availability")]:
             self.assertNotIn(501, shared.declared_statuses(template, method), (method, template))
 
     def test_every_implemented_operation_path_exists_in_the_contract(self):
