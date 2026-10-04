@@ -322,8 +322,12 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                     return fail("unavailable")
                 if identity.tenant_id is not None and identity.tenant_id != tenant_id:
                     return fail("forbidden", code="ERP_CONTEXT_REJECTED")
-                if method == "POST" and json.loads(raw_body).get("tenant_id") != tenant_id:
-                    return fail("forbidden", code="ERP_CONTEXT_REJECTED")
+                if method == "POST":
+                    requested_tenant = json.loads(raw_body).get("tenant_id")
+                    if not isinstance(requested_tenant, str):
+                        return fail("invalid_request", "tenant_id is required")
+                    if requested_tenant != tenant_id:
+                        return fail("forbidden", code="ERP_CONTEXT_REJECTED")
             with psycopg.connect(config.database_url) as connection:
                 result = route.handler(
                     tenant_id=tenant_id,
