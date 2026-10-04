@@ -1,7 +1,7 @@
 """ERP Boundary API (contracts/erp/v1/openapi.yaml), the read surface backed by real data.
 
 Pure request -> (status, body) logic; server.py owns HTTP, authentication and the connection.
-The resolved tenant claim is the only tenant authority: nothing in a request can widen it.
+Mapping reads use the token tenant; context-required operations use CP-validated caller-bound authority.
 
 Implemented: GET /mappings/{mapping_id}, GET /mappings, GET /order-consequences/{commerce_order_id},
 GET /inventory-availability (application.inventory_availability), POST /provisioning-operations and
@@ -36,6 +36,7 @@ class BoundaryRoute:
     scope: str
     handler: Callable[..., tuple[int, dict]]
     argument: str | None = None
+    context_required: bool = False
 
 
 def match(method: str, path: str) -> BoundaryRoute | None:
@@ -48,17 +49,17 @@ def match(method: str, path: str) -> BoundaryRoute | None:
         if found:
             return BoundaryRoute(SCOPE_READ, get_mapping, found.group(1))
     if method == "POST" and path == "/provisioning-operations":
-        return BoundaryRoute("erp:provision", request_provisioning)
+        return BoundaryRoute("erp:provision", request_provisioning, context_required=True)
     if method == "GET" and path == "/inventory-availability":
-        return BoundaryRoute(SCOPE_READ, get_inventory_availability)
+        return BoundaryRoute(SCOPE_READ, get_inventory_availability, context_required=True)
     if method == "GET":
         consequence = _ORDER_CONSEQUENCE.fullmatch(path)
         if consequence:
-            return BoundaryRoute(SCOPE_READ, get_order_consequence, consequence.group(1))
+            return BoundaryRoute(SCOPE_READ, get_order_consequence, consequence.group(1), context_required=True)
     if method == "GET":
         operation = _PROVISIONING_OPERATION.fullmatch(path)
         if operation:
-            return BoundaryRoute(SCOPE_READ, get_provisioning_operation, operation.group(1))
+            return BoundaryRoute(SCOPE_READ, get_provisioning_operation, operation.group(1), context_required=True)
     if method in ("GET", "POST") and any(pattern.fullmatch(path) for pattern in _NOT_IMPLEMENTED):
         return BoundaryRoute(SCOPE_READ if method == "GET" else "erp:provision", not_implemented)
     return None
@@ -72,7 +73,7 @@ def not_implemented(*, correlation_id, trace_id, **_) -> tuple[int, dict]:
 
 
 def get_order_consequence(*, tenant_id, argument, connection, correlation_id, trace_id, **_) -> tuple[int, dict]:
-    """ERP's own consequence record for a Trade order, scoped to the token's tenant. An order ERP keeps no record for
+    """ERP's own consequence record for a Trade order, scoped to the CP-validated tenant. An order ERP keeps no record for
     (never processed, or processed without an order_version) is 404; nothing is derived on the fly."""
     record = PostgresOrderConsequenceStore(connection).get(tenant_id, argument)
     if record is None:
@@ -125,3 +126,4 @@ def find_mappings(*, tenant_id, store, query_string, correlation_id, trace_id, *
 def _one(query: dict, name: str) -> str | None:
     values = query.get(name)
     return values[0] if values and len(values) == 1 else None
+

@@ -12,12 +12,16 @@ schema: baobab-contract-consumer-lock
 version: "1.0"
 source:
   repository: baobab-platform/shared
-  commit: 0233eb30bcf4070344039e83b70d16248963dd64
+  commit: 6899a2d8f143bf23d36c4f4ac904e0a1e10c3cea
 contracts:
   # Tenant and legal-entity identifier grammars; the access-token claim set whose tenant_id is the
-  # Boundary API's only tenant authority.
+  # mapping reads' tenant authority; the four context-bound operations use validated CP context.
   - contracts/control-plane/v1/access-token-claims.schema.json
   - contracts/control-plane/v1/domain.schema.json
+  # Caller-bound validation for ERP API 1.1; mapping reads retain token tenant authority.
+  - contracts/control-plane/v1/openapi.yaml
+  - contracts/control-plane/v1/platform-context.schema.json
+  - contracts/control-plane/v1/market.schema.json
   # The Control Plane's ERP assignment projection ERP provisions from (ADR-ERP-002 SS113/114), its example, and the
   # schemas it references.
   - contracts/control-plane/v1/erp-assignment.schema.json
