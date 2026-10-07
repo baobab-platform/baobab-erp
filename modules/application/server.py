@@ -73,6 +73,7 @@ from order_to_cash import service as order_to_cash
 from order_to_cash.consequence_store import PostgresOrderConsequenceStore
 from order_to_cash.model import OrderLine, OrderToCashError, TenantScope
 from outbox.postgres_store import PostgresOutboxStore
+from provisioning.operation_request import is_tenant_id
 from security.platform_context import (ContextRejected, ContextUnavailable, InvalidContext, configured_validator, request_context_id)
 from security.jwks import JwksSigningKeyResolver
 from security.workload_auth import SigningKeyResolver, TokenValidationError, verify_workload_token
@@ -328,8 +329,10 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                     return fail("forbidden", code="ERP_CONTEXT_REJECTED")
                 if method == "POST":
                     requested_tenant = json.loads(raw_body).get("tenant_id")
-                    if not isinstance(requested_tenant, str):
-                        return fail("invalid_request", "tenant_id is required")
+                    # A malformed tenant is an invalid document (400), not an authority disagreement: only a different
+                    # well-formed tenant is refused as ERP_CONTEXT_REJECTED.
+                    if not is_tenant_id(requested_tenant):
+                        return fail("invalid_request", "tenant_id must be a valid tenant identifier")
                     if requested_tenant != tenant_id:
                         return fail("forbidden", code="ERP_CONTEXT_REJECTED")
             with psycopg.connect(config.database_url) as connection:

@@ -23,6 +23,11 @@ _CURRENCY = re.compile(r"^[A-Z]{3}$")
 _RESOURCE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 
+
+def is_tenant_id(value: object) -> bool:
+    """Whether ``value`` is a well-formed Control Plane tenantId (the grammar ``tenant_id`` is parsed with below)."""
+    return isinstance(value, str) and 6 <= len(value) <= 63 and _TENANT.fullmatch(value) is not None
+
 _MEMBERS = frozenset({"tenant_id", "context_id", "control_plane_authority", "legal_entity_ids", "requested_countries",
                       "functional_currencies", "deployment_policy_id", "localisation_profile_ids"})
 _REQUIRED = frozenset({"tenant_id", "context_id", "control_plane_authority", "legal_entity_ids", "requested_countries",
