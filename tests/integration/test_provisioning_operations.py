@@ -270,6 +270,21 @@ class FinanceBaselineTests(_Fixture):
         self.assertEqual(self.baselines.effective(self.entity, today).version, 1)
         self.assertEqual(self.baselines.get(self.entity, 2).version, 2)
 
+    def test_a_withdrawal_takes_effect_when_it_was_recorded_and_does_not_rewrite_history(self):
+        v2 = self.record(date(2026, 3, 1))
+        self.baselines.withdraw(legal_entity_id=self.entity, version=2, withdrawn_by="Thandi Nkosi",
+                                withdrawn_at=datetime(2026, 9, 15, 8, 0, tzinfo=timezone.utc), reason="r",
+                                evidence_reference="FIN-1", now=NOW)
+        # v2 was in force in April, before it was withdrawn in September, and is withdrawn from the day it was recorded.
+        self.assertEqual(self.baselines.effective(self.entity, date(2026, 4, 1)).version, 2)
+        self.assertEqual(self.baselines.effective(self.entity, date(2026, 9, 14)).version, 2)
+        self.assertIsNone(self.baselines.effective(self.entity, date(2026, 9, 15)))  # v1 only starts on 2026-10-01
+        self.assertEqual(self.baselines.effective(self.entity, date(2026, 10, 1)).version, 1)
+        self.assertEqual(self.baselines.status(v2, date(2026, 4, 1)), "EFFECTIVE")
+        self.assertEqual(self.baselines.status(v2, date(2026, 9, 14)), "EFFECTIVE")
+        self.assertEqual(self.baselines.status(v2, date(2026, 9, 15)), "WITHDRAWN")
+        self.assertEqual(self.baselines.status(v2, NOW.date()), "WITHDRAWN")
+
     def test_a_withdrawal_is_a_named_persons_append_only_fact(self):
         from provisioning.finance_baseline_store import FinanceBaselineError
         for who in ("system", "  ", "REQUIRED_X"):
@@ -315,6 +330,22 @@ class FinanceBaselineTests(_Fixture):
         self.assertEqual(self.effective(authority=self.authority(plan_id="plan_0199a1b2c3d4ffff"))[0], 404)
         self.assertEqual(self.effective(authority=None)[0], 404)
         self.assertEqual(self.effective(tenant="tn_01k4someoneelse")[0], 404)
+
+    def test_the_baseline_reads_apply_the_same_assignment_checks_as_provisioning(self):
+        # An expired, unverified or other-engine assignment is not authority to disclose a baseline.
+        for name, change in {"expired": {"expires_at": "2026-10-02T09:00:00Z"}, "unverified": {"legal_entity": {
+                "verification_state": "UNVERIFIED"}}}.items():
+            body = payload(entity=self.entity)
+            if "legal_entity" in change:
+                body["legal_entity"] = dict(body["legal_entity"], **change["legal_entity"])
+            else:
+                body.update(change)
+            self.control_plane.bodies[self.entity] = body
+            with self.subTest(name):
+                self.assertEqual(self.effective()[0], 404)
+                self.assertEqual(self.exact()[0], 404)
+        self.control_plane.bodies[self.entity] = self.body
+        self.assertEqual(self.effective()[0], 200)
 
     def test_the_effective_read_distinguishes_unavailable_from_absent_and_validates_input(self):
         self.control_plane.error = ControlPlaneUnavailable("down")
@@ -364,6 +395,14 @@ class FinanceBaselineTests(_Fixture):
         self.assertEqual((status, body["status"]), (200, "WITHDRAWN"))
 
     # --- POST /provisioning-operations ----------------------------------------------------------------------------------
+
+    def test_an_impossible_calendar_date_in_a_reference_is_an_invalid_document_not_an_authority_conflict(self):
+        for bad in ("2026-02-31", "2026-04-31", "2026-00-10"):
+            with self.subTest(bad):
+                status, body, _ = self.post(self.request(finance_baselines=[dict(reference_of(self.baseline), effective_from=bad)]),
+                                            key=self.fresh_key())
+                self.assertEqual(status, 400)
+                self.assertIn("finance_baselines[0].effective_from", [e["field"] for e in body["errors"]])
 
     def test_a_request_without_finance_baselines_is_an_invalid_document(self):
         document = self.request()

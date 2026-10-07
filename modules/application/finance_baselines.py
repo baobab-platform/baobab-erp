@@ -48,6 +48,12 @@ def in_provisioning(*, provisioning, tenant_id: str, context_authority, legal_en
         return "no"
     except ControlPlaneUnavailable:
         return "unavailable"
+    # The same semantic checks provisioning applies (verified legal entity, the ERP engine, not expired): a stale or invalid
+    # assignment must not authorise disclosure of a baseline either.
+    try:
+        assignment.validate(provisioning.now())
+    except AssignmentError:
+        return "no"
     same_plan = (assignment.tenant_id, assignment.tenant_provisioning_id, assignment.plan_id, assignment.plan_version,
                  assignment.plan_digest, assignment.legal_entity_id) == (
         tenant_id, context_authority.tenant_provisioning_id, context_authority.plan_id, context_authority.plan_version,

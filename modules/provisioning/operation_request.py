@@ -10,6 +10,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass
+from datetime import date
 from typing import Any, Mapping
 
 _CONTEXT = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
@@ -136,6 +137,12 @@ def _baseline_refs(value: Any, errors: list) -> list[FinanceBaselineRef]:
         entity = _text(item.get("legal_entity_id"), _LEGAL_ENTITY, f"{where}.legal_entity_id", errors, 3, 63)
         digest = _text(item.get("digest"), _DIGEST, f"{where}.digest", errors, 71, 71)
         effective = _text(item.get("effective_from"), _DATE, f"{where}.effective_from", errors, 10, 10)
+        if effective:
+            try:
+                date.fromisoformat(effective)
+            except ValueError:
+                errors.append((f"{where}.effective_from", "is not a calendar date"))
+                effective = None
         version = item.get("version")
         if isinstance(version, bool) or not isinstance(version, int) or version < 1:
             errors.append((f"{where}.version", "must be an integer >= 1"))

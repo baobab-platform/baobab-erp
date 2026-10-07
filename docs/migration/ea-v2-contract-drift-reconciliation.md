@@ -113,8 +113,9 @@ What changes for ERP:
   approved version always has the same digest and a changed approval is a new version. Nothing is added to the append-only
   baseline table.
 - **Withdrawal.** Finance can withdraw its approval of a version (`financial_configuration_baseline_withdrawal`, migration
-  `0017`, append-only, a named person with evidence). A withdrawn version is not in force, so the version before it governs
-  again; it is still readable, with status `WITHDRAWN`. Standing is `EFFECTIVE`, `NOT_YET_EFFECTIVE`, `SUPERSEDED` or `WITHDRAWN`.
+  `0017`, append-only, a named person with evidence). A withdrawal takes effect on the day it was recorded and does not rewrite earlier history (a historical lookup
+  still sees the version that was then in force); from that day the version before it governs again, and the withdrawn one
+  is still readable, with status `WITHDRAWN`. Standing is `EFFECTIVE`, `NOT_YET_EFFECTIVE`, `SUPERSEDED` or `WITHDRAWN`.
 - **Two reads**, both `erp:provision` and a `TENANT_PROVISIONING` context: `GET /legal-entities/{id}/effective-finance-baseline`
   (the version in force; none is 404, never a default) and `GET /finance-baselines/{id}?version=&digest=` (exactly that
   version and digest, never "the latest"; another version or digest is `409 FINANCE_BASELINE_MISMATCH`). The legal entity must

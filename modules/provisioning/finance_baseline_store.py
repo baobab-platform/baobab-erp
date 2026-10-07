@@ -71,14 +71,16 @@ class PostgresFinanceBaselineStore:
 
     def effective(self, legal_entity_id: str, on: date) -> FinancialConfigurationBaseline | None:
         """The baseline in force on a date: the latest effective_from not after it, then the highest version, among the
-        versions whose approval has not been withdrawn. None if none."""
+        versions whose approval had not been withdrawn by then. A withdrawal takes effect on the day it was recorded and does
+        not rewrite earlier history. None if none."""
         with self._connection.cursor() as cursor:
             cursor.execute(
                 f"""SELECT {_COLUMNS} FROM baobab.financial_configuration_baseline b
                      WHERE legal_entity_id = %s AND effective_from <= %s
                        AND NOT EXISTS (SELECT 1 FROM baobab.financial_configuration_baseline_withdrawal w
-                                        WHERE w.legal_entity_id = b.legal_entity_id AND w.version = b.version)
-                     ORDER BY effective_from DESC, version DESC LIMIT 1""", (legal_entity_id, on))
+                                        WHERE w.legal_entity_id = b.legal_entity_id AND w.version = b.version
+                                          AND (w.withdrawn_at AT TIME ZONE 'UTC')::date <= %s)
+                     ORDER BY effective_from DESC, version DESC LIMIT 1""", (legal_entity_id, on, on))
             row = cursor.fetchone()
         return _row(row) if row else None
 
@@ -118,11 +120,12 @@ class PostgresFinanceBaselineStore:
                  _text(evidence_reference, "evidence_reference")))
 
     def status(self, baseline: FinancialConfigurationBaseline, on: date) -> str:
-        """The standing of one approved version on a date: WITHDRAWN if Finance withdrew it, NOT_YET_EFFECTIVE if it starts
+        """The standing of one approved version on a date: WITHDRAWN if Finance had withdrawn it by then, NOT_YET_EFFECTIVE if it starts
         later, EFFECTIVE if it is the version in force, otherwise SUPERSEDED by the one that is."""
         with self._connection.cursor() as cursor:
             cursor.execute("SELECT 1 FROM baobab.financial_configuration_baseline_withdrawal "
-                           "WHERE legal_entity_id = %s AND version = %s", (baseline.legal_entity_id, baseline.version))
+                           "WHERE legal_entity_id = %s AND version = %s AND (withdrawn_at AT TIME ZONE 'UTC')::date <= %s",
+                           (baseline.legal_entity_id, baseline.version, on))
             if cursor.fetchone():
                 return WITHDRAWN
         if baseline.effective_from > on:
