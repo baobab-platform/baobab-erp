@@ -1,7 +1,6 @@
 import json
 from typing import Any, Protocol
 
-from provisioning.command_store import PostgresProvisioningCommandStore
 from provisioning.model import ProvisioningPlan, ProvisioningStatus
 
 
@@ -99,4 +98,7 @@ class PostgresProvisioningStore:
     def _project(self, provisioning_id: str) -> None:
         """A change to an entity's status is a change to the command that owns it. The command's new state and the event that
         announces it are written in the same transaction as the status, so they commit together or not at all."""
+        # Imported here so the ProvisioningStore protocol and the service that uses it stay importable without a database driver.
+        from provisioning.command_store import PostgresProvisioningCommandStore
+
         PostgresProvisioningCommandStore(self._connection).project(provisioning_id)
