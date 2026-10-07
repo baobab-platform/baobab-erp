@@ -101,9 +101,9 @@ def request_provisioning(*, tenant_id, principal, body: bytes, idempotency_key, 
                         errors=[{"code": "ERP_INVALID_PARAMETER", "message": message, "field": field}
                                 for field, message in exc.errors])
         return fail("invalid_request", "the request body is not valid JSON")
-    # The token's tenant is the only tenant authority; the body may only agree with it.
+    # The caller-bound CP-validated tenant is authority; the body may only agree with it.
     if command.tenant_id != tenant_id:
-        return fail("forbidden", "tenant_id differs from the tenant of the token")
+        return fail("forbidden", "tenant_id differs from the tenant of the validated context")
     # Only a well-formed, authorised request can learn that this deployment is not configured to provision.
     if provisioning is None:
         return fail("unavailable", "provisioning is not configured in this deployment", headers={"Retry-After": RETRY_AFTER_SECONDS})

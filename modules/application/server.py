@@ -58,7 +58,7 @@ import psycopg
 from application import boundary
 from application.health import liveness, readiness
 from application.problem import correlation_id_from, kind_for_status, problem, trace_id_from
-from application.provisioning_operations import MAX_BODY_BYTES, ProvisioningDependencies
+from application.provisioning_operations import MAX_BODY_BYTES, RETRY_AFTER_SECONDS as CONTEXT_RETRY_AFTER_SECONDS, ProvisioningDependencies
 from context.model import ContextResolutionError
 from context.postgres_store import PostgresTenantMappingStore
 from context.resolver import resolve_context, resolve_tenant
@@ -73,6 +73,8 @@ from order_to_cash import service as order_to_cash
 from order_to_cash.consequence_store import PostgresOrderConsequenceStore
 from order_to_cash.model import OrderLine, OrderToCashError, TenantScope
 from outbox.postgres_store import PostgresOutboxStore
+from provisioning.operation_request import is_tenant_id
+from security.platform_context import (ContextRejected, ContextUnavailable, InvalidContext, configured_validator, request_context_id)
 from security.jwks import JwksSigningKeyResolver
 from security.workload_auth import SigningKeyResolver, TokenValidationError, verify_workload_token
 
@@ -96,6 +98,8 @@ class Config:
         self.idempiere_credentials_by_ad_client = _load_idempiere_credentials()
         self.order_to_cash_process_ids = _load_order_to_cash_process_ids()
         self.provisioning = _load_provisioning_dependencies()
+        self.context_validator = configured_validator(
+            os.environ.get("ERP_CONTEXT_VALIDATION_URL"), os.environ.get("ERP_CONTEXT_VALIDATION_TOKEN_FILE"))
 
 
 def _load_provisioning_dependencies() -> "ProvisioningDependencies | None":
@@ -269,9 +273,11 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             correlation_id = supplied or str(uuid.uuid4())
             traceparent_ok, trace_id = trace_id_from(self.headers.get("traceparent"))
 
-            def fail(kind: str, detail: str | None = None) -> bool:
-                status, body = problem(kind, correlation_id=correlation_id, trace_id=trace_id, detail=detail)
-                self._send_json(status, body, content_type="application/problem+json", correlation_id=correlation_id)
+            def fail(kind: str, detail: str | None = None, code: str | None = None,
+                     headers: dict | None = None) -> bool:
+                status, body = problem(kind, correlation_id=correlation_id, trace_id=trace_id, detail=detail, code=code)
+                self._send_json(status, body, content_type="application/problem+json", correlation_id=correlation_id,
+                                headers=headers)
                 return True
 
             try:
@@ -288,7 +294,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             if not identity.has_role(route.scope):
                 return fail("forbidden")
             tenant_scoped = route.handler is not boundary.not_implemented
-            if tenant_scoped and identity.tenant_id is None:
+            if tenant_scoped and not route.context_required and identity.tenant_id is None:
                 return fail("tenant_context_required", "the token carries no resolved tenant")
             raw_body = b""
             if method == "POST":
@@ -299,9 +305,39 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                 if length > MAX_BODY_BYTES:
                     return fail("invalid_request", "the request body is too large")
                 raw_body = self.rfile.read(length) if length > 0 else b""
+            tenant_id = identity.tenant_id
+            if route.context_required:
+                try:
+                    context_id = request_context_id(method, raw_body, split.query)
+                except InvalidContext:
+                    return fail("invalid_request", "context_id must be a single UUID")
+                # Every 503 of the contract carries an integer Retry-After (ERP API ServiceUnavailable).
+                retry_later = {"Retry-After": CONTEXT_RETRY_AFTER_SECONDS}
+                validator = getattr(config, "context_validator", None)
+                if validator is None:
+                    return fail("unavailable", headers=retry_later)
+                try:
+                    tenant_id = validator.validate(
+                        context_id=context_id,
+                        subject_token=self.headers["Authorization"].split()[1],
+                        correlation_id=correlation_id)
+                except ContextRejected:
+                    return fail("forbidden", code="ERP_CONTEXT_REJECTED")
+                except ContextUnavailable:
+                    return fail("unavailable", headers=retry_later)
+                if identity.tenant_id is not None and identity.tenant_id != tenant_id:
+                    return fail("forbidden", code="ERP_CONTEXT_REJECTED")
+                if method == "POST":
+                    requested_tenant = json.loads(raw_body).get("tenant_id")
+                    # A malformed tenant is an invalid document (400), not an authority disagreement: only a different
+                    # well-formed tenant is refused as ERP_CONTEXT_REJECTED.
+                    if not is_tenant_id(requested_tenant):
+                        return fail("invalid_request", "tenant_id must be a valid tenant identifier")
+                    if requested_tenant != tenant_id:
+                        return fail("forbidden", code="ERP_CONTEXT_REJECTED")
             with psycopg.connect(config.database_url) as connection:
                 result = route.handler(
-                    tenant_id=identity.tenant_id,
+                    tenant_id=tenant_id,
                     store=PostgresCanonicalMappingStore(connection),
                     argument=route.argument,
                     query_string=split.query,

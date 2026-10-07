@@ -105,6 +105,8 @@ jobs:
           repository: baobab-platform/shared
           ref: ${{ steps.pin.outputs.commit }}
           path: .shared-contracts
+          token: ${{ secrets.SHARED_READ_TOKEN || github.token }}
+          persist-credentials: false
       - name: Install modules/ with the conformance extras
         run: pip install --break-system-packages -q -e "modules[conformance]"
       - name: Apply database migrations

@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+_CONTEXT = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 _TENANT = re.compile(r"^tn_[a-z0-9]+$")
 _PROVISIONING = re.compile(r"^tp_[a-z0-9]+$")
 _PLAN = re.compile(r"^plan_[a-z0-9]+$")
@@ -22,9 +23,14 @@ _CURRENCY = re.compile(r"^[A-Z]{3}$")
 _RESOURCE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 
-_MEMBERS = frozenset({"tenant_id", "control_plane_authority", "legal_entity_ids", "requested_countries",
+
+def is_tenant_id(value: object) -> bool:
+    """Whether ``value`` is a well-formed Control Plane tenantId (the grammar ``tenant_id`` is parsed with below)."""
+    return isinstance(value, str) and 6 <= len(value) <= 63 and _TENANT.fullmatch(value) is not None
+
+_MEMBERS = frozenset({"tenant_id", "context_id", "control_plane_authority", "legal_entity_ids", "requested_countries",
                       "functional_currencies", "deployment_policy_id", "localisation_profile_ids"})
-_REQUIRED = frozenset({"tenant_id", "control_plane_authority", "legal_entity_ids", "requested_countries",
+_REQUIRED = frozenset({"tenant_id", "context_id", "control_plane_authority", "legal_entity_ids", "requested_countries",
                        "functional_currencies"})
 _AUTHORITY = frozenset({"tenant_provisioning_id", "plan_id", "plan_version", "plan_digest"})
 
@@ -48,6 +54,7 @@ class ControlPlaneAuthority:
 @dataclass(frozen=True, slots=True)
 class ProvisioningCommand:
     tenant_id: str
+    context_id: str
     authority: ControlPlaneAuthority
     legal_entity_ids: tuple[str, ...]
     requested_countries: frozenset[str]
@@ -57,7 +64,7 @@ class ProvisioningCommand:
 
     def fingerprint(self, principal: str) -> str:
         """Binds an Idempotency-Key to the authorised principal and the canonical request semantics (Shared idempotency
-        policy): list order and duplicates in sets do not change it, a different principal, tenant or content does."""
+        policy): context_id is fresh authorization evidence and is excluded; list order and duplicates in sets do not change it, a different principal, tenant or content does."""
         canonical = {
             "principal": principal, "tenant_id": self.tenant_id,
             "authority": [self.authority.tenant_provisioning_id, self.authority.plan_id,
@@ -96,6 +103,7 @@ def parse_command(body: Any) -> ProvisioningCommand:
     for field in sorted(_REQUIRED - set(body)):
         errors.append((field, "is required"))
     tenant = _text(body.get("tenant_id"), _TENANT, "tenant_id", errors, 6, 63) if "tenant_id" in body else None
+    context_id = _text(body.get("context_id"), _CONTEXT, "context_id", errors, 36, 36) if "context_id" in body else None
     authority = None
     raw = body.get("control_plane_authority")
     if "control_plane_authority" in body:
@@ -128,6 +136,6 @@ def parse_command(body: Any) -> ProvisioningCommand:
         if "localisation_profile_ids" in body else []
     if errors:
         raise RequestError(errors)
-    return ProvisioningCommand(tenant_id=tenant, authority=authority, legal_entity_ids=tuple(entities),
+    return ProvisioningCommand(tenant_id=tenant, context_id=context_id, authority=authority, legal_entity_ids=tuple(entities),
                                requested_countries=frozenset(countries), functional_currencies=frozenset(currencies),
                                deployment_policy_id=policy, localisation_profile_ids=frozenset(profiles))

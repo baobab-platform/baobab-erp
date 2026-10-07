@@ -43,7 +43,19 @@ class HttpContractTests(unittest.TestCase):
         cls.key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         from application.server import Config, make_handler
 
-        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(Config(), key_resolver=_Key(cls.key.public_key())))
+        cls.config = Config()
+        cls.contexts = {}
+
+        class Validator:
+            def validate(self, *, context_id, subject_token, correlation_id):
+                from security.platform_context import ContextRejected
+                authority = cls.contexts.get(context_id)
+                if authority is None or authority[0] != subject_token:
+                    raise ContextRejected()
+                return authority[1]
+
+        cls.config.context_validator = Validator()
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(cls.config, key_resolver=_Key(cls.key.public_key())))
         cls.port = cls.server.server_address[1]
         Thread(target=cls.server.serve_forever, daemon=True).start()
 
@@ -85,6 +97,14 @@ class HttpContractTests(unittest.TestCase):
         token = self._token() if token == "default" else token
         if token:
             headers["Authorization"] = f"Bearer {token}"
+        context_paths = ("/inventory-availability", "/order-consequences/", "/provisioning-operations")
+        if any(path.startswith(prefix) for prefix in context_paths):
+            context_id = str(uuid.uuid4())
+            self.contexts[context_id] = (token, self.tenant)
+            if method == "GET":
+                path += ("&" if "?" in path else "?") + "context_id=" + context_id
+            elif isinstance(data, dict) and "control_plane_authority" in data:
+                data = dict(data, context_id=context_id)
         request = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", method=method, headers=headers,
                                          data=None if data is None else json.dumps(data).encode())
         try:
@@ -155,7 +175,7 @@ class HttpContractTests(unittest.TestCase):
             ("/inventory-availability?sku_id=sku-1&warehouse_id=nope", dict(), 400),
             (f"/inventory-availability?{ok}", dict(token=None), 401),
             (f"/inventory-availability?{ok}", dict(token=self._token(scope="erp:integrate")), 403),
-            (f"/inventory-availability?{ok}", dict(token=self._token(tenant=None)), 403),
+            (f"/inventory-availability?{ok}", dict(token=self._token(tenant=None)), 404),
         ]
         for path, kwargs, expected in cases:
             with self.subTest(path=path, expected=expected):

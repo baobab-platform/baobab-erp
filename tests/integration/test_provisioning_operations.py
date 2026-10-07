@@ -64,7 +64,7 @@ class ProvisioningOperationTests(unittest.TestCase):
 
     def request(self, **overrides):
         document = {
-            "tenant_id": self.tenant, "legal_entity_ids": [self.entity], "requested_countries": ["ZA"],
+            "tenant_id": self.tenant, "context_id": str(uuid.uuid4()), "legal_entity_ids": [self.entity], "requested_countries": ["ZA"],
             "functional_currencies": ["ZAR"],
             "control_plane_authority": {
                 "tenant_provisioning_id": self.body["tenant_provisioning_id"], "plan_id": self.body["plan_id"],
@@ -91,7 +91,7 @@ class ProvisioningOperationTests(unittest.TestCase):
         got_status, got = self.get(body["operation_id"])
         self.assertEqual((got_status, got["operation_id"], got["state"]), (200, body["operation_id"], "accepted"))
 
-    def test_the_same_request_replays_the_original_operation(self):
+    def test_a_fresh_context_replays_the_original_operation(self):
         first = self.post()[1]
         status, again, _ = self.post()
         self.assertEqual((status, again["operation_id"]), (202, first["operation_id"]))
@@ -145,7 +145,7 @@ class ProvisioningOperationTests(unittest.TestCase):
         self.assertEqual((status, body["code"]), (409, "ERP_CONFLICT"))
         self.assertIn("baseline", body["detail"].lower())
 
-    def test_the_token_tenant_is_the_only_tenant_authority(self):
+    def test_the_validated_context_tenant_is_the_only_tenant_authority(self):
         status, body, _ = self.post(tenant="tn_01k4someoneelse")
         self.assertEqual(status, 403)
         self.assertEqual(self.control_plane.calls, [])

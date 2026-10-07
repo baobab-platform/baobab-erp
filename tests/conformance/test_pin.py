@@ -8,6 +8,10 @@ from events import registry
 # Contracts the ERP implementation reads or depends on. Every one must be in contracts.lock.yaml so a Shared
 # change to it is reported as drift and the pin cannot silently move under the code.
 CODE_DEPENDS_ON = {
+    "contracts/control-plane/v1/openapi.yaml",
+    "contracts/control-plane/v1/platform-context.schema.json",
+    "contracts/control-plane/v1/market.schema.json",
+    "contracts/erp/v1/provisioning-request.schema.json",
     "contracts/erp/v1/openapi.yaml",
     "contracts/erp/v1/asyncapi.yaml",
     "contracts/erp/v1/mapping.schema.json",

@@ -45,8 +45,20 @@ class BoundaryApiTests(unittest.TestCase):
         cls.private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         from application.server import Config, make_handler
 
+        cls.config = Config()
+        cls.contexts = {}
+
+        class Validator:
+            def validate(self, *, context_id, subject_token, correlation_id):
+                from security.platform_context import ContextRejected
+                authority = cls.contexts.get(context_id)
+                if authority is None or authority[0] != subject_token:
+                    raise ContextRejected()
+                return authority[1]
+
+        cls.config.context_validator = Validator()
         cls.server = ThreadingHTTPServer(
-            ("127.0.0.1", 0), make_handler(Config(), key_resolver=_Key(cls.private_key.public_key()))
+            ("127.0.0.1", 0), make_handler(cls.config, key_resolver=_Key(cls.private_key.public_key()))
         )
         cls.port = cls.server.server_address[1]
         Thread(target=cls.server.serve_forever, daemon=True).start()
@@ -83,6 +95,14 @@ class BoundaryApiTests(unittest.TestCase):
         h = dict(headers or {})
         if token:
             h["Authorization"] = f"Bearer {token}"
+        context_paths = ("/inventory-availability", "/order-consequences/", "/provisioning-operations")
+        if any(path.startswith(prefix) for prefix in context_paths):
+            context_id = str(uuid.uuid4())
+            self.contexts[context_id] = (token, self.tenant)
+            if method == "GET":
+                path += ("&" if "?" in path else "?") + "context_id=" + context_id
+            elif isinstance(data, dict) and "control_plane_authority" in data:
+                data = dict(data, context_id=context_id)
         request = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", method=method, headers=h,
                                          data=None if data is None else json.dumps(data).encode())
         try:
@@ -240,11 +260,16 @@ class BoundaryApiTests(unittest.TestCase):
         self.assertProblem(*self._call("POST", "/provisioning-operations", token=self._token(scope="erp:provision"),
                                        headers=key, data={"tenant_id": self.tenant}), 400, "ERP_INVALID_REQUEST")
         self.assertProblem(*self._call("POST", "/provisioning-operations", token=self._token(scope="erp:provision"),
-                                       headers=key, data=self._provisioning_request(self.other)), 403, "ERP_FORBIDDEN")
+                                       headers=key, data=self._provisioning_request(self.other)), 403, "ERP_CONTEXT_REJECTED")
         self.assertProblem(*self._call("POST", "/provisioning-operations", token=self._token(scope="erp:read"),
                                        headers=key, data={}), 403, "ERP_FORBIDDEN")
-        self.assertProblem(*self._call("GET", f"/provisioning-operations/{uuid.uuid4()}"), 404, "ERP_RESOURCE_NOT_FOUND")
-        self.assertProblem(*self._call("GET", "/provisioning-operations/op_nope"), 400, "ERP_INVALID_REQUEST")
+        # Following an operation is part of provisioning (Shared erp/v1 1.1.1): erp:provision, never erp:read.
+        provisioner = self._token(scope="erp:provision")
+        self.assertProblem(*self._call("GET", f"/provisioning-operations/{uuid.uuid4()}", token=provisioner),
+                           404, "ERP_RESOURCE_NOT_FOUND")
+        self.assertProblem(*self._call("GET", "/provisioning-operations/op_nope", token=provisioner), 400, "ERP_INVALID_REQUEST")
+        self.assertProblem(*self._call("GET", f"/provisioning-operations/{uuid.uuid4()}", token=self._token(scope="erp:read")),
+                           403, "ERP_FORBIDDEN")
 
     def test_provisioning_is_unavailable_until_control_plane_is_configured(self):
         valid = self._provisioning_request(self.tenant)
@@ -260,3 +285,4 @@ class BoundaryApiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
