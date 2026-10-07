@@ -64,6 +64,11 @@ class _Fixture(unittest.TestCase):
                 {self.entity: NativePlacement("Zuribeans_ZA", NativeClientMode.DEDICATED_CLIENT)}),
             market_configuration=MARKETS, target_environment="production", now=lambda: NOW)
 
+    def fresh_key(self):
+        """A distinct Idempotency-Key per call, low-entropy on purpose so secret scanning does not mistake it for a credential."""
+        self._keys = getattr(self, "_keys", 0) + 1
+        return f"idem-case-{self._keys:03d}-" + "0" * 12
+
     def _rollback(self):
         self.connection.rollback()
         self.connection.close()
@@ -143,13 +148,13 @@ class ProvisioningOperationTests(_Fixture):
                               ("tenant_provisioning_id", "tp_0199a1b2c3d47e8f9a0b1c2d3e4f5a6c")):
             with self.subTest(member):
                 authority = dict(self.request()["control_plane_authority"], **{member: wrong})
-                status, body, _ = self.post(self.request(control_plane_authority=authority), key=f"idem-{member}-0123456789")
+                status, body, _ = self.post(self.request(control_plane_authority=authority), key=self.fresh_key())
                 self.assertEqual((status, body["code"]), (409, "PLAN_AUTHORITY_MISMATCH"))
 
     def test_requested_countries_and_currencies_are_intent_not_authority(self):
         for field, value in (("requested_countries", ["UG"]), ("functional_currencies", ["USD"])):
             with self.subTest(field):
-                status, body, _ = self.post(self.request(**{field: value}), key=f"idem-{field}-0123456789")
+                status, body, _ = self.post(self.request(**{field: value}), key=self.fresh_key())
                 self.assertEqual((status, body["code"]), (409, "PLAN_AUTHORITY_MISMATCH"))
 
     def test_no_executable_approved_plan_is_a_conflict(self):
@@ -375,17 +380,17 @@ class FinanceBaselineTests(_Fixture):
                  "another start date": dict(reference, effective_from="2026-09-30")}
         for name, bad in wrong.items():
             with self.subTest(name):
-                status, body, _ = self.post(self.request(finance_baselines=[bad]), key=f"idem-{name.replace(' ', '-')}-0123456789")
+                status, body, _ = self.post(self.request(finance_baselines=[bad]), key=self.fresh_key())
                 self.assertEqual((status, body["code"]), (409, "FINANCE_BASELINE_MISMATCH"))
         # Nothing was written for any of them.
-        status, accepted, _ = self.post(key="idem-after-0123456789")
+        status, accepted, _ = self.post(key=self.fresh_key())
         self.assertEqual(status, 202)
 
     def test_the_references_must_be_exactly_one_per_requested_legal_entity(self):
         other = dict(reference_of(self.baseline), legal_entity_id="OTHER-ZA", baseline_id=baseline_id_for("OTHER-ZA"))
         for name, refs in {"an extra reference": [reference_of(self.baseline), other], "a reference for another entity": [other]}.items():
             with self.subTest(name):
-                status, body, _ = self.post(self.request(finance_baselines=refs), key=f"idem-{name.replace(' ', '-')}-0123456789")
+                status, body, _ = self.post(self.request(finance_baselines=refs), key=self.fresh_key())
                 self.assertEqual((status, body["code"]), (409, "FINANCE_BASELINE_MISMATCH"))
 
     def test_a_real_baseline_for_an_entity_that_was_not_requested_or_a_missing_one_is_refused(self):
@@ -403,10 +408,10 @@ class FinanceBaselineTests(_Fixture):
                 other: NativePlacement("Zuribeans_ZB", NativeClientMode.DEDICATED_CLIENT)}),
             market_configuration=MARKETS, target_environment="production", now=lambda: NOW)
         both = [reference_of(self.baseline), reference_of(other_baseline)]
-        status, body, _ = self.post(self.request(finance_baselines=both), key="idem-extra-ref-0123456789")
+        status, body, _ = self.post(self.request(finance_baselines=both), key=self.fresh_key())
         self.assertEqual((status, body["code"]), (409, "FINANCE_BASELINE_MISMATCH"))
         status, body, _ = self.post(self.request(legal_entity_ids=[self.entity, other], finance_baselines=[both[0]]),
-                                    key="idem-missing-ref-0123456789")
+                                    key=self.fresh_key())
         self.assertEqual((status, body["code"]), (409, "FINANCE_BASELINE_MISMATCH"))
 
     def test_a_reference_must_name_the_baseline_ERP_owns(self):
@@ -423,14 +428,14 @@ class FinanceBaselineTests(_Fixture):
         v3 = self.record(date(2026, 12, 1))
         for name, version in {"superseded": reference_of(self.baseline), "not yet effective": reference_of(v3)}.items():
             with self.subTest(name):
-                status, body, _ = self.post(self.request(finance_baselines=[version]), key=f"idem-{name.replace(' ', '-')}-0123456789")
+                status, body, _ = self.post(self.request(finance_baselines=[version]), key=self.fresh_key())
                 self.assertEqual((status, body["code"]), (409, "FINANCE_BASELINE_NOT_USABLE"))
         self.baselines.withdraw(legal_entity_id=self.entity, version=2, withdrawn_by="Thandi Nkosi", withdrawn_at=NOW, reason="r",
                                 evidence_reference="FIN-1", now=NOW)
-        status, body, _ = self.post(self.request(finance_baselines=[reference_of(v2)]), key="idem-withdrawn-0123456789")
+        status, body, _ = self.post(self.request(finance_baselines=[reference_of(v2)]), key=self.fresh_key())
         self.assertEqual((status, body["code"]), (409, "FINANCE_BASELINE_NOT_USABLE"))
         # With v2 withdrawn, v1 is in force again and is usable.
-        status, _, _ = self.post(self.request(finance_baselines=[v1]), key="idem-v1-again-0123456789")
+        status, _, _ = self.post(self.request(finance_baselines=[v1]), key=self.fresh_key())
         self.assertEqual(status, 202)
 
     def test_the_currencies_must_be_those_of_the_referenced_baselines(self):
