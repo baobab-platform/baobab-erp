@@ -100,6 +100,17 @@ class ContextBoundaryTests(unittest.TestCase):
             self.assertEqual((status, body["code"]), (403, "ERP_CONTEXT_REJECTED"))
             database.assert_not_called()
 
+    def test_a_malformed_tenant_is_an_invalid_request_not_a_rejected_context(self):
+        # Only a different WELL-FORMED tenant disagrees with the context's authority; anything else is a bad document.
+        with patch("application.server.psycopg.connect") as database:
+            for bad in ("bad", "TN_upper", "tn_" + "a" * 61, "tn_01k4zuribeans\n", ""):
+                with self.subTest(bad):
+                    status, body = self.call("POST", "/provisioning-operations", body_tenant=bad)
+                    self.assertEqual((status, body["code"]), (400, "ERP_INVALID_REQUEST"), body)
+            status, body = self.call("POST", "/provisioning-operations", body_tenant="tn_other123")
+            self.assertEqual((status, body["code"]), (403, "ERP_CONTEXT_REJECTED"))
+            database.assert_not_called()
+
     def test_cp_outage_is_retryable_and_mapping_reads_still_require_token_tenant(self):
         self.rejection = ContextUnavailable()
         with patch("application.server.psycopg.connect") as database:
