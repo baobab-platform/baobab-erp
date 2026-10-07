@@ -58,7 +58,7 @@ import psycopg
 from application import boundary
 from application.health import liveness, readiness
 from application.problem import correlation_id_from, kind_for_status, problem, trace_id_from
-from application.provisioning_operations import MAX_BODY_BYTES, ProvisioningDependencies
+from application.provisioning_operations import MAX_BODY_BYTES, RETRY_AFTER_SECONDS as CONTEXT_RETRY_AFTER_SECONDS, ProvisioningDependencies
 from context.model import ContextResolutionError
 from context.postgres_store import PostgresTenantMappingStore
 from context.resolver import resolve_context, resolve_tenant
@@ -272,9 +272,11 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             correlation_id = supplied or str(uuid.uuid4())
             traceparent_ok, trace_id = trace_id_from(self.headers.get("traceparent"))
 
-            def fail(kind: str, detail: str | None = None, code: str | None = None) -> bool:
+            def fail(kind: str, detail: str | None = None, code: str | None = None,
+                     headers: dict | None = None) -> bool:
                 status, body = problem(kind, correlation_id=correlation_id, trace_id=trace_id, detail=detail, code=code)
-                self._send_json(status, body, content_type="application/problem+json", correlation_id=correlation_id)
+                self._send_json(status, body, content_type="application/problem+json", correlation_id=correlation_id,
+                                headers=headers)
                 return True
 
             try:
@@ -308,9 +310,11 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                     context_id = request_context_id(method, raw_body, split.query)
                 except InvalidContext:
                     return fail("invalid_request", "context_id must be a single UUID")
+                # Every 503 of the contract carries an integer Retry-After (ERP API ServiceUnavailable).
+                retry_later = {"Retry-After": CONTEXT_RETRY_AFTER_SECONDS}
                 validator = getattr(config, "context_validator", None)
                 if validator is None:
-                    return fail("unavailable")
+                    return fail("unavailable", headers=retry_later)
                 try:
                     tenant_id = validator.validate(
                         context_id=context_id,
@@ -319,7 +323,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                 except ContextRejected:
                     return fail("forbidden", code="ERP_CONTEXT_REJECTED")
                 except ContextUnavailable:
-                    return fail("unavailable")
+                    return fail("unavailable", headers=retry_later)
                 if identity.tenant_id is not None and identity.tenant_id != tenant_id:
                     return fail("forbidden", code="ERP_CONTEXT_REJECTED")
                 if method == "POST":

@@ -90,6 +90,27 @@ def validated_tenant(payload, context_id: str, *, now: datetime | None = None) -
     return tenant
 
 
+# What the Control Plane says about the CALLER, by problem code and the status it comes with (control-plane/v1
+# POST /platform-context/validate). Anything else, including a 401 for ERP's own validator token or a 403 for a
+# validator that is not registered, is ERP's configuration or an outage, never the caller's fault: it must not be
+# reported to every caller as a rejected context, so it stays unavailable (503) and retryable.
+_CALLER_REJECTIONS = {
+    ("SUBJECT_TOKEN_INVALID", 401), ("CONTEXT_NOT_FOUND", 404), ("TENANT_CONTEXT_MISMATCH", 403),
+    ("TENANT_NOT_ACTIVE", 403), ("VALIDATION_FAILED", 400),
+}
+
+
+def _is_caller_rejection(exc: urllib.error.HTTPError) -> bool:
+    try:
+        raw = exc.read(65537)
+        if len(raw) > 65536:
+            return False
+        code = json.loads(raw).get("code")
+    except (OSError, ValueError, AttributeError, TypeError):
+        return False
+    return isinstance(code, str) and (code, exc.code) in _CALLER_REJECTIONS
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -124,7 +145,7 @@ class HttpContextValidator:
                     raise ContextUnavailable("CP validation response too large")
                 payload = json.loads(raw)
         except urllib.error.HTTPError as exc:
-            if exc.code in (400, 401, 403, 404, 409, 410):
+            if _is_caller_rejection(exc):
                 raise ContextRejected() from None
             raise ContextUnavailable("CP validation unavailable") from None
         except (OSError, ValueError, urllib.error.URLError) as exc:

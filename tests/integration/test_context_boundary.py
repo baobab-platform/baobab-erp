@@ -38,17 +38,18 @@ class ContextBoundaryTests(unittest.TestCase):
                     raise test.rejection
                 return TENANT
 
+        self.validator = Validator()
         self.config = SimpleNamespace(
             database_url="never-connect", workload_oidc_issuer=ISSUER, workload_oidc_audience="baobab-erp",
-            provisioning=None, context_validator=Validator())
+            provisioning=None, context_validator=self.validator)
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(self.config, key_resolver=Keys()))
         Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
 
-    def token(self, tenant=None):
+    def token(self, tenant=None, scope="erp:read erp:provision"):
         claims = {"iss": ISSUER, "aud": "baobab-erp", "sub": "svc", "azp": "svc", "actor_type": "workload",
-                  "scope": "erp:read erp:provision", "exp": int(time.time()) + 300}
+                  "scope": scope, "exp": int(time.time()) + 300}
         if tenant is not None:
             claims["tenant_id"] = tenant
         return jwt.encode(claims, self.key, algorithm="RS256")
@@ -65,8 +66,10 @@ class ContextBoundaryTests(unittest.TestCase):
             headers={"Authorization": "Bearer " + token, "Idempotency-Key": "idem-0123456789abcdef"})
         try:
             with urllib.request.urlopen(request) as response:
+                self.last_headers = response.headers
                 return response.status, json.loads(response.read())
         except urllib.error.HTTPError as exc:
+            self.last_headers = exc.headers
             return exc.code, json.loads(exc.read())
 
     def test_rejected_authority_blocks_all_four_operations_before_database_or_replay_reads(self):
@@ -103,6 +106,46 @@ class ContextBoundaryTests(unittest.TestCase):
             status, body = self.call("GET", "/inventory-availability")
             self.assertEqual((status, body["retryable"]), (503, True))
             self.assertEqual(self.call("GET", "/mappings", context=None)[0], 403)
+            database.assert_not_called()
+
+    def _control_plane_unavailable(self):
+        self.config.context_validator = self.validator  # configured again; the Control Plane is what is down
+        self.rejection = ContextUnavailable()
+
+    PATHS = [("POST", "/provisioning-operations"), ("GET", "/provisioning-operations/" + CONTEXT),
+             ("GET", "/order-consequences/order-1"), ("GET", "/inventory-availability")]
+
+    def test_every_unavailable_answer_on_the_context_path_carries_retry_after(self):
+        # Shared erp/v1: the ServiceUnavailable response declares an integer Retry-After header.
+        with patch("application.server.psycopg.connect") as database:
+            for label, arrange in (("validator unconfigured", lambda: setattr(self.config, "context_validator", None)),
+                                   ("control plane unavailable", self._control_plane_unavailable)):
+                arrange()
+                for method, path in self.PATHS:
+                    with self.subTest(f"{label}: {path}"):
+                        status, body = self.call(method, path)
+                        self.assertEqual((status, body["code"]), (503, "ERP_SERVICE_UNAVAILABLE"))
+                        self.assertTrue(self.last_headers["Retry-After"].isdigit(), self.last_headers)
+            database.assert_not_called()
+
+    def test_scope_is_checked_before_the_control_plane_is_asked(self):
+        # Shared erp/v1 1.1.1: following a provisioning operation is erp:provision; erp:read is for business-data reads.
+        self.rejection = ContextRejected()
+        reader, provisioner = self.token(scope="erp:read"), self.token(scope="erp:provision")
+        with patch("application.server.psycopg.connect") as database:
+            status, body = self.call("GET", "/provisioning-operations/" + CONTEXT, token=reader)
+            self.assertEqual((status, body["code"]), (403, "ERP_FORBIDDEN"))
+            status, body = self.call("GET", "/order-consequences/order-1", token=provisioner)
+            self.assertEqual((status, body["code"]), (403, "ERP_FORBIDDEN"))
+            status, body = self.call("GET", "/inventory-availability", token=provisioner)
+            self.assertEqual((status, body["code"]), (403, "ERP_FORBIDDEN"))
+            self.assertEqual(self.calls, [], "a caller without the scope must not cause a Control Plane call")
+            # With the right scope each reaches validation, which here refuses.
+            for path, token in (("/provisioning-operations/" + CONTEXT, provisioner), ("/order-consequences/order-1", reader),
+                                ("/inventory-availability", reader)):
+                status, body = self.call("GET", path, token=token)
+                self.assertEqual((status, body["code"]), (403, "ERP_CONTEXT_REJECTED"), path)
+            self.assertEqual(len(self.calls), 3)
             database.assert_not_called()
 
 
