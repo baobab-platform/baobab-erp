@@ -1,4 +1,5 @@
 """CP delegation cannot become local tenant authority or leak caller credentials."""
+import http.client
 import io
 import json
 import unittest
@@ -93,6 +94,40 @@ class ContextTests(unittest.TestCase):
                              (500, "CONTEXT_NOT_FOUND"), (200, "CONTEXT_NOT_FOUND")):
             with self.subTest(status=status, code=code), self.assertRaises(ContextUnavailable):
                 self._validate(self._answer(status, {"code": code}))
+
+    def test_a_body_the_control_plane_cuts_short_is_unavailable_not_an_unhandled_error(self):
+        # http.client.IncompleteRead is an HTTPException, neither an OSError nor a ValueError.
+        class TruncatedError(urllib.error.HTTPError):
+            def read(self, *_):
+                raise http.client.IncompleteRead(b'{"code":"CONTEXT_', 40)
+
+        class TruncatedErrorOpener:
+            def open(self, request, *, timeout):
+                raise TruncatedError(request.full_url, 404, "x", {}, None)
+
+        class TruncatedSuccess:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def read(self, *_):
+                raise http.client.IncompleteRead(b'{"context_id":', 200)
+
+        class TruncatedSuccessOpener:
+            def open(self, request, *, timeout):
+                return TruncatedSuccess()
+
+        class BadStatusOpener:
+            def open(self, request, *, timeout):
+                raise http.client.BadStatusLine("garbage")
+
+        for opener in (TruncatedErrorOpener(), TruncatedSuccessOpener(), BadStatusOpener()):
+            with self.subTest(type(opener).__name__), self.assertRaises(ContextUnavailable):
+                self._validate(HttpContextValidator("https://cp.example.invalid", lambda: "erp-token", opener=opener))
 
     def test_an_unreadable_or_oversized_error_body_is_unavailable(self):
         class Unreadable(urllib.error.HTTPError):

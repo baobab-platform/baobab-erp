@@ -6,6 +6,7 @@ checks ownership, audience, lifecycle and expiry. No local authority fallback.
 """
 from __future__ import annotations
 
+import http.client
 import json
 import re
 import urllib.error
@@ -106,7 +107,8 @@ def _is_caller_rejection(exc: urllib.error.HTTPError) -> bool:
         if len(raw) > 65536:
             return False
         code = json.loads(raw).get("code")
-    except (OSError, ValueError, AttributeError, TypeError):
+    except (OSError, ValueError, AttributeError, TypeError, http.client.HTTPException):
+        # http.client.HTTPException covers IncompleteRead: a Control Plane that cuts the body short says nothing about the caller.
         return False
     return isinstance(code, str) and (code, exc.code) in _CALLER_REJECTIONS
 
@@ -148,7 +150,7 @@ class HttpContextValidator:
             if _is_caller_rejection(exc):
                 raise ContextRejected() from None
             raise ContextUnavailable("CP validation unavailable") from None
-        except (OSError, ValueError, urllib.error.URLError) as exc:
+        except (OSError, ValueError, urllib.error.URLError, http.client.HTTPException) as exc:
             raise ContextUnavailable("CP validation unavailable") from exc
         return validated_tenant(payload, context_id)
 
