@@ -21,6 +21,7 @@ from application.inventory_availability import get_inventory_availability
 from application.provisioning_operations import get_provisioning_operation, request_provisioning
 from mapping import identifiers
 from mapping.model import CANONICAL_OWNERS
+from security.platform_context import RUNTIME, TENANT_PROVISIONING
 
 _RESOURCE_TYPE = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
 _RESOURCE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
@@ -40,6 +41,10 @@ class BoundaryRoute:
     handler: Callable[..., tuple[int, dict]]
     argument: str | None = None
     context_required: bool = False
+    # What the Control Plane context must be authority FOR (control-plane/v1 authority_purpose; Shared erp/v1 1.2.0).
+    # Provisioning acts for a tenant that is not yet ACTIVE, so both provisioning operations accept only a
+    # TENANT_PROVISIONING context bound to the approved plan; every business-data read accepts only a RUNTIME context.
+    context_purpose: str | None = None
 
 
 def match(method: str, path: str) -> BoundaryRoute | None:
@@ -52,17 +57,18 @@ def match(method: str, path: str) -> BoundaryRoute | None:
         if found:
             return BoundaryRoute(SCOPE_READ, get_mapping, found.group(1))
     if method == "POST" and path == "/provisioning-operations":
-        return BoundaryRoute(SCOPE_PROVISION, request_provisioning, context_required=True)
+        return BoundaryRoute(SCOPE_PROVISION, request_provisioning, context_required=True, context_purpose=TENANT_PROVISIONING)
     if method == "GET" and path == "/inventory-availability":
-        return BoundaryRoute(SCOPE_READ, get_inventory_availability, context_required=True)
+        return BoundaryRoute(SCOPE_READ, get_inventory_availability, context_required=True, context_purpose=RUNTIME)
     if method == "GET":
         consequence = _ORDER_CONSEQUENCE.fullmatch(path)
         if consequence:
-            return BoundaryRoute(SCOPE_READ, get_order_consequence, consequence.group(1), context_required=True)
+            return BoundaryRoute(SCOPE_READ, get_order_consequence, consequence.group(1), context_required=True, context_purpose=RUNTIME)
     if method == "GET":
         operation = _PROVISIONING_OPERATION.fullmatch(path)
         if operation:
-            return BoundaryRoute(SCOPE_PROVISION, get_provisioning_operation, operation.group(1), context_required=True)
+            return BoundaryRoute(SCOPE_PROVISION, get_provisioning_operation, operation.group(1), context_required=True,
+                                 context_purpose=TENANT_PROVISIONING)
     if method in ("GET", "POST") and any(pattern.fullmatch(path) for pattern in _NOT_IMPLEMENTED):
         return BoundaryRoute(SCOPE_READ if method == "GET" else "erp:provision", not_implemented)
     return None

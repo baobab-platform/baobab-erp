@@ -49,10 +49,12 @@ class HttpContractTests(unittest.TestCase):
         class Validator:
             def validate(self, *, context_id, subject_token, correlation_id):
                 from security.platform_context import ContextRejected
+                from security.platform_context import ProvisioningAuthority, RUNTIME, TENANT_PROVISIONING, ValidatedContext
                 authority = cls.contexts.get(context_id)
                 if authority is None or authority[0] != subject_token:
                     raise ContextRejected()
-                return authority[1]
+                token, tenant, purpose, plan = authority
+                return ValidatedContext(tenant, purpose, ProvisioningAuthority(*plan) if plan else None)
 
         cls.config.context_validator = Validator()
         cls.server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(cls.config, key_resolver=_Key(cls.key.public_key())))
@@ -92,6 +94,15 @@ class HttpContractTests(unittest.TestCase):
             claims["tenant_id"] = tenant
         return jwt.encode(claims, self.key, algorithm="RS256")
 
+    def plan_for(self, method, path, data):
+        """The plan tuple of the context a caller of this provisioning operation holds: the plan a POST names, and for a GET
+        the plan the operation was accepted under (when this harness created it), else one that matches nothing."""
+        if isinstance(data, dict) and isinstance(data.get("control_plane_authority"), dict):
+            a = data["control_plane_authority"]
+            return (a.get("tenant_provisioning_id"), a.get("plan_id"), a.get("plan_version"), a.get("plan_digest"))
+        return getattr(self, "operation_plans", {}).get(path.rsplit("/", 1)[-1].split("?")[0],
+                                                       ("tp_unrelated", "plan_unrelated", 1, "sha256:" + "0" * 64))
+
     def _call(self, method, path, token="default", data=None, headers=None):
         headers = dict(headers or {})
         token = self._token() if token == "default" else token
@@ -100,7 +111,13 @@ class HttpContractTests(unittest.TestCase):
         context_paths = ("/inventory-availability", "/order-consequences/", "/provisioning-operations")
         if any(path.startswith(prefix) for prefix in context_paths):
             context_id = str(uuid.uuid4())
-            self.contexts[context_id] = (token, self.tenant)
+            # What a Control Plane context for this operation is authority FOR: provisioning acts before activation under
+            # the approved plan; business-data reads act for an ACTIVE tenant.
+            if path.startswith("/provisioning-operations"):
+                plan = self.plan_for(method, path, data)
+                self.contexts[context_id] = (token, self.tenant, "TENANT_PROVISIONING", plan)
+            else:
+                self.contexts[context_id] = (token, self.tenant, "RUNTIME", None)
             if method == "GET":
                 path += ("&" if "?" in path else "?") + "context_id=" + context_id
             elif isinstance(data, dict) and "control_plane_authority" in data:

@@ -27,6 +27,12 @@ class CommandRecord:
     revision: int
     updated_at: datetime
     failure_code: str | None = None
+    # The approved plan the command was accepted under (Shared erp/v1 control_plane_authority). A later read of the operation
+    # must be made under a Control Plane context bound to exactly this plan.
+    tenant_provisioning_id: str | None = None
+    plan_id: str | None = None
+    plan_version: int | None = None
+    plan_digest: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,13 +42,15 @@ class PlannedEntity:
     plan: ProvisioningPlan
 
 
-_COLUMNS = "operation_id, tenant_id, request_fingerprint, legal_entity_ids, state, revision, updated_at, failure_code"
+_COLUMNS = ("operation_id, tenant_id, request_fingerprint, legal_entity_ids, state, revision, updated_at, failure_code, "
+            "tenant_provisioning_id, plan_id, plan_version, plan_digest")
 
 
 def _record(row) -> CommandRecord:
     return CommandRecord(operation_id=str(row[0]), tenant_id=row[1], request_fingerprint=row[2],
                          legal_entity_ids=tuple(row[3]), state=row[4], revision=row[5], updated_at=row[6],
-                         failure_code=row[7])
+                         failure_code=row[7], tenant_provisioning_id=row[8], plan_id=row[9], plan_version=row[10],
+                         plan_digest=row[11])
 
 
 class PostgresProvisioningCommandStore:

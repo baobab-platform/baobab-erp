@@ -13,6 +13,7 @@ from provisioning.control_plane_client import AssignmentNotEstablished, ControlP
 from provisioning.cp_contract import assignment_from_payload
 from provisioning.finance_baseline_store import PostgresFinanceBaselineStore
 from provisioning.legal_entity_policy import ConfiguredNativePlacementPolicy, NativeClientMode, NativePlacement
+from security.platform_context import ProvisioningAuthority
 
 # CI discovers this directory with only modules/ on the path; the assignment fixtures live with the unit tests.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "unit"))
@@ -79,10 +80,18 @@ class ProvisioningOperationTests(unittest.TestCase):
             connection=self.connection, provisioning=self.deps if deps == "default" else deps,
             correlation_id=str(uuid.uuid4()), trace_id=None)
 
-    def get(self, operation_id, tenant=None):
+    def authority(self, **overrides):
+        """The provisioning context the Control Plane vouches for: bound to the plan this fixture's request names."""
+        values = {"tenant_provisioning_id": self.body["tenant_provisioning_id"], "plan_id": self.body["plan_id"],
+                  "plan_version": self.body["plan_version"], "plan_digest": DIGEST}
+        values.update(overrides)
+        return ProvisioningAuthority(**values)
+
+    def get(self, operation_id, tenant=None, authority="bound"):
         return get_provisioning_operation(
             tenant_id=tenant or self.tenant, argument=operation_id, connection=self.connection,
-            correlation_id=str(uuid.uuid4()), trace_id=None)
+            correlation_id=str(uuid.uuid4()), trace_id=None,
+            context_authority=self.authority() if authority == "bound" else authority)
 
     def test_an_exactly_matching_request_is_accepted_and_readable(self):
         status, body, _ = self.post()
@@ -90,6 +99,22 @@ class ProvisioningOperationTests(unittest.TestCase):
         uuid.UUID(body["operation_id"])
         got_status, got = self.get(body["operation_id"])
         self.assertEqual((got_status, got["operation_id"], got["state"]), (200, body["operation_id"], "accepted"))
+
+    def test_an_operation_is_readable_only_under_a_context_bound_to_the_plan_it_was_accepted_under(self):
+        operation = self.post()[1]["operation_id"]
+        for name, other in {"provisioning": "tp_0199a1b2c3d4ffff", "plan id": "plan_0199a1b2c3d4ffff", "plan version": 99,
+                            "plan digest": "sha256:" + "ee" * 32}.items():
+            key = {"provisioning": "tenant_provisioning_id", "plan id": "plan_id", "plan version": "plan_version",
+                   "plan digest": "plan_digest"}[name]
+            with self.subTest(name):
+                status, body = self.get(operation, authority=self.authority(**{key: other}))
+                self.assertEqual((status, body["code"]), (403, "ERP_CONTEXT_REJECTED"))
+        # A context that carries no plan (a RUNTIME one) is refused the same way, however it reached here.
+        status, body = self.get(operation, authority=None)
+        self.assertEqual((status, body["code"]), (403, "ERP_CONTEXT_REJECTED"))
+        # Absence stays absence: another tenant's operation and an unknown one are 404 whatever plan the context carries.
+        self.assertEqual(self.get(operation, tenant="tn_01k4someoneelse")[0], 404)
+        self.assertEqual(self.get(str(uuid.uuid4()), authority=None)[0], 404)
 
     def test_a_fresh_context_replays_the_original_operation(self):
         first = self.post()[1]
