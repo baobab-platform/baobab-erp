@@ -62,6 +62,7 @@ class PostgresProvisioningStore:
                    WHERE provisioning_id=%s""",
                 (plan.desired_state_digest, json.dumps(payload), plan.provisioning_id),
             )
+        self._project(plan.provisioning_id)
         self._connection.commit()
 
     def mark_step(self, provisioning_id: str, step_key: str, status: str, result: dict[str, Any]) -> None:
@@ -91,4 +92,13 @@ class PostgresProvisioningStore:
                    SET status=%s, last_error=%s, updated_at=now() WHERE provisioning_id=%s""",
                 (status.value, error, provisioning_id),
             )
+        self._project(provisioning_id)
         self._connection.commit()
+
+    def _project(self, provisioning_id: str) -> None:
+        """A change to an entity's status is a change to the command that owns it. The command's new state and the event that
+        announces it are written in the same transaction as the status, so they commit together or not at all."""
+        # Imported here so the ProvisioningStore protocol and the service that uses it stay importable without a database driver.
+        from provisioning.command_store import PostgresProvisioningCommandStore
+
+        PostgresProvisioningCommandStore(self._connection).project(provisioning_id)

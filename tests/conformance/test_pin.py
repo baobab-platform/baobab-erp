@@ -19,6 +19,8 @@ CODE_DEPENDS_ON = {
     "contracts/erp/v1/system-of-record.yaml",
     "contracts/errors/v1/problem-details.schema.json",
     "contracts/events/v1/envelope.schema.json",
+    "contracts/events/v1/signed-delivery.schema.json",
+    "contracts/control-plane/v1/event-ingress.yaml",
     "contracts/events/v1/event-registry.yaml",
     "contracts/events/v1/compatibility/legacy-trade-erp-event.json",
     "contracts/idempotency/v1/policy.yaml",
