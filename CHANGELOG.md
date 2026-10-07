@@ -12,6 +12,14 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
   owner, reason, removal condition and build guards. `jackson-datatype-joda` stays at
   2.15.4 because its 2.18 line needs joda-time 2.12 and the image ships 2.10.14.
 
+### Fixed
+
+- The dispatcher's `outbox.dispatch` report line no longer lets the backlog overwrite the pass counts. The store's cumulative
+  `delivered` shadowed the pass's own, so `delivered` reported every event ever delivered to the destination rather than what
+  that run delivered. `delivered`, `retried` and `dead_lettered` are now always this pass's counts; the store's total is reported
+  as `delivered_total`. Found by the Control Plane's cross-repository convergence test (baobab-cp FB-04e). **Alerts or dashboards
+  that read the old `delivered` as a backlog total must read `delivered_total`.**
+
 ### Added
 
 - `provisioning.changed` is emitted and delivered (FB-04b; Shared control-plane 1.36.0, erp AsyncAPI 1.1.0, re-pinned `9e6e407`).

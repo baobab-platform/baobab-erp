@@ -29,8 +29,8 @@ Configure one or both; at least one is required. The Control Plane group is all-
 | Legacy webhook | every other canonical event | `BAOBAB_WEBHOOK_URL`, `BAOBAB_EVENT_SIGNING_SECRET` |
 
 A type whose destination is not configured waits in the outbox (pending, not failing) until it is. Each run prints one JSON line per
-destination (`event: outbox.dispatch`) with `delivered`, `retried`, `dead_lettered` and the backlog (`pending`, `retry`,
-`dead_letter`, `delivered`, `due`, `oldest_undelivered_seconds`): alert on any `dead_letter` and on a growing
+destination (`event: outbox.dispatch`) with what this pass did (`delivered`, `retried`, `dead_lettered`) and the backlog after it (`pending`, `retry`,
+`dead_letter`, `delivered_total` (every event ever delivered to the destination, not this pass's count), `due`, `oldest_undelivered_seconds`): alert on any `dead_letter` and on a growing
 `oldest_undelivered_seconds`. The delivery key is provisioned by an operator, never committed; rotate it by adding the new key to the
 Control Plane first, switching `BAOBAB_CP_EVENT_KEY_ID`/`BAOBAB_CP_EVENT_SECRET_B64`, then retiring the old key after the Control
 Plane's replay window (300 seconds) and the longest retry horizon (72 hours) have passed.

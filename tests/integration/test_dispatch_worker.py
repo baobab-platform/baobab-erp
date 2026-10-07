@@ -148,6 +148,20 @@ class DispatchWorkerTests(unittest.TestCase):
         self.assertGreaterEqual(report["dead_letter"], 1)
         self.assertEqual(self.status_of(event), "dead_letter")
 
+    def test_the_report_counts_this_pass_and_names_the_backlog_separately(self):
+        first = self.record("com.baobab-platform.erp.provisioning.changed.v1", "provisioning:p7")
+        before, = self.run_worker(**self.signed_env())
+        self.assertEqual((before["delivered"], self.status_of(first)), (1, "delivered"))
+        second = self.record("com.baobab-platform.erp.provisioning.changed.v1", "provisioning:p7")
+        report, = self.run_worker(**self.signed_env())
+        # This pass delivered one event; two have been delivered in all. Neither number may stand in for the other.
+        self.assertEqual((report["delivered"], report["retried"], report["dead_lettered"]), (1, 0, 0))
+        self.assertEqual(report["delivered_total"], before["delivered_total"] + 1)
+        self.assertGreater(report["delivered_total"], report["delivered"])
+        self.assertEqual(self.status_of(second), "delivered")
+        idle, = self.run_worker(**self.signed_env())
+        self.assertEqual((idle["delivered"], idle["delivered_total"]), (0, report["delivered_total"]))
+
     def test_a_transient_failure_is_retried_later_not_dead_lettered(self):
         event = self.record("com.baobab-platform.erp.provisioning.changed.v1", "provisioning:p3")
         _Ingress.status = 503
