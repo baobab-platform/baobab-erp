@@ -23,19 +23,25 @@ class OutboxStore(Protocol):
     boundary, not with this module.
     """
 
-    def record_event(self, event: CloudEvent) -> None: ...
+    def record_event(self, event: CloudEvent) -> None:
+        """Records a canonical event for delivery, in the caller's transaction."""
 
-    def pending(self, limit: int = 100, **selection) -> list[OutboxRecord]: ...
+    def pending(self, limit: int = 100, **selection) -> list[OutboxRecord]:
+        """Events due for delivery, optionally narrowed by ``types`` / ``exclude_types``."""
 
-    def mark_delivered(self, name: str) -> None: ...
+    def mark_delivered(self, name: str) -> None:
+        """The destination durably accepted the event."""
 
-    def mark_retry(self, name: str, attempts: int, error: str, delay_seconds: int = 0) -> None: ...
+    def mark_retry(self, name: str, attempts: int, error: str, delay_seconds: int = 0) -> None:
+        """Try again once ``delay_seconds`` have passed."""
 
-    def mark_dead_letter(self, name: str, attempts: int, error: str) -> None: ...
+    def mark_dead_letter(self, name: str, attempts: int, error: str) -> None:
+        """Stop trying; the event is for an operator."""
 
 
 class EventTransport(Protocol):
-    def deliver(self, event: CloudEvent) -> None: ...
+    def deliver(self, event: CloudEvent) -> None:
+        """Delivers one event; raises on failure (PermanentDeliveryError when no retry can help)."""
 
 
 class PermanentDeliveryError(Exception):

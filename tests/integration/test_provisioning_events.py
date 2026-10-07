@@ -6,7 +6,6 @@ import json
 import unittest
 import uuid
 
-from events.cloudevent import CloudEvent
 from provisioning import command_events
 from provisioning.command_store import PostgresProvisioningCommandStore
 from provisioning.model import ProvisioningStatus

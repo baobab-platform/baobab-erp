@@ -6,11 +6,11 @@ import io
 import json
 import os
 import unittest
+import unittest.mock
 import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
-from unittest import mock
 
 from application import dispatch_worker
 from events.cloudevent import new_event
@@ -83,7 +83,7 @@ class DispatchWorkerTests(unittest.TestCase):
                      "BAOBAB_WEBHOOK_URL", "BAOBAB_EVENT_SIGNING_SECRET"):
             base[name] = ""
         out = io.StringIO()
-        with mock.patch.dict(os.environ, {**base, **env}), contextlib.redirect_stdout(out):
+        with unittest.mock.patch.dict(os.environ, {**base, **env}), contextlib.redirect_stdout(out):
             dispatch_worker.main()
         return [json.loads(line) for line in out.getvalue().splitlines() if line.strip()]
 

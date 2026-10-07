@@ -7,7 +7,6 @@ import hashlib
 import hmac
 import json
 import unittest
-import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -15,7 +14,6 @@ import yaml
 
 import _shared as shared
 from events import registry
-from events.cloudevent import CloudEvent
 from integration import signed_delivery as sd
 from provisioning import command_events
 
