@@ -36,6 +36,14 @@ CVE-2026-39304
 # cxf-core -- fixed 3.6.12/4.1.7/4.2.2
 CVE-2026-50645
 
+# cxf-core 3.6.5 (org.apache.cxf.cxf-core_3.6.5.jar, CRITICAL) -- fixed only in 4.1.7/4.2.2;
+# the 3.6 line has no fix. Added 2026-10-07 on the programme owner's decision (waiver chosen
+# over removing the bundles or a CXF 4.x swap, which needs jakarta/OSGi compatibility work).
+# Same vendor-bundled jar as above; Baobab does not use iDempiere SOAP (ADR-ERP-004 section 32)
+# and exposes no CXF endpoint of its own. Review trigger: drop this entry when the pinned
+# iDempiere image ships cxf-core >= 4.1.7, or if the CXF bundles are removed.
+CVE-2026-49875
+
 # neethi -- fixed 3.2.2
 CVE-2026-42402
 CVE-2026-42403
