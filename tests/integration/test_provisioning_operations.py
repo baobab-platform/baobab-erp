@@ -350,7 +350,6 @@ class FinanceBaselineTests(_Fixture):
         self.assertEqual((status, body["code"]), (409, "FINANCE_BASELINE_MISMATCH"))
 
     def test_an_unknown_baseline_or_one_outside_the_provisioning_is_absent(self):
-        reference = reference_of(self.baseline)
         self.assertEqual(self.exact(argument="fb_" + "0" * 32)[0], 404)
         self.control_plane.error = AssignmentNotEstablished(404, "LEGAL_ENTITY_NOT_FOUND", None)
         self.assertEqual(self.exact()[0], 404)
