@@ -12,6 +12,16 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
   owner, reason, removal condition and build guards. `jackson-datatype-joda` stays at
   2.15.4 because its 2.18 line needs joda-time 2.12 and the image ships 2.10.14.
 
+### Added
+
+- ERP serves the Finance baseline reference (Shared erp/v1 1.3.0, FB-02): `GET /legal-entities/{legal_entity_id}/effective-finance-baseline`
+  and `GET /finance-baselines/{baseline_id}` (exact `version` and `digest`, never "the latest"), under `erp:provision` and a
+  `TENANT_PROVISIONING` context. `POST /provisioning-operations` now requires `finance_baselines`, re-resolves each reference
+  against ERP's own approved baselines and refuses with `FINANCE_BASELINE_MISMATCH` or `FINANCE_BASELINE_NOT_USABLE` (or
+  `PLAN_AUTHORITY_MISMATCH` for disagreeing currencies) before provisioning anything. Finance can now withdraw its approval of a
+  baseline version (append-only, migration `0017`); the command records the references it was accepted under. Re-pins Shared to
+  `78b4e5e`.
+
 ### Changed
 
 - Replaced the Frappe/ERPNext foundation-stage scaffold with an iDempiere-based

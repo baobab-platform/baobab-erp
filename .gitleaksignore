@@ -27,3 +27,11 @@ c4920c48af20deb860cb8b965346e74aa4c6969b:tests/integration/test_postgres_inbox_s
 3070e1fa4a26d1e928da175bb9b3fa3db56048a7:tests/conformance/test_http_contract.py:generic-api-key:152
 3070e1fa4a26d1e928da175bb9b3fa3db56048a7:tests/integration/test_boundary_api.py:generic-api-key:234
 3070e1fa4a26d1e928da175bb9b3fa3db56048a7:tests/integration/test_boundary_api.py:generic-api-key:247
+#
+# tests/integration/test_provisioning_operations.py lines 381, 409, 430 and 433 of 226a3a2c held synthetic Idempotency-Key
+# test literals that generic-api-key mistook for credentials. They are not secrets; the tests now take a low-entropy
+# generated key. The scan covers full history, so the original commit's four findings are recorded here.
+226a3a2c9c27f9fbc4578f98b26ed99870925f78:tests/integration/test_provisioning_operations.py:generic-api-key:381
+226a3a2c9c27f9fbc4578f98b26ed99870925f78:tests/integration/test_provisioning_operations.py:generic-api-key:409
+226a3a2c9c27f9fbc4578f98b26ed99870925f78:tests/integration/test_provisioning_operations.py:generic-api-key:430
+226a3a2c9c27f9fbc4578f98b26ed99870925f78:tests/integration/test_provisioning_operations.py:generic-api-key:433
