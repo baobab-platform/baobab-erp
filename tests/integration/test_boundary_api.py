@@ -267,6 +267,9 @@ class BoundaryApiTests(unittest.TestCase):
     def _provisioning_request(tenant):
         return {"tenant_id": tenant, "legal_entity_ids": ["ZURIBEANS-ZA"], "requested_countries": ["ZA"],
                 "functional_currencies": ["ZAR"],
+                "finance_baselines": [{"baseline_id": "fb_" + "a" * 32, "legal_entity_id": "ZURIBEANS-ZA", "version": 1,
+                                       "digest": "sha256:" + "c1" * 32, "effective_from": "2026-10-01",
+                                       "authority": {"engine_id": "baobab-erp", "system_of_record": "FINANCE_BASELINE"}}],
                 "control_plane_authority": {"tenant_provisioning_id": "tp_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
                                             "plan_id": "plan_0199a1b2c3d47e8f", "plan_version": 1,
                                             "plan_digest": "sha256:" + "b2" * 32}}
@@ -287,6 +290,15 @@ class BoundaryApiTests(unittest.TestCase):
         self.assertProblem(*self._call("GET", "/provisioning-operations/op_nope", token=provisioner), 400, "ERP_INVALID_REQUEST")
         self.assertProblem(*self._call("GET", f"/provisioning-operations/{uuid.uuid4()}", token=self._token(scope="erp:read")),
                            403, "ERP_FORBIDDEN")
+
+    def test_the_finance_baseline_reads_are_provisioning_not_business_data_reads(self):
+        # Shared erp/v1 1.3.0: resolving a Finance baseline reference is part of provisioning, so erp:provision, never erp:read.
+        reader = self._token(scope="erp:read")
+        digest = "sha256:" + "c1" * 32
+        for path in ("/legal-entities/ZURIBEANS-ZA/effective-finance-baseline",
+                     f"/finance-baselines/fb_{'a' * 32}?version=1&digest={digest}"):
+            with self.subTest(path):
+                self.assertProblem(*self._call("GET", path, token=reader), 403, "ERP_FORBIDDEN")
 
     def test_provisioning_is_unavailable_until_control_plane_is_configured(self):
         valid = self._provisioning_request(self.tenant)

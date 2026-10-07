@@ -93,12 +93,13 @@ class PostgresProvisioningCommandStore:
             cursor.execute(
                 f"""INSERT INTO baobab.erp_provisioning_command
                     (operation_id, tenant_id, idempotency_key, principal, request_fingerprint, tenant_provisioning_id,
-                     plan_id, plan_version, plan_digest, legal_entity_ids)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     plan_id, plan_version, plan_digest, legal_entity_ids, finance_baselines)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                     RETURNING {_COLUMNS}""",
                 (operation_id, command.tenant_id, idempotency_key, principal, fingerprint,
                  authority.tenant_provisioning_id, authority.plan_id, authority.plan_version, authority.plan_digest,
-                 sorted(command.legal_entity_ids)))
+                 sorted(command.legal_entity_ids),
+                 json.dumps([ref.as_contract() for ref in sorted(command.finance_baselines, key=lambda r: r.legal_entity_id)])))
             record = _record(cursor.fetchone())
             for entity in entities:
                 cursor.execute(

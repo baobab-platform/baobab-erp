@@ -71,7 +71,7 @@ class ContextBoundaryTests(unittest.TestCase):
                 body["control_plane_authority"] = dict(zip(("tenant_provisioning_id", "plan_id", "plan_version", "plan_digest"), authority))
             data = json.dumps(body).encode()
         elif context is not None:
-            path += "?context_id=" + context
+            path += ("&" if "?" in path else "?") + "context_id=" + context
         request = urllib.request.Request(
             f"http://127.0.0.1:{self.server.server_address[1]}{path}", data=data, method=method,
             headers={"Authorization": "Bearer " + token, "Idempotency-Key": "idem-0123456789abcdef"})
@@ -86,6 +86,8 @@ class ContextBoundaryTests(unittest.TestCase):
     def test_rejected_authority_blocks_all_four_operations_before_database_or_replay_reads(self):
         self.rejection = ContextRejected()
         paths = [("POST", "/provisioning-operations"), ("GET", "/provisioning-operations/" + CONTEXT),
+                 ("GET", "/legal-entities/ZURIBEANS-ZA/effective-finance-baseline"),
+                 ("GET", "/finance-baselines/fb_" + "a" * 32 + "?version=1&digest=sha256:" + "c1" * 32),
                  ("GET", "/order-consequences/order-1"), ("GET", "/inventory-availability")]
         with patch("application.server.psycopg.connect") as database:
             for method, path in paths:
@@ -135,6 +137,8 @@ class ContextBoundaryTests(unittest.TestCase):
         self.rejection = ContextUnavailable()
 
     PATHS = [("POST", "/provisioning-operations"), ("GET", "/provisioning-operations/" + CONTEXT),
+             ("GET", "/legal-entities/ZURIBEANS-ZA/effective-finance-baseline"),
+             ("GET", "/finance-baselines/fb_" + "a" * 32 + "?version=1&digest=sha256:" + "c1" * 32),
              ("GET", "/order-consequences/order-1"), ("GET", "/inventory-availability")]
 
     def test_every_unavailable_answer_on_the_context_path_carries_retry_after(self):
@@ -157,6 +161,10 @@ class ContextBoundaryTests(unittest.TestCase):
         with patch("application.server.psycopg.connect") as database:
             status, body = self.call("GET", "/provisioning-operations/" + CONTEXT, token=reader)
             self.assertEqual((status, body["code"]), (403, "ERP_FORBIDDEN"))
+            for path in ("/legal-entities/ZURIBEANS-ZA/effective-finance-baseline",
+                         "/finance-baselines/fb_" + "a" * 32 + "?version=1&digest=sha256:" + "c1" * 32):
+                status, body = self.call("GET", path, token=reader)
+                self.assertEqual((status, body["code"]), (403, "ERP_FORBIDDEN"), path)
             status, body = self.call("GET", "/order-consequences/order-1", token=provisioner)
             self.assertEqual((status, body["code"]), (403, "ERP_FORBIDDEN"))
             status, body = self.call("GET", "/inventory-availability", token=provisioner)
@@ -164,15 +172,19 @@ class ContextBoundaryTests(unittest.TestCase):
             self.assertEqual(self.calls, [], "a caller without the scope must not cause a Control Plane call")
             # With the right scope each reaches validation, which here refuses.
             for path, token in (("/provisioning-operations/" + CONTEXT, provisioner), ("/order-consequences/order-1", reader),
-                                ("/inventory-availability", reader)):
+                                ("/inventory-availability", reader),
+                                ("/legal-entities/ZURIBEANS-ZA/effective-finance-baseline", provisioner),
+                                ("/finance-baselines/fb_" + "a" * 32 + "?version=1&digest=sha256:" + "c1" * 32, provisioner)):
                 status, body = self.call("GET", path, token=token)
                 self.assertEqual((status, body["code"]), (403, "ERP_CONTEXT_REJECTED"), path)
-            self.assertEqual(len(self.calls), 3)
+            self.assertEqual(len(self.calls), 5)
             database.assert_not_called()
 
     def test_a_context_is_authority_only_for_the_purpose_the_route_needs(self):
         # Shared erp/v1 1.2.0: provisioning accepts only a TENANT_PROVISIONING context, every business-data read only RUNTIME.
         paths = [("POST", "/provisioning-operations", RUNTIME), ("GET", "/provisioning-operations/" + CONTEXT, RUNTIME),
+                 ("GET", "/legal-entities/ZURIBEANS-ZA/effective-finance-baseline", RUNTIME),
+                 ("GET", "/finance-baselines/fb_" + "a" * 32 + "?version=1&digest=sha256:" + "c1" * 32, RUNTIME),
                  ("GET", "/order-consequences/order-1", TENANT_PROVISIONING), ("GET", "/inventory-availability", TENANT_PROVISIONING)]
         with patch("application.server.psycopg.connect") as database:
             for method, path, wrong in paths:

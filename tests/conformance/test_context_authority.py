@@ -10,17 +10,22 @@ CONTEXT = "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b"
 TENANT = "tn_01k4zuribeans"
 PLAN = {"tenant_provisioning_id": "tp_0199a1b2c3d47e8f", "plan_id": "plan_0199a1b2c3d47e8f", "plan_version": 1,
         "plan_digest": "sha256:" + "ab" * 32}
+REFERENCE = {"baseline_id": "fb_01k4zuribeansza", "legal_entity_id": "ZURIBEANS-ZA", "version": 3,
+             "digest": "sha256:" + "9f" * 32, "effective_from": "2026-04-01",
+             "authority": {"engine_id": "baobab-erp", "system_of_record": "FINANCE_BASELINE"}}
 
 
 class ContextAuthorityConformanceTests(unittest.TestCase):
-    def test_only_the_four_contract_operations_require_cp_context_authority(self):
+    def test_only_the_six_contract_operations_require_cp_context_authority(self):
         routes = [("POST", "/provisioning-operations", True), ("GET", "/provisioning-operations/x", True),
+                  ("GET", "/legal-entities/ZURIBEANS-ZA/effective-finance-baseline", True),
+                  ("GET", "/finance-baselines/fb_x", True),
                   ("GET", "/order-consequences/x", True), ("GET", "/inventory-availability", True),
                   ("GET", "/mappings", False), ("GET", "/mappings/x", False)]
         for method, path, required in routes:
             self.assertEqual(boundary.match(method, path).context_required, required)
-        for path in ("/provisioning-operations/{operation_id}", "/order-consequences/{commerce_order_id}",
-                     "/inventory-availability"):
+        for path in ("/provisioning-operations/{operation_id}", "/legal-entities/{legal_entity_id}/effective-finance-baseline",
+                     "/finance-baselines/{baseline_id}", "/order-consequences/{commerce_order_id}", "/inventory-availability"):
             parameters = shared._OPENAPI["paths"][path]["get"]["parameters"]
             # Context parameters may be factored into the OpenAPI components.
             self.assertTrue(any(p.get("name") == "context_id" or "ContextId" in p.get("$ref", "")
@@ -82,6 +87,7 @@ class ContextAuthorityConformanceTests(unittest.TestCase):
         schema = shared.schema_uri("erp/v1/provisioning-request.schema.json")
         body = {"context_id": CONTEXT, "tenant_id": TENANT, "legal_entity_ids": ["ZURIBEANS-ZA"],
                 "requested_countries": ["ZA"], "functional_currencies": ["ZAR"],
+                "finance_baselines": [REFERENCE],
                 "control_plane_authority": {"tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
                                             "plan_id": "plan_0199a1b2c3d47e8f", "plan_version": 1,
                                             "plan_digest": "sha256:" + "ab" * 32}}
@@ -94,6 +100,55 @@ class ContextAuthorityConformanceTests(unittest.TestCase):
         self.assertNotEqual(shared.errors(schema, missing), [])
         with self.assertRaises(RequestError):
             parse_command(missing)
+
+    def test_the_finance_baseline_reads_are_provisioning_operations_by_scope_and_context_purpose(self):
+        # Shared erp/v1 1.3.0: both reads require erp:provision and a TENANT_PROVISIONING context, like the provisioning operations.
+        for method, path, template in (("GET", "/legal-entities/ZURIBEANS-ZA/effective-finance-baseline",
+                                        "/legal-entities/{legal_entity_id}/effective-finance-baseline"),
+                                       ("GET", "/finance-baselines/fb_x", "/finance-baselines/{baseline_id}")):
+            route = boundary.match(method, path)
+            self.assertEqual((route.scope, route.context_purpose, route.context_required),
+                             ("erp:provision", "TENANT_PROVISIONING", True), path)
+            self.assertEqual(shared._OPENAPI["paths"][template]["get"]["security"], [{"workloadOidc": ["erp:provision"]}])
+        self.assertIsNone(boundary.match("POST", "/finance-baselines/fb_x"))
+        self.assertIsNone(boundary.match("GET", "/finance-baselines"))
+
+    def test_the_provisioning_request_requires_the_baseline_references_the_shared_schema_defines(self):
+        schema = shared.schema_uri("erp/v1/provisioning-request.schema.json")
+        body = {"context_id": CONTEXT, "tenant_id": TENANT, "legal_entity_ids": ["ZURIBEANS-ZA"], "finance_baselines": [REFERENCE],
+                "requested_countries": ["ZA"], "functional_currencies": ["ZAR"], "control_plane_authority": PLAN}
+        self.assertEqual(shared.errors(schema, body), [])
+        self.assertEqual(parse_command(body).finance_baselines[0].as_contract(), REFERENCE)
+        # The parser and the schema agree on what is NOT a reference.
+        bad_references = {"missing": None, "empty": [], "extra member": [dict(REFERENCE, tax_profile="x")],
+                          "foreign authority": [dict(REFERENCE, authority={"engine_id": "baobab-cp", "system_of_record": "FINANCE_BASELINE"})],
+                          "short digest": [dict(REFERENCE, digest="sha256:abc")], "version zero": [dict(REFERENCE, version=0)],
+                          "bad id": [dict(REFERENCE, baseline_id="FB_1")], "bad date": [dict(REFERENCE, effective_from="2026-13-01")]}
+        for name, refs in bad_references.items():
+            candidate = {k: v for k, v in body.items() if k != "finance_baselines"} if refs is None else dict(body, finance_baselines=refs)
+            with self.subTest(name):
+                self.assertNotEqual(shared.errors(schema, candidate), [])
+                with self.assertRaises(RequestError):
+                    parse_command(candidate)
+        # A different reference is a different request; a fresh context is not.
+        other = dict(body, finance_baselines=[dict(REFERENCE, version=4)])
+        self.assertNotEqual(parse_command(body).fingerprint("caller"), parse_command(other).fingerprint("caller"))
+
+    def test_the_resolution_ERP_answers_conforms_to_the_shared_schema(self):
+        from datetime import date, datetime, timezone
+        from provisioning.finance_baseline import FinancialConfigurationBaseline, resolution_of, reference_of, WITHDRAWN
+        schema = shared.schema_uri("erp/v1/finance-baseline.schema.json")
+        baseline = FinancialConfigurationBaseline("ZURIBEANS-ZA", 3, "ZAR", 3, "coa", "schema", "tax", "avg", date(2026, 4, 1),
+                                                  "Thandi Nkosi", datetime(2026, 3, 1, tzinfo=timezone.utc), "FIN-1")
+        for status in ("EFFECTIVE", "NOT_YET_EFFECTIVE", "SUPERSEDED", WITHDRAWN):
+            with self.subTest(status):
+                self.assertEqual(shared.errors(schema, resolution_of(baseline, status, datetime(2026, 10, 7, tzinfo=timezone.utc))), [])
+        self.assertEqual(shared.errors(shared.schema_uri("erp/v1/finance-baseline.schema.json", "/$defs/FinanceBaselineReference"),
+                                       reference_of(baseline)), [])
+        # Nothing of the accounting configuration or its approver leaves ERP.
+        leaked = str(resolution_of(baseline, "EFFECTIVE", datetime(2026, 10, 7, tzinfo=timezone.utc)))
+        for private in ("coa", "tax", "Thandi", "FIN-1"):
+            self.assertNotIn(private, leaked)
 
 
 if __name__ == "__main__":

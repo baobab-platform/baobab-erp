@@ -22,11 +22,13 @@ from typing import Callable, Mapping
 
 import psycopg
 
+from application.finance_baselines import FINANCE_BASELINE_MISMATCH, FINANCE_BASELINE_NOT_USABLE
 from application.problem import problem
 from provisioning.authoritative_service import AuthoritativeProvisioningRequestFactory
 from provisioning.command_store import CommandRecord, PlannedEntity, PostgresProvisioningCommandStore
 from provisioning.control_plane_client import AssignmentNotEstablished, ControlPlaneUnavailable
 from provisioning.cp_contract import AssignmentError, ControlPlaneAssignmentSource, CpErpAssignment, ErpMarketConfiguration
+from provisioning.finance_baseline import EFFECTIVE, baseline_digest, baseline_id_for
 from provisioning.finance_baseline_store import PostgresFinanceBaselineStore
 from provisioning.legal_entity_policy import NativePlacementPolicy
 from provisioning.operation_request import IDEMPOTENCY_KEY, ProvisioningCommand, RequestError, parse_command
@@ -47,6 +49,17 @@ class ProvisioningDependencies:
     market_configuration: Mapping[str, ErpMarketConfiguration]
     target_environment: str
     now: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
+
+
+class _ExactBaselines:
+    """The Finance baseline versions the request referenced, already verified exactly, so the request built for each legal
+    entity uses precisely those and never whatever ERP holds now."""
+
+    def __init__(self, baselines: dict) -> None:
+        self._baselines = baselines
+
+    def effective(self, legal_entity_id, on):
+        return self._baselines.get(legal_entity_id)
 
 
 class _Fixed:
@@ -144,11 +157,32 @@ def request_provisioning(*, tenant_id, principal, body: bytes, idempotency_key, 
         return fail("conflict", "requested_countries differ from the markets of the approved plan",
                     code=PLAN_AUTHORITY_MISMATCH)
 
-    # 3. Build each legal entity's request from the assignment plus ERP-owned inputs (Finance baseline, placement, markets).
+    # 3. The Finance baselines. The request REFERS to one exact approved version per legal entity; ERP re-resolves each
+    #    against its own store and never substitutes whatever it holds now.
+    now = provisioning.now()
+    baselines = PostgresFinanceBaselineStore(connection)
+    referenced = {ref.legal_entity_id: ref for ref in command.finance_baselines}
+    if set(referenced) != set(command.legal_entity_ids):
+        return fail("conflict", "finance_baselines must reference exactly the requested legal entities, one each",
+                    code=FINANCE_BASELINE_MISMATCH)
+    exact = {}
+    for legal_entity_id in sorted(referenced):
+        ref = referenced[legal_entity_id]
+        baseline = baselines.get(legal_entity_id, ref.version)
+        if (baseline is None or baseline_id_for(legal_entity_id) != ref.baseline_id or baseline_digest(baseline) != ref.digest
+                or baseline.effective_from.isoformat() != ref.effective_from):
+            return fail("conflict", f"the Finance baseline reference for {legal_entity_id} is not what ERP holds",
+                        code=FINANCE_BASELINE_MISMATCH)
+        exact[legal_entity_id] = baseline
+    for legal_entity_id, baseline in exact.items():
+        if baselines.status(baseline, now.date()) != EFFECTIVE:
+            return fail("conflict", f"the referenced Finance baseline of {legal_entity_id} is not effective",
+                        code=FINANCE_BASELINE_NOT_USABLE)
+    finance = _ExactBaselines(exact)
+
+    # 4. Build each legal entity's request from the assignment plus ERP-owned inputs (Finance baseline, placement, markets).
     entities: list[PlannedEntity] = []
     functional_currencies: set[str] = set()
-    now = provisioning.now()
-    finance = PostgresFinanceBaselineStore(connection)
     for legal_entity_id, assignment in assignments.items():
         factory = AuthoritativeProvisioningRequestFactory(
             control_plane=_Fixed(assignment), native_placement=provisioning.native_placement,
@@ -166,7 +200,7 @@ def request_provisioning(*, tenant_id, principal, body: bytes, idempotency_key, 
         return fail("conflict", "functional_currencies differ from the Finance-approved baselines",
                     code=PLAN_AUTHORITY_MISMATCH)
 
-    # 4. Accept atomically.
+    # 5. Accept atomically.
     try:
         record = store.accept(command=command, idempotency_key=idempotency_key, principal=principal,
                               fingerprint=fingerprint, entities=entities)
