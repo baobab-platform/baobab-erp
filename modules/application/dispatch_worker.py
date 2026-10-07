@@ -8,9 +8,10 @@ Two destinations, each carrying only what it is configured for:
 
 * the Control Plane event ingress (``BAOBAB_CP_EVENT_INGRESS_URL``, ``BAOBAB_CP_EVENT_KEY_ID``, ``BAOBAB_CP_EVENT_SECRET_B64``):
   ``provisioning.changed`` over signed delivery (Shared signed-delivery.schema.json), retried until a 72 hour horizon;
-* the legacy webhook (``BAOBAB_WEBHOOK_URL``, ``BAOBAB_EVENT_SIGNING_SECRET``): every other canonical event, unchanged.
+* the legacy webhook (``BAOBAB_WEBHOOK_URL``, signed with ``BAOBAB_EVENT_SIGNING_SECRET``, which the application also uses inbound, so
+  the secret alone does not enable it): every other canonical event, unchanged.
 
-``provisioning.changed`` is never sent to the legacy webhook. A destination whose settings are absent is not drained, and its
+``provisioning.changed`` is never sent to the legacy webhook. A destination that is not configured is not drained, and its
 events wait in the outbox (pending, not failing) until it is configured; at least one destination must be configured.
 After the run one JSON line per destination reports the backlog (pending, retry, dead_letter, due, oldest undelivered age) so a
 scheduler or log-based alert can act on a growing backlog or any dead letter.
@@ -66,7 +67,11 @@ def _report(destination: str, summary, stats: dict) -> None:
 def main() -> None:
     database_url = _require_env("DATABASE_URL")
     signed = _group(("BAOBAB_CP_EVENT_INGRESS_URL", "BAOBAB_CP_EVENT_KEY_ID", "BAOBAB_CP_EVENT_SECRET_B64"))
-    legacy = _group(("BAOBAB_WEBHOOK_URL", "BAOBAB_EVENT_SIGNING_SECRET"))
+    # BAOBAB_EVENT_SIGNING_SECRET is also the application's inbound secret and is therefore often set where no outbound webhook is
+    # wanted: the legacy destination exists when its URL does, and then it needs the secret.
+    legacy = bool(os.environ.get("BAOBAB_WEBHOOK_URL"))
+    if legacy and not os.environ.get("BAOBAB_EVENT_SIGNING_SECRET"):
+        raise RuntimeError("BAOBAB_EVENT_SIGNING_SECRET must be set with BAOBAB_WEBHOOK_URL")
     if not (signed or legacy):
         raise RuntimeError("no event destination is configured")
     with psycopg.connect(database_url) as connection:

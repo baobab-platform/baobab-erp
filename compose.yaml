@@ -99,7 +99,8 @@ services:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql://${DB_USER:-adempiere}:${DB_PASS:?Set DB_PASS}@postgres:5432/${DB_NAME:-idempiere}
-      # Each destination is optional, but at least one group must be set, and a group is all-or-nothing.
+      # Each destination is optional, but at least one must be set. The Control Plane group is all-or-nothing; the legacy webhook is
+      # enabled by its URL (the signing secret is also the application's inbound secret and is set either way).
       # Legacy webhook (every canonical event except provisioning.changed):
       BAOBAB_EVENT_SIGNING_SECRET: ${BAOBAB_EVENT_SIGNING_SECRET:-}
       BAOBAB_WEBHOOK_URL: ${BAOBAB_WEBHOOK_URL:-}

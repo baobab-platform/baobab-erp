@@ -53,7 +53,8 @@ class PermanentDeliveryError(Exception):
 class RetryPolicy:
     """When delivery stops being retried. ``max_attempts`` caps the number of tries and ``horizon`` caps the time since the
     event was first recorded; whichever is set and reached first dead-letters the event. The default is the original
-    attempt-count policy. Signed delivery to the Control Plane is time-bound instead (Shared signed-delivery.schema.json:
+    attempt-count policy. A retry that only becomes due after the horizon is dead-lettered without another attempt; an event
+    that was never attempted always gets its first. Signed delivery to the Control Plane is time-bound instead (Shared signed-delivery.schema.json:
     a sender stops within 72 hours, inside the receiver's seven day receipt retention) so an outage of any length under the
     horizon is ridden out rather than exhausting a small attempt count in minutes."""
     max_attempts: int | None = MAX_ATTEMPTS
@@ -78,6 +79,13 @@ def dispatch_pending(store: OutboxStore, transport: EventTransport, policy: Retr
     delivered = retried = dead_lettered = 0
     for record in store.pending(limit, **selection):
         attempts = record.attempts + 1
+        created_at = getattr(record, "created_at", None)
+        if (policy.horizon is not None and record.attempts > 0 and created_at is not None
+                and now() - created_at >= policy.horizon):
+            # A retry that only became due after the horizon is not attempted: the sender has already stopped.
+            store.mark_dead_letter(record.name, record.attempts, "the retry horizon elapsed before the next attempt")
+            dead_lettered += 1
+            continue
         try:
             transport.deliver(record.event)
             store.mark_delivered(record.name)
@@ -86,7 +94,6 @@ def dispatch_pending(store: OutboxStore, transport: EventTransport, policy: Retr
             store.mark_dead_letter(record.name, attempts, str(exc))
             dead_lettered += 1
         except Exception as exc:  # noqa: BLE001 - transport failures are expected and retried
-            created_at = getattr(record, "created_at", None)
             exhausted = (policy.max_attempts is not None and attempts >= policy.max_attempts) or (
                 policy.horizon is not None and created_at is not None and now() - created_at >= policy.horizon)
             if exhausted:

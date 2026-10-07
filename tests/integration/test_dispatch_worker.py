@@ -162,6 +162,17 @@ class DispatchWorkerTests(unittest.TestCase):
             self.run_worker()
         with self.assertRaisesRegex(RuntimeError, "must be set together"):
             self.run_worker(BAOBAB_CP_EVENT_INGRESS_URL="https://control.example.com/v1/integration/events")
+        with self.assertRaisesRegex(RuntimeError, "must be set with BAOBAB_WEBHOOK_URL"):
+            self.run_worker(BAOBAB_WEBHOOK_URL="https://hooks.example.com/baobab")
+        # The inbound secret alone (the application always has it) is not a legacy destination.
+        with self.assertRaisesRegex(RuntimeError, "no event destination"):
+            self.run_worker(BAOBAB_EVENT_SIGNING_SECRET="s" * 32)
+
+    def test_the_inbound_secret_being_set_does_not_disable_signed_delivery(self):
+        event = self.record("com.baobab-platform.erp.provisioning.changed.v1", "provisioning:p6")
+        report, = self.run_worker(**self.signed_env(), BAOBAB_EVENT_SIGNING_SECRET="s" * 32)
+        self.assertEqual(report["destination"], "control-plane-ingress")
+        self.assertEqual(self.status_of(event), "delivered")
         with self.assertRaises(sd.DeliveryConfigurationError):
             self.run_worker(**{**self.signed_env(), "BAOBAB_CP_EVENT_SECRET_B64": base64.b64encode(b"short").decode()})
 

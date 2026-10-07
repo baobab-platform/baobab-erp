@@ -124,3 +124,24 @@ class RetryPolicyTests(unittest.TestCase):
         store = FakeStore([old])
         dispatch_pending(store, AlwaysSucceedsTransport(), RetryPolicy(max_attempts=None, horizon=timedelta(hours=72)), now=lambda: now)
         self.assertEqual(store.delivered, ["evt-1"])
+
+    def test_a_retry_that_became_due_after_the_horizon_is_dead_lettered_without_another_attempt(self):
+        from datetime import datetime, timedelta, timezone
+        from outbox.service import RetryPolicy
+
+        class MustNotBeCalled:
+            def deliver(self, event):
+                raise AssertionError("an expired retry must not be attempted")
+
+        now = datetime(2026, 10, 7, 12, tzinfo=timezone.utc)
+        expired = FakeRecord("evt-1", attempts=40, status="retry")
+        expired.created_at = now - timedelta(hours=72, minutes=1)
+        store = FakeStore([expired])
+        summary = dispatch_pending(store, MustNotBeCalled(), RetryPolicy(max_attempts=None, horizon=timedelta(hours=72)), now=lambda: now)
+        self.assertEqual(([d[0] for d in store.dead_lettered], store.delivered, summary.dead_lettered), (["evt-1"], [], 1))
+        # An event never attempted always gets its first try, however old.
+        fresh = FakeRecord("evt-2")
+        fresh.created_at = now - timedelta(days=30)
+        store = FakeStore([fresh])
+        dispatch_pending(store, AlwaysSucceedsTransport(), RetryPolicy(max_attempts=None, horizon=timedelta(hours=72)), now=lambda: now)
+        self.assertEqual(store.delivered, ["evt-2"])

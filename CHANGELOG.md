@@ -23,7 +23,7 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
   key, time and body digest, signed afresh per attempt, no redirects, https only): 202/200 receipts naming the event are a delivery,
   400/409/413/422 dead-letter at once, everything else retries with real backoff (migration `0018`: `next_attempt_at`,
   `delivered_at`, `dead_lettered_at`) until 72 hours after the event was recorded. Every other event type keeps the legacy webhook;
-  each destination is optional and all-or-nothing, and each run reports backlog and dead-letter counts. **Requires the delivery key
+  each destination is optional (the Control Plane group is all-or-nothing, the legacy webhook is enabled by its URL), a retry that only becomes due after the 72 hour horizon is dead-lettered rather than attempted, and each run reports backlog and dead-letter counts. **Requires the delivery key
   and ingress URL to be provisioned by an operator; nothing is delivered until they are.**
 - ERP serves the Finance baseline reference (Shared erp/v1 1.3.0, FB-02): `GET /legal-entities/{legal_entity_id}/effective-finance-baseline`
   and `GET /finance-baselines/{baseline_id}` (exact `version` and `digest`, never "the latest"), under `erp:provision` and a

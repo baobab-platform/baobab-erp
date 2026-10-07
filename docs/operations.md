@@ -21,7 +21,7 @@ on the same schedule.
 
 ### Event destinations (dispatch worker)
 
-Configure one or both; a destination's settings are all-or-nothing and at least one is required.
+Configure one or both; at least one is required. The Control Plane group is all-or-nothing. The legacy webhook is enabled by `BAOBAB_WEBHOOK_URL` and then needs `BAOBAB_EVENT_SIGNING_SECRET`; the secret alone does not enable it, because the application also uses it for inbound events.
 
 | Destination | Carries | Settings |
 |---|---|---|
