@@ -2,7 +2,11 @@
 
 ``accept`` writes the command, every legal entity's ERP provisioning record and the links between them in ONE
 transaction the caller commits, so a command is either wholly accepted or not at all. Like the other ERP stores it never
-commits."""
+commits.
+
+Every committed revision of a command is announced: ``accept`` records revision 1 and ``advance`` records each later one as a
+canonical ``provisioning.changed`` event in ERP's outbox, in the same transaction as the change (ADR-ERP-006). A state ERP
+committed is therefore never left unannounced, and a rolled-back one is never announced."""
 from __future__ import annotations
 
 import json
@@ -13,6 +17,9 @@ from typing import Sequence
 
 import psycopg
 
+from outbox.postgres_store import PostgresOutboxStore
+from provisioning import command_state
+from provisioning.command_events import provisioning_changed
 from provisioning.model import ErpProvisioningRequest, ProvisioningPlan
 from provisioning.operation_request import ProvisioningCommand
 
@@ -105,4 +112,51 @@ class PostgresProvisioningCommandStore:
                 cursor.execute(
                     "INSERT INTO baobab.erp_provisioning_command_entity (operation_id, legal_entity_id, provisioning_id) "
                     "VALUES (%s, %s, %s)", (operation_id, entity.legal_entity_id, entity.request.provisioning_id))
+        self._announce(record)
         return record
+
+    def _announce(self, record: CommandRecord) -> None:
+        PostgresOutboxStore(self._connection).record_event(provisioning_changed(record))
+
+    def advance(self, operation_id: str, state: str, failure_code: str | None = None) -> CommandRecord | None:
+        """Moves a command to ``state`` as the next revision and announces it, in the caller's transaction. A state it is
+        already in (with the same failure code) changes nothing and announces nothing, so a repeated projection is a no-op.
+        A cancelled command stays cancelled. Returns the new record, or None when nothing changed."""
+        if (state == "failed") != (failure_code is not None):
+            raise ValueError("a failure code accompanies the failed state and nothing else")
+        with self._connection.cursor() as cursor:
+            cursor.execute(
+                f"""UPDATE baobab.erp_provisioning_command
+                       SET state = %s, failure_code = %s, revision = revision + 1, updated_at = now()
+                     WHERE operation_id = %s AND state <> 'cancelled'
+                       AND (state <> %s OR failure_code IS DISTINCT FROM %s)
+                 RETURNING {_COLUMNS}""",
+                (state, failure_code, operation_id, state, failure_code))
+            row = cursor.fetchone()
+        if row is None:
+            return None
+        record = _record(row)
+        self._announce(record)
+        return record
+
+    def project(self, provisioning_id: str) -> CommandRecord | None:
+        """Recomputes the state of the command that owns this legal entity's provisioning record from all of its entities'
+        statuses and advances the command if it changed. Called in the transaction that changed the entity's status, so the
+        command, its revision and the announced event commit or roll back together. A provisioning record that belongs to no
+        command is left alone."""
+        with self._connection.cursor() as cursor:
+            cursor.execute("SELECT operation_id FROM baobab.erp_provisioning_command_entity WHERE provisioning_id = %s",
+                           (provisioning_id,))
+            owner = cursor.fetchone()
+            if owner is None:
+                return None
+            operation_id = str(owner[0])
+            # Serialise concurrent projections of one command; the row lock is held until the transaction ends.
+            cursor.execute("SELECT 1 FROM baobab.erp_provisioning_command WHERE operation_id = %s FOR UPDATE", (operation_id,))
+            cursor.execute(
+                """SELECT o.status FROM baobab.erp_provisioning_command_entity e
+                     JOIN baobab.erp_provisioning_operation o ON o.provisioning_id = e.provisioning_id
+                    WHERE e.operation_id = %s""", (operation_id,))
+            statuses = [row[0] for row in cursor.fetchall()]
+        state, failure_code = command_state.derive(statuses)
+        return self.advance(operation_id, state, failure_code)

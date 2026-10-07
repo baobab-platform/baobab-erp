@@ -19,6 +19,22 @@ retried on the next tick rather than crashing the loop. A non-Compose deployment
 instead point cron or a systemd timer directly at `python -m application.dispatch_worker`
 on the same schedule.
 
+### Event destinations (dispatch worker)
+
+Configure one or both; a destination's settings are all-or-nothing and at least one is required.
+
+| Destination | Carries | Settings |
+|---|---|---|
+| Control Plane event ingress (signed delivery) | `provisioning.changed` | `BAOBAB_CP_EVENT_INGRESS_URL` (https), `BAOBAB_CP_EVENT_KEY_ID`, `BAOBAB_CP_EVENT_SECRET_B64` (standard base64, at least 32 bytes) |
+| Legacy webhook | every other canonical event | `BAOBAB_WEBHOOK_URL`, `BAOBAB_EVENT_SIGNING_SECRET` |
+
+A type whose destination is not configured waits in the outbox (pending, not failing) until it is. Each run prints one JSON line per
+destination (`event: outbox.dispatch`) with `delivered`, `retried`, `dead_lettered` and the backlog (`pending`, `retry`,
+`dead_letter`, `delivered`, `due`, `oldest_undelivered_seconds`): alert on any `dead_letter` and on a growing
+`oldest_undelivered_seconds`. The delivery key is provisioned by an operator, never committed; rotate it by adding the new key to the
+Control Plane first, switching `BAOBAB_CP_EVENT_KEY_ID`/`BAOBAB_CP_EVENT_SECRET_B64`, then retiring the old key after the Control
+Plane's replay window (300 seconds) and the longest retry horizon (72 hours) have passed.
+
 ## Production requirements
 
 1. Build images from a reviewed commit and immutable upstream pins

@@ -99,8 +99,14 @@ services:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql://${DB_USER:-adempiere}:${DB_PASS:?Set DB_PASS}@postgres:5432/${DB_NAME:-idempiere}
-      BAOBAB_EVENT_SIGNING_SECRET: ${BAOBAB_EVENT_SIGNING_SECRET:?Set BAOBAB_EVENT_SIGNING_SECRET}
-      BAOBAB_WEBHOOK_URL: ${BAOBAB_WEBHOOK_URL:?Set BAOBAB_WEBHOOK_URL}
+      # Each destination is optional, but at least one group must be set, and a group is all-or-nothing.
+      # Legacy webhook (every canonical event except provisioning.changed):
+      BAOBAB_EVENT_SIGNING_SECRET: ${BAOBAB_EVENT_SIGNING_SECRET:-}
+      BAOBAB_WEBHOOK_URL: ${BAOBAB_WEBHOOK_URL:-}
+      # Control Plane event ingress (provisioning.changed, signed delivery; the secret is standard base64 of at least 32 bytes):
+      BAOBAB_CP_EVENT_INGRESS_URL: ${BAOBAB_CP_EVENT_INGRESS_URL:-}
+      BAOBAB_CP_EVENT_KEY_ID: ${BAOBAB_CP_EVENT_KEY_ID:-}
+      BAOBAB_CP_EVENT_SECRET_B64: ${BAOBAB_CP_EVENT_SECRET_B64:-}
       BAOBAB_DISPATCH_INTERVAL_SECONDS: ${BAOBAB_DISPATCH_INTERVAL_SECONDS:-60}
     entrypoint: ["bash", "/app/scripts/dispatch_worker_loop.sh"]
 

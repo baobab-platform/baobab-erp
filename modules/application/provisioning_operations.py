@@ -25,6 +25,7 @@ import psycopg
 from application.finance_baselines import FINANCE_BASELINE_MISMATCH, FINANCE_BASELINE_NOT_USABLE
 from application.problem import problem
 from provisioning.authoritative_service import AuthoritativeProvisioningRequestFactory
+from provisioning.command_events import state_document
 from provisioning.command_store import CommandRecord, PlannedEntity, PostgresProvisioningCommandStore
 from provisioning.control_plane_client import AssignmentNotEstablished, ControlPlaneUnavailable
 from provisioning.cp_contract import AssignmentError, ControlPlaneAssignmentSource, CpErpAssignment, ErpMarketConfiguration
@@ -73,12 +74,7 @@ class _Fixed:
 
 
 def _state(record: CommandRecord) -> dict:
-    body = {"operation_id": record.operation_id, "tenant_id": record.tenant_id,
-            "legal_entity_ids": sorted(record.legal_entity_ids), "state": record.state, "revision": record.revision,
-            "updated_at": record.updated_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")}
-    if record.failure_code:
-        body["failure_code"] = record.failure_code
-    return body
+    return state_document(record)
 
 
 def _differences(assignment: CpErpAssignment, command: ProvisioningCommand, legal_entity_id: str) -> list[str]:

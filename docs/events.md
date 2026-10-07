@@ -57,6 +57,25 @@ canonical event and are never delivered.
 deliveries retry with exponential backoff (`outbox.service.backoff_seconds`, capped at one hour) up to
 `outbox.service.MAX_ATTEMPTS` before moving to a dead-letter state. `time` is serialised as RFC 3339 UTC (`Z`).
 
+### provisioning.changed and signed delivery (FB-04)
+
+`com.baobab-platform.erp.provisioning.changed.v1` is announced for **every committed revision** of a provisioning command,
+recorded in the outbox in the same transaction as the change (`provisioning.command_store`: `accept` writes revision 1,
+`advance` every later one, and `PostgresProvisioningStore.set_status` projects an entity's status into its command through
+`provisioning.command_state.derive` in the transaction that changed it). Its identity is a function of the change:
+`id` is the version 5 UUID of `urn:baobab-platform:event:erp-provisioning:{operation_id}:{revision}` and the idempotency key is
+`erp-provisioning-{operation_id}-r{revision}`, so a redelivery is the same event and a consumer deduplicates by (source, id).
+The data is exactly what `GET /provisioning-operations/{operation_id}` answers, and a failure carries the fixed code
+`ERP_PROVISIONING_FAILED`, never an entity's error text. The event is a trigger to inspect authoritative state, not the state.
+
+It is delivered to the Control Plane event ingress over **signed delivery** (`integration.signed_delivery`; Shared
+`events/v1/signed-delivery.schema.json`): headers `Baobab-Key-Id`, `Baobab-Timestamp` and `Baobab-Signature`
+(`hmac-sha256=<hex>` over the recipient, key id, timestamp and body digest), signed afresh on every attempt, never following a
+redirect, https only (http for a local address). A 202 `ACCEPTED` or 200 `DUPLICATE` receipt that names this event's id is a
+delivery; 400, 409, 413 and 422 dead-letter at once; anything else retries with backoff (`next_attempt_at`) until 72 hours after
+the event was recorded, then dead-letters (`outbox.service.RetryPolicy`). Delivery is at-least-once. Every other event type
+still goes to the legacy webhook, unchanged, and `provisioning.changed` never does.
+
 `modules/outbox/postgres_store.py` and `modules/inbox/postgres_store.py` are the real backing stores
 (`modules/application/dispatch_worker.py` wires the former to delivery); `tests/integration/` exercises
 record -> dispatch -> deliver -> mark-delivered and receive -> verify -> deduplicate -> persist against a live

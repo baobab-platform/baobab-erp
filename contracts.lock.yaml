@@ -5,19 +5,20 @@
 #
 # Pin history: 2da1a42 (legacy nabhold-contract-consumption-lock, migrated unchanged) ->
 # 739f0ca (EA-01 ERP-COMPAT-07, 2026-10-02) -> 92accac (erp/v1 OpenAPI 1.0.1: 400 on the mapping reads, 501 on the
-# four unavailable operations; Shared#198) -> 6c6bd17 (control-plane/v1 ErpAssignment projection, Shared#200/#201) -> 5eb3c17 (control_plane_authority on the provisioning request; 503 and 400 on the provisioning operations; Shared#202+) -> 1b21a52 (erp/v1 OpenAPI 1.0.4: served operations drop the transitional 501; inventory read declares 400 and 503; Shared#204) -> 0233eb3 (erp/v1 OpenAPI 1.0.5: no operation declares the transitional 501; Shared#205). -> 6899a2d (erp/v1 1.1.0 caller-bound context_id; control-plane/v1 1.33.1 provider-neutral validate; Shared#208/#209) -> 43135a8 (erp/v1 1.1.1: GET /provisioning-operations/{operation_id} requires erp:provision; the audited ERP caller matrix with ERP as the registered baobab-erp validator; Shared#235/#236) -> 05db746 (erp/v1 1.2.0 and control-plane/v1 1.34.0: the TENANT_PROVISIONING context purpose; Shared#241) -> 78b4e5e (erp/v1 1.3.0: the Finance baseline reference and its two reads; finance_baselines required on the provisioning request; Shared#245). The move is proven by tests/conformance/, which runs in CI
+# four unavailable operations; Shared#198) -> 6c6bd17 (control-plane/v1 ErpAssignment projection, Shared#200/#201) -> 5eb3c17 (control_plane_authority on the provisioning request; 503 and 400 on the provisioning operations; Shared#202+) -> 1b21a52 (erp/v1 OpenAPI 1.0.4: served operations drop the transitional 501; inventory read declares 400 and 503; Shared#204) -> 0233eb3 (erp/v1 OpenAPI 1.0.5: no operation declares the transitional 501; Shared#205). -> 6899a2d (erp/v1 1.1.0 caller-bound context_id; control-plane/v1 1.33.1 provider-neutral validate; Shared#208/#209) -> 43135a8 (erp/v1 1.1.1: GET /provisioning-operations/{operation_id} requires erp:provision; the audited ERP caller matrix with ERP as the registered baobab-erp validator; Shared#235/#236) -> 05db746 (erp/v1 1.2.0 and control-plane/v1 1.34.0: the TENANT_PROVISIONING context purpose; Shared#241) -> 78b4e5e (erp/v1 1.3.0: the Finance baseline reference and its two reads; finance_baselines required on the provisioning request; Shared#245) -> 9e6e407 (control-plane/v1 1.36.0 and erp AsyncAPI 1.1.0: signed event delivery and the Control Plane event ingress, deterministic provisioning.changed identity; Shared#249). The move is proven by tests/conformance/, which runs in CI
 # against a checkout of exactly this commit and refuses any other (ERP-COMPAT-06). The semantic delta
 # between the two pins is in docs/migration/erp-compat-01-semantic-delta.md.
 schema: baobab-contract-consumer-lock
 version: "1.0"
 source:
   repository: baobab-platform/shared
-  commit: 78b4e5ead3b7b2886f7421f2067d962922bebf7e
+  commit: 9e6e40739914b37465a7aa5ff463797d3c82d1cd
 contracts:
   # Tenant and legal-entity identifier grammars; the access-token claim set whose tenant_id is the
   # mapping reads' tenant authority; the four context-bound operations use validated CP context.
   - contracts/control-plane/v1/access-token-claims.schema.json
   - contracts/control-plane/v1/domain.schema.json
+  - contracts/control-plane/v1/event-ingress.yaml
   # Caller-bound validation for ERP API 1.1; mapping reads retain token tenant authority.
   - contracts/control-plane/v1/openapi.yaml
   - contracts/control-plane/v1/platform-context.schema.json
@@ -69,6 +70,7 @@ contracts:
   # shape that must stay rejected (ERP-COMPAT-05).
   - contracts/events/v1/compatibility/legacy-trade-erp-event.json
   - contracts/events/v1/envelope.schema.json
+  - contracts/events/v1/signed-delivery.schema.json
   - contracts/events/v1/event-registry.yaml
   # Delivery identity (source, id) and command idempotency.
   - contracts/idempotency/v1/policy.yaml
