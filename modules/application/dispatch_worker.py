@@ -59,8 +59,13 @@ def _group(names: tuple[str, ...]) -> bool:
 
 
 def _report(destination: str, summary, stats: dict) -> None:
-    print(json.dumps({"event": "outbox.dispatch", "destination": destination, "delivered": summary.delivered,
-                      "retried": summary.retried, "dead_lettered": summary.dead_lettered, **stats}, sort_keys=True),
+    """One JSON line per destination. ``delivered``, ``retried`` and ``dead_lettered`` are what THIS pass did; the rest is the
+    backlog afterwards (``pending``, ``retry``, ``dead_letter``, ``due``, ``oldest_undelivered_seconds``, and ``delivered_total``,
+    every event ever delivered to the destination). The store's own ``delivered`` count is renamed so it can never shadow the pass's,
+    and the pass counts are written last for the same reason."""
+    backlog = {("delivered_total" if key == "delivered" else key): value for key, value in stats.items()}
+    print(json.dumps({"event": "outbox.dispatch", "destination": destination, **backlog, "delivered": summary.delivered,
+                      "retried": summary.retried, "dead_lettered": summary.dead_lettered}, sort_keys=True),
           file=sys.stdout, flush=True)
 
 
