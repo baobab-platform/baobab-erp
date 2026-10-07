@@ -29,6 +29,9 @@ _ORDER_CONSEQUENCE = re.compile(r"^/order-consequences/([^/]+)$")
 _PROVISIONING_OPERATION = re.compile(r"^/provisioning-operations/([^/]+)$")
 _NOT_IMPLEMENTED: tuple[re.Pattern, ...] = ()
 SCOPE_READ = "erp:read"
+# Following a provisioning operation is part of provisioning (Shared erp/v1 1.1.1): the identity that submits one never
+# needs erp:read, which is reserved for ERP's business-data reads.
+SCOPE_PROVISION = "erp:provision"
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,7 +52,7 @@ def match(method: str, path: str) -> BoundaryRoute | None:
         if found:
             return BoundaryRoute(SCOPE_READ, get_mapping, found.group(1))
     if method == "POST" and path == "/provisioning-operations":
-        return BoundaryRoute("erp:provision", request_provisioning, context_required=True)
+        return BoundaryRoute(SCOPE_PROVISION, request_provisioning, context_required=True)
     if method == "GET" and path == "/inventory-availability":
         return BoundaryRoute(SCOPE_READ, get_inventory_availability, context_required=True)
     if method == "GET":
@@ -59,7 +62,7 @@ def match(method: str, path: str) -> BoundaryRoute | None:
     if method == "GET":
         operation = _PROVISIONING_OPERATION.fullmatch(path)
         if operation:
-            return BoundaryRoute(SCOPE_READ, get_provisioning_operation, operation.group(1), context_required=True)
+            return BoundaryRoute(SCOPE_PROVISION, get_provisioning_operation, operation.group(1), context_required=True)
     if method in ("GET", "POST") and any(pattern.fullmatch(path) for pattern in _NOT_IMPLEMENTED):
         return BoundaryRoute(SCOPE_READ if method == "GET" else "erp:provision", not_implemented)
     return None

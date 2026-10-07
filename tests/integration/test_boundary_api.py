@@ -263,8 +263,13 @@ class BoundaryApiTests(unittest.TestCase):
                                        headers=key, data=self._provisioning_request(self.other)), 403, "ERP_CONTEXT_REJECTED")
         self.assertProblem(*self._call("POST", "/provisioning-operations", token=self._token(scope="erp:read"),
                                        headers=key, data={}), 403, "ERP_FORBIDDEN")
-        self.assertProblem(*self._call("GET", f"/provisioning-operations/{uuid.uuid4()}"), 404, "ERP_RESOURCE_NOT_FOUND")
-        self.assertProblem(*self._call("GET", "/provisioning-operations/op_nope"), 400, "ERP_INVALID_REQUEST")
+        # Following an operation is part of provisioning (Shared erp/v1 1.1.1): erp:provision, never erp:read.
+        provisioner = self._token(scope="erp:provision")
+        self.assertProblem(*self._call("GET", f"/provisioning-operations/{uuid.uuid4()}", token=provisioner),
+                           404, "ERP_RESOURCE_NOT_FOUND")
+        self.assertProblem(*self._call("GET", "/provisioning-operations/op_nope", token=provisioner), 400, "ERP_INVALID_REQUEST")
+        self.assertProblem(*self._call("GET", f"/provisioning-operations/{uuid.uuid4()}", token=self._token(scope="erp:read")),
+                           403, "ERP_FORBIDDEN")
 
     def test_provisioning_is_unavailable_until_control_plane_is_configured(self):
         valid = self._provisioning_request(self.tenant)

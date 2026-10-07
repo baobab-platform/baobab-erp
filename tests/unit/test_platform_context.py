@@ -1,4 +1,5 @@
 """CP delegation cannot become local tenant authority or leak caller credentials."""
+import http.client
 import io
 import json
 import unittest
@@ -59,14 +60,88 @@ class ContextTests(unittest.TestCase):
         self.assertEqual(seen[0].get_header("Authorization"), "Bearer erp-validator-token")
         self.assertEqual(json.loads(seen[0].data), {"context_id": CONTEXT, "subject_token": "actual-incoming-token"})
 
-    def test_all_authority_refusals_are_indistinguishable_and_outages_stay_unavailable(self):
-        for status in (400, 401, 403, 404, 409, 410, 500, 503):
-            class Opener:
-                def open(self, request, *, timeout):
-                    raise urllib.error.HTTPError(request.full_url, status, "private detail", {}, None)
-            validator = HttpContextValidator("https://cp.example.invalid", lambda: "erp-token", opener=Opener())
-            with self.subTest(status), self.assertRaises(ContextRejected if status < 500 else ContextUnavailable):
-                validator.validate(context_id=CONTEXT, subject_token="subject", correlation_id=CONTEXT)
+    @staticmethod
+    def _answer(status, body):
+        """What the Control Plane answers to a validate call, as urllib raises it."""
+        class Opener:
+            def open(self, request, *, timeout):
+                raw = body if isinstance(body, bytes) else json.dumps(body).encode()
+                raise urllib.error.HTTPError(request.full_url, status, "private detail", {}, io.BytesIO(raw))
+        return HttpContextValidator("https://cp.example.invalid", lambda: "erp-token", opener=Opener())
+
+    def _validate(self, validator):
+        return validator.validate(context_id=CONTEXT, subject_token="subject", correlation_id=CONTEXT)
+
+    def test_only_what_the_control_plane_says_about_the_caller_is_a_rejection(self):
+        for status, code in ((401, "SUBJECT_TOKEN_INVALID"), (404, "CONTEXT_NOT_FOUND"), (403, "TENANT_CONTEXT_MISMATCH"),
+                             (403, "TENANT_NOT_ACTIVE"), (400, "VALIDATION_FAILED")):
+            with self.subTest(status=status, code=code), self.assertRaises(ContextRejected):
+                self._validate(self._answer(status, {"code": code, "status": status}))
+
+    def test_erps_own_validator_problems_are_never_reported_as_the_callers_fault(self):
+        # A rejected validator credential, an unregistered validator or an outage would otherwise be told to every caller
+        # as "your context was rejected"; they are ERP's to fix, so they stay unavailable and retryable.
+        for status, body in (
+                (401, {"code": "AUTH_TOKEN_REQUIRED"}), (403, {"code": "CONTEXT_VALIDATION_NOT_PERMITTED"}),
+                (503, {"code": "CONTEXT_VALIDATION_UNAVAILABLE"}), (503, {"code": "CONTEXT_STORE_UNAVAILABLE"}),
+                (500, {"code": "INTERNAL_ERROR"}), (502, b"<html>bad gateway</html>"), (404, b"not json"),
+                (404, {"detail": "no code member"}), (403, {"code": 7}), (404, [])):
+            with self.subTest(status=status, body=body), self.assertRaises(ContextUnavailable):
+                self._validate(self._answer(status, body))
+
+    def test_a_rejection_code_with_the_wrong_status_is_not_trusted(self):
+        for status, code in ((403, "SUBJECT_TOKEN_INVALID"), (401, "CONTEXT_NOT_FOUND"), (404, "TENANT_NOT_ACTIVE"),
+                             (500, "CONTEXT_NOT_FOUND"), (200, "CONTEXT_NOT_FOUND")):
+            with self.subTest(status=status, code=code), self.assertRaises(ContextUnavailable):
+                self._validate(self._answer(status, {"code": code}))
+
+    def test_a_body_the_control_plane_cuts_short_is_unavailable_not_an_unhandled_error(self):
+        # http.client.IncompleteRead is an HTTPException, neither an OSError nor a ValueError.
+        class TruncatedError(urllib.error.HTTPError):
+            def read(self, *_):
+                raise http.client.IncompleteRead(b'{"code":"CONTEXT_', 40)
+
+        class TruncatedErrorOpener:
+            def open(self, request, *, timeout):
+                raise TruncatedError(request.full_url, 404, "x", {}, None)
+
+        class TruncatedSuccess:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def read(self, *_):
+                raise http.client.IncompleteRead(b'{"context_id":', 200)
+
+        class TruncatedSuccessOpener:
+            def open(self, request, *, timeout):
+                return TruncatedSuccess()
+
+        class BadStatusOpener:
+            def open(self, request, *, timeout):
+                raise http.client.BadStatusLine("garbage")
+
+        for opener in (TruncatedErrorOpener(), TruncatedSuccessOpener(), BadStatusOpener()):
+            with self.subTest(type(opener).__name__), self.assertRaises(ContextUnavailable):
+                self._validate(HttpContextValidator("https://cp.example.invalid", lambda: "erp-token", opener=opener))
+
+    def test_an_unreadable_or_oversized_error_body_is_unavailable(self):
+        class Unreadable(urllib.error.HTTPError):
+            def read(self, *_):
+                raise OSError("connection reset")
+
+        class Opener:
+            def open(self, request, *, timeout):
+                raise Unreadable(request.full_url, 404, "x", {}, None)
+
+        with self.assertRaises(ContextUnavailable):
+            self._validate(HttpContextValidator("https://cp.example.invalid", lambda: "erp-token", opener=Opener()))
+        with self.assertRaises(ContextUnavailable):
+            self._validate(self._answer(404, b'{"code":"CONTEXT_NOT_FOUND","pad":"' + b"x" * 70000 + b'"}'))
 
 
 if __name__ == "__main__":
