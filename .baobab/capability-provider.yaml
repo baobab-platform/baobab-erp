@@ -6,27 +6,27 @@
 #   baobab-platform/shared ADR-SHARED-017 (EA-02)
 #
 # Declares which canonical Baobab capabilities this engine's providers
-# implement or plan. It references Shared's catalogue.yaml; it defines no
-# capability. It does not state certification (EA-09), activation,
-# bindings, grants, engine instances or health: the Control Plane owns
-# those.
+# implement. It references Shared's catalogue.yaml; it defines no capability.
+# It does not state certification (EA-09), activation, bindings, grants,
+# engine instances or health: the Control Plane owns those.
 #
-# The three .baobab contracts are distinct:
-#   repository.yaml          Foundation technical traits
-#   environment.yaml         baobab-dev toolchain
-#   capability-provider.yaml canonical capability support  <- this file
+# Census refreshed 2026-10-07 against baobab-erp main
+# 854b1d315e188f6f39295df31618aab31655518e and Shared capability authority
+# 40d180756461f3fbbdcf06d1dcd3e1fe6481bed2.
 #
-# Census (EA-02A) and candidate review (EA-02B), 2026-09-30:
-#   finance.order-consequence.process is canonical, with Shared erp/v1 as
-#     its contract. The sell-side order-to-cash in
-#     modules/order_to_cash/service.py is real, but it does not yet consume
-#     erp/v1 commerce-order-consequence or publish order-consequence-status,
-#     so it is planned (CONTRACTED), not claimed as support. Move it into
-#     providers[].support, with evidence, once it does.
-#   inventory.availability.query is a reserved key whose Shared contract
-#     still lacks a request schema, so it stays a CANDIDATE.
+# finance.order-consequence.process remains PARTIAL because canonical
+# trade.order.placed ingress is validated/deduplicated into the ERP inbox but
+# is not yet dispatched into order-to-cash execution. The consequence read
+# model, canonical query and outcome event are implemented.
 #
-# Validate with a Shared checkout:
+# inventory.availability.query is IMPLEMENTED: Shared now carries the explicit
+# request/response contract and catalogue entry, and ERP serves the canonical
+# GET boundary from ERP-owned physical stock with mapping, fail-closed and
+# contract/integration proof.
+#
+# See docs/architecture/capability-census-2026-10-07.md.
+#
+# Validate with a current Shared checkout:
 #   python3 <shared>/scripts/capability_catalogue.py validate-declaration \
 #     .baobab/capability-provider.yaml --engine-id baobab-erp --repository-root .
 
@@ -37,20 +37,102 @@ schema:
 engine:
   engine_id: baobab-erp
 
-planned_capabilities:
-  - capability_key: finance.order-consequence.process
-    proposal_status: CONTRACTED
-    description: Carry a commerce order's ERP consequences and report their status through the erp/v1 boundary.
-    target_provider_key: baobab-erp.idempiere
+providers:
+  - provider_key: baobab-erp.idempiere
+    name: Baobab ERP iDempiere provider
+    description: >-
+      First-party ERP provider backed by iDempiere. Provider declaration is
+      repository implementation evidence only; it is not certification,
+      activation, health, binding, grant, routing or production readiness.
+    provider_type: BAOBAB_ENGINE
+    implementation_key: idempiere
+    simulated: false
+    production_permitted: true
+    invocation:
+      service_reference: service://baobab-erp/erp
+      protocol: http
     provenance:
       authority:
         repository: baobab-platform/baobab-erp
-        decision: ADR-ERP-016
-  - proposed_key: inventory.availability.query
-    proposal_status: CANDIDATE
-    description: Query the ERP-owned physical inventory availability projection (erp/v1 GET /inventory-availability).
-    target_provider_key: baobab-erp.idempiere
-    provenance:
-      authority:
-        repository: baobab-platform/baobab-erp
-        decision: ADR-ERP-015
+        decision: ADR-ERP-001
+    support:
+      - capability_key: finance.order-consequence.process
+        contract_versions: [1]
+        implementation_status: PARTIAL
+        provenance:
+          authority:
+            repository: baobab-platform/shared
+          source_revision: 40d180756461f3fbbdcf06d1dcd3e1fe6481bed2
+        implementation_evidence:
+          - type: source
+            path: modules/events/registry.py
+            description: Canonical Trade order event registration and producer/source restrictions.
+          - type: source
+            path: modules/inbox/service.py
+            description: Signed canonical CloudEvent validation and durable idempotent ingress.
+          - type: source
+            path: modules/order_to_cash/service.py
+            description: Real sell-side order-to-cash ERP consequence execution.
+          - type: source
+            path: modules/order_to_cash/consequence.py
+            description: Vendor-neutral ERP-owned order-consequence projection rules.
+          - type: source
+            path: modules/order_to_cash/consequence_events.py
+            description: Canonical order.consequence-changed event publication from the consequence projection.
+          - type: source
+            path: modules/application/boundary.py
+            description: Canonical GET order-consequence query boundary with caller-bound Control Plane context authority.
+          - type: source
+            path: modules/security/platform_context.py
+            description: Fail-closed caller-bound Control Plane context validation used by the canonical consequence boundary.
+          - type: contract-test
+            path: tests/conformance/test_context_authority.py
+            description: Exact caller/context authority and fail-closed boundary proof.
+          - type: contract-test
+            path: tests/conformance/test_events.py
+            description: Exact canonical outcome-event envelope and payload conformance.
+          - type: integration-test
+            path: tests/integration/test_order_consequence_read_model.py
+            description: PostgreSQL consequence projection persistence and tenant-scoped read proof.
+          - type: integration-test
+            path: tests/integration/test_order_to_cash_http.py
+            description: Real HTTP and Postgres order-to-cash execution against an iDempiere transport fake.
+          - type: integration-test
+            path: tests/integration/test_http_server.py
+            description: Canonical Trade order event ingress is authenticated, validated and deduplicated; execution dispatch remains the PARTIAL gap.
+
+      - capability_key: inventory.availability.query
+        contract_versions: [1]
+        implementation_status: IMPLEMENTED
+        provenance:
+          authority:
+            repository: baobab-platform/shared
+          source_revision: 40d180756461f3fbbdcf06d1dcd3e1fe6481bed2
+        implementation_evidence:
+          - type: source
+            path: modules/application/inventory_availability.py
+            description: Canonical inventory query adapter with validation, mapping and fail-closed response behavior.
+          - type: source
+            path: modules/inventory/availability.py
+            description: Live iDempiere physical stock reader and ERP availability calculation.
+          - type: source
+            path: modules/inventory/mappings.py
+            description: Explicit tenant/legal-entity SKU and warehouse mapping authority used by the query.
+          - type: source
+            path: modules/application/boundary.py
+            description: Canonical GET /inventory-availability route registration with caller-bound Control Plane context authority.
+          - type: source
+            path: modules/security/platform_context.py
+            description: Fail-closed caller-bound Control Plane context validation used before inventory access.
+          - type: contract-test
+            path: tests/conformance/test_context_authority.py
+            description: Exact caller/context authority and fail-closed boundary proof.
+          - type: contract-test
+            path: tests/conformance/test_http_contract.py
+            description: Exact Shared ERP OpenAPI and response/error conformance for the boundary.
+          - type: integration-test
+            path: tests/integration/test_inventory_availability_handler.py
+            description: Physical-stock query, mapping, error and unavailable-engine integration proof.
+          - type: integration-test
+            path: tests/integration/test_boundary_api.py
+            description: Canonical authenticated ERP Boundary API routing and tenant-scoped behavior.
