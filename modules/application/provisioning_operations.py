@@ -178,7 +178,7 @@ def request_provisioning(*, tenant_id, principal, body: bytes, idempotency_key, 
 
 
 def get_provisioning_operation(*, tenant_id, argument, connection: psycopg.Connection, correlation_id: str,
-                               trace_id: str | None, **_) -> tuple[int, dict]:
+                               trace_id: str | None, context_authority=None, **_) -> tuple[int, dict]:
     try:
         operation_id = str(uuid.UUID(argument))
     except (ValueError, TypeError, AttributeError):
@@ -188,4 +188,11 @@ def get_provisioning_operation(*, tenant_id, argument, connection: psycopg.Conne
     record = PostgresProvisioningCommandStore(connection).get(tenant_id, operation_id)
     if record is None:
         return problem("not_found", correlation_id=correlation_id, trace_id=trace_id)
+    # The tenant alone is not enough (Shared erp/v1 1.2.0): the context must be the provisioning context bound to the plan
+    # this operation was accepted under. One bound to another provisioning or plan is the same indistinguishable rejection.
+    if context_authority is None or (
+            context_authority.tenant_provisioning_id, context_authority.plan_id, context_authority.plan_version,
+            context_authority.plan_digest) != (record.tenant_provisioning_id, record.plan_id, record.plan_version,
+                                              record.plan_digest):
+        return problem("forbidden", correlation_id=correlation_id, trace_id=trace_id, code="ERP_CONTEXT_REJECTED")
     return 200, _state(record)

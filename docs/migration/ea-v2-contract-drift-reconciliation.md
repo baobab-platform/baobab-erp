@@ -70,3 +70,33 @@ Shared #235/#236 and baobab-iam #81 have merged since this reconciliation was wr
 
 Still open, unchanged: mapping reads take their tenant from the token claim, and the tenant-neutral caller tokens issued under
 the new matrix carry none, so those reads are unavailable to them until that is decided separately.
+
+## Addendum — 2026-10-07: pre-activation provisioning context (Shared 05db746)
+
+The Control Plane activates a tenant only after provider provisioning, so the context that authorises ERP provisioning
+cannot be one that requires an ACTIVE tenant (ADR-ERP-019 section 6; Control Plane ADR-BCP-017 sections 22 and 45). Shared
+control-plane/v1 **1.34.0** and erp/v1 **1.2.0** (`docs/architecture/context-authority-for-workloads.md` section 13) add an explicit
+**authority purpose** to every validated context instead of relaxing the ACTIVE rule. What changes for ERP:
+
+- **Pin.** `05db746`. The Control Plane's validation answer now always states `authority_purpose` (`RUNTIME` or
+  `TENANT_PROVISIONING`), and `provisioning_authority` (the approved plan's provisioning id, plan id, version and digest)
+  exactly for the latter. ERP parses both strictly: an answer without a purpose, with a plan on a RUNTIME context, without one
+  on a provisioning context, with a malformed plan, or a provisioning answer carrying a market or organisation, is the
+  Control Plane being outside the contract, so it is a retryable 503, never a guess. The purpose is stated, never inferred
+  from the tenant's lifecycle. **Order of rollout:** this change must be deployed before the Control Plane emits the new members
+  (ERP rejects unknown response members, ADR-ERP-010 section 15).
+- **Per-route purpose.** `POST /provisioning-operations` and `GET /provisioning-operations/{operation_id}` accept only a
+  `TENANT_PROVISIONING` context; the order-consequence and inventory reads accept only a `RUNTIME` one. A context of the other
+  purpose is refused as the same indistinguishable 403 `ERP_CONTEXT_REJECTED` as every other context refusal.
+- **Plan binding (independent of plan authority).** For a POST the plan the request names (`control_plane_authority`) must equal
+  the plan the context is bound to, member by member, checked before anything is read or stored; the Control Plane assignment
+  comparison (`PLAN_AUTHORITY_MISMATCH`) still runs unchanged afterwards, because context authority and plan authority are
+  independent. For a GET the context's plan must equal the plan the operation was accepted under (stored on the command,
+  columns that already existed), so knowing an `operation_id` or holding the tenant's context is not enough. Absence stays
+  absence: another tenant's operation and an unknown one are still 404.
+- **Caller rejections.** `PROVISIONING_AUTHORITY_NOT_CURRENT` (403) joins the codes that are about the caller's context
+  (stale, withdrawn or superseded plan, or a provisioning not in an executing state) and is reported as 403
+  `ERP_CONTEXT_REJECTED`, with its status; any other status for that code stays unavailable.
+- **Unchanged.** No grant, no activation, no promotion of `baobab-cp-provisioning-workload` (still `PROVISIONED`). The Control
+  Plane honours a provisioning context only for an ACTIVE provisioner, so the end-to-end evidence needs an environment decided by
+  the owner (see baobab-cp#266); nothing here proves deployed validation.

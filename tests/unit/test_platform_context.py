@@ -7,14 +7,17 @@ import urllib.error
 from datetime import datetime, timezone
 
 from security.platform_context import (
-    ContextRejected, ContextUnavailable, HttpContextValidator, InvalidContext,
-    request_context_id, validated_tenant,
+    ContextRejected, ContextUnavailable, HttpContextValidator, InvalidContext, ProvisioningAuthority, ValidatedContext,
+    request_context_id, validated_context,
 )
 
 CONTEXT = "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b"
 NOW = datetime(2026, 10, 4, 5, tzinfo=timezone.utc)
-ANSWER = {"context_id": CONTEXT, "tenant_id": "tn_01k4zuribeans",
+ANSWER = {"context_id": CONTEXT, "tenant_id": "tn_01k4zuribeans", "authority_purpose": "RUNTIME",
           "resolved_at": "2026-10-04T04:00:00Z", "expires_at": "2026-10-04T06:00:00Z"}
+PLAN = {"tenant_provisioning_id": "tp_01k4zuribeans", "plan_id": "plan_01k4zuribeans", "plan_version": 2,
+        "plan_digest": "sha256:" + "ab" * 32}
+PROVISIONING = dict(ANSWER, authority_purpose="TENANT_PROVISIONING", provisioning_authority=PLAN)
 
 
 class ContextTests(unittest.TestCase):
@@ -28,18 +31,34 @@ class ContextTests(unittest.TestCase):
                 request_context_id("POST", body, "")
 
     def test_response_needs_bounded_current_authority_and_exact_requested_context(self):
-        self.assertEqual(validated_tenant(ANSWER, CONTEXT, now=NOW), ANSWER["tenant_id"])
+        self.assertEqual(validated_context(ANSWER, CONTEXT, now=NOW), ValidatedContext(ANSWER["tenant_id"], "RUNTIME", None))
         for patch in ({"expires_at": None}, {"expires_at": "bad"}, {"expires_at": "2026-10-04T06:00:00"},
                       {"context_id": "other"}, {"tenant_id": "tenant-local"}, {"legal_entity_id": "ZURIBEANS-ZA"},
-                      {"organisation_type": "invented"}):
+                      {"organisation_type": "invented"}, {"authority_purpose": "PENDING"}, {"authority_purpose": None},
+                      {"authority_purpose": ["RUNTIME"]}, {"provisioning_authority": PLAN}):
             with self.subTest(patch), self.assertRaises(ContextUnavailable):
-                validated_tenant(dict(ANSWER, **patch), CONTEXT, now=NOW)
+                validated_context(dict(ANSWER, **patch), CONTEXT, now=NOW)
         for expiry in ("2026-10-04T05:00:00Z", "2026-10-04T03:00:00Z"):
             with self.assertRaises(ContextRejected):
-                validated_tenant(dict(ANSWER, expires_at=expiry), CONTEXT, now=NOW)
+                validated_context(dict(ANSWER, expires_at=expiry), CONTEXT, now=NOW)
         for field in ANSWER:
             with self.assertRaises(ContextUnavailable):
-                validated_tenant({k: v for k, v in ANSWER.items() if k != field}, CONTEXT, now=NOW)
+                validated_context({k: v for k, v in ANSWER.items() if k != field}, CONTEXT, now=NOW)
+
+    def test_the_purpose_is_stated_and_a_provisioning_answer_carries_exactly_its_plan(self):
+        self.assertEqual(validated_context(PROVISIONING, CONTEXT, now=NOW), ValidatedContext(
+            "tn_01k4zuribeans", "TENANT_PROVISIONING", ProvisioningAuthority("tp_01k4zuribeans", "plan_01k4zuribeans", 2, PLAN["plan_digest"])))
+        without = {k: v for k, v in ANSWER.items() if k != "authority_purpose"}
+        bad_plans = [None, [], {}, dict(PLAN, approval_id="apd_x1y2z3"), {k: v for k, v in PLAN.items() if k != "plan_digest"},
+                     dict(PLAN, plan_version=0), dict(PLAN, plan_version=True), dict(PLAN, plan_version="2"),
+                     dict(PLAN, plan_digest="sha256:short"), dict(PLAN, plan_id="x"), dict(PLAN, tenant_provisioning_id="tp_"),
+                     dict(PLAN, tenant_provisioning_id="TP_X")]
+        for answer in [without] + [dict(PROVISIONING, provisioning_authority=plan) for plan in bad_plans] + [
+                {k: v for k, v in PROVISIONING.items() if k != "provisioning_authority"},
+                dict(PROVISIONING, market_id="mkt_za"), dict(PROVISIONING, organisation_id="org_1"),
+                dict(ANSWER, provisioning_authority=None)]:
+            with self.subTest(answer), self.assertRaises(ContextUnavailable):
+                validated_context(answer, CONTEXT, now=NOW)
 
     def test_cp_request_separates_validator_authentication_from_actual_subject_token(self):
         seen = []
@@ -54,8 +73,8 @@ class ContextTests(unittest.TestCase):
                                                 expires_at="2099-01-01T00:00:00Z")).encode())
 
         validator = HttpContextValidator("https://cp.example.invalid", lambda: "erp-validator-token", opener=Opener())
-        tenant = validator.validate(context_id=CONTEXT, subject_token="actual-incoming-token", correlation_id=CONTEXT)
-        self.assertEqual(tenant, ANSWER["tenant_id"])
+        validated = validator.validate(context_id=CONTEXT, subject_token="actual-incoming-token", correlation_id=CONTEXT)
+        self.assertEqual(validated, ValidatedContext(ANSWER["tenant_id"], "RUNTIME", None))
         self.assertEqual(seen[0].full_url, "https://cp.example.invalid/v1/platform-context/validate")
         self.assertEqual(seen[0].get_header("Authorization"), "Bearer erp-validator-token")
         self.assertEqual(json.loads(seen[0].data), {"context_id": CONTEXT, "subject_token": "actual-incoming-token"})
@@ -74,7 +93,8 @@ class ContextTests(unittest.TestCase):
 
     def test_only_what_the_control_plane_says_about_the_caller_is_a_rejection(self):
         for status, code in ((401, "SUBJECT_TOKEN_INVALID"), (404, "CONTEXT_NOT_FOUND"), (403, "TENANT_CONTEXT_MISMATCH"),
-                             (403, "TENANT_NOT_ACTIVE"), (400, "VALIDATION_FAILED")):
+                             (403, "TENANT_NOT_ACTIVE"), (400, "VALIDATION_FAILED"),
+                             (403, "PROVISIONING_AUTHORITY_NOT_CURRENT")):
             with self.subTest(status=status, code=code), self.assertRaises(ContextRejected):
                 self._validate(self._answer(status, {"code": code, "status": status}))
 
@@ -91,7 +111,8 @@ class ContextTests(unittest.TestCase):
 
     def test_a_rejection_code_with_the_wrong_status_is_not_trusted(self):
         for status, code in ((403, "SUBJECT_TOKEN_INVALID"), (401, "CONTEXT_NOT_FOUND"), (404, "TENANT_NOT_ACTIVE"),
-                             (500, "CONTEXT_NOT_FOUND"), (200, "CONTEXT_NOT_FOUND")):
+                             (500, "CONTEXT_NOT_FOUND"), (200, "CONTEXT_NOT_FOUND"), (404, "PROVISIONING_AUTHORITY_NOT_CURRENT"),
+                             (503, "PROVISIONING_AUTHORITY_NOT_CURRENT")):
             with self.subTest(status=status, code=code), self.assertRaises(ContextUnavailable):
                 self._validate(self._answer(status, {"code": code}))
 

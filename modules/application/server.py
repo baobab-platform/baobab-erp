@@ -74,7 +74,7 @@ from order_to_cash.consequence_store import PostgresOrderConsequenceStore
 from order_to_cash.model import OrderLine, OrderToCashError, TenantScope
 from outbox.postgres_store import PostgresOutboxStore
 from provisioning.operation_request import is_tenant_id
-from security.platform_context import (ContextRejected, ContextUnavailable, InvalidContext, configured_validator, request_context_id)
+from security.platform_context import (ContextRejected, ContextUnavailable, InvalidContext, TENANT_PROVISIONING, configured_validator, request_context_id)
 from security.jwks import JwksSigningKeyResolver
 from security.workload_auth import SigningKeyResolver, TokenValidationError, verify_workload_token
 
@@ -306,6 +306,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                     return fail("invalid_request", "the request body is too large")
                 raw_body = self.rfile.read(length) if length > 0 else b""
             tenant_id = identity.tenant_id
+            context_authority = None
             if route.context_required:
                 try:
                     context_id = request_context_id(method, raw_body, split.query)
@@ -317,7 +318,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                 if validator is None:
                     return fail("unavailable", headers=retry_later)
                 try:
-                    tenant_id = validator.validate(
+                    validated = validator.validate(
                         context_id=context_id,
                         subject_token=self.headers["Authorization"].split()[1],
                         correlation_id=correlation_id)
@@ -325,8 +326,15 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                     return fail("forbidden", code="ERP_CONTEXT_REJECTED")
                 except ContextUnavailable:
                     return fail("unavailable", headers=retry_later)
+                tenant_id = validated.tenant_id
                 if identity.tenant_id is not None and identity.tenant_id != tenant_id:
                     return fail("forbidden", code="ERP_CONTEXT_REJECTED")
+                # A context is authority only for what the Control Plane says it is authority FOR (Shared erp/v1 1.2.0).
+                # Provisioning accepts only a TENANT_PROVISIONING context and every business-data read only a RUNTIME one;
+                # a context of the other purpose is the same indistinguishable rejection as any other.
+                if validated.purpose != route.context_purpose:
+                    return fail("forbidden", code="ERP_CONTEXT_REJECTED")
+                context_authority = validated.provisioning_authority
                 if method == "POST":
                     requested_tenant = json.loads(raw_body).get("tenant_id")
                     # A malformed tenant is an invalid document (400), not an authority disagreement: only a different
@@ -334,6 +342,17 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                     if not is_tenant_id(requested_tenant):
                         return fail("invalid_request", "tenant_id must be a valid tenant identifier")
                     if requested_tenant != tenant_id:
+                        return fail("forbidden", code="ERP_CONTEXT_REJECTED")
+                    # Context authority and plan authority are independent and both must hold: the plan the request names
+                    # must be exactly the plan the context is bound to. (A request whose plan tuple is missing or malformed
+                    # is an invalid document and is answered 400 by the request parser; nothing is provisioned either way.)
+                    named = json.loads(raw_body).get("control_plane_authority")
+                    if route.context_purpose == TENANT_PROVISIONING and isinstance(named, dict) \
+                            and named.keys() == {"tenant_provisioning_id", "plan_id", "plan_version", "plan_digest"} \
+                            and (context_authority is None or named != {
+                                "tenant_provisioning_id": context_authority.tenant_provisioning_id,
+                                "plan_id": context_authority.plan_id, "plan_version": context_authority.plan_version,
+                                "plan_digest": context_authority.plan_digest}):
                         return fail("forbidden", code="ERP_CONTEXT_REJECTED")
             with psycopg.connect(config.database_url) as connection:
                 result = route.handler(
@@ -347,6 +366,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                     body=raw_body,
                     idempotency_key=self.headers.get("Idempotency-Key"),
                     principal=identity.principal,
+                    context_authority=context_authority,
                     provisioning=config.provisioning,
                     idempiere_for=self._build_idempiere_client,
                 )
