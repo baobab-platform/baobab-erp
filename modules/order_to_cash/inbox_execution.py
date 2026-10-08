@@ -30,7 +30,7 @@ from inbox.postgres_queue import Claim, LeaseLostError, PostgresInboxQueue
 from integration.idempiere_client import Eq, IdempiereApiError, IdempiereClientError
 from order_to_cash.consequence_events import consequence_changed_event
 from order_to_cash.consequence_store import PostgresOrderConsequenceStore
-from order_to_cash.execution_policy import (BLOCKED_DELAY_SECONDS, BLOCKED_HORIZON, CONTENTION_DELAY_SECONDS, CUSTOMER_KIND,
+from order_to_cash.execution_policy import (ALL_ORGANIZATIONS_AD_ORG_ID, BLOCKED_DELAY_SECONDS, BLOCKED_HORIZON, CONTENTION_DELAY_SECONDS, CUSTOMER_KIND,
                                             MAX_ATTEMPTS, ORDER_PLACED, PRODUCT_KIND, RETRY_CEILING_SECONDS, Outcome,
                                             erp_order_id, failure_outcome, retry_delay_seconds)
 from order_to_cash.model import OrderLine
@@ -38,7 +38,13 @@ from order_to_cash.placed_order import PayloadError, PlacedOrder, parse_placed_o
 from order_to_cash.service import sales_order_fields
 from outbox.postgres_store import PostgresOutboxStore
 
+class EngineOrgMismatch(Exception):
+    """The engine credentials for the tenant's AD_Client are for a different AD_Org than the one its mapping names."""
+
+
 class IdempiereOrders(Protocol):
+    def get_record(self, table: str, record_id: int) -> dict: ...
+
     def query(self, table: str, conditions, select) -> list[dict]: ...
 
     def create_record(self, table: str, fields: dict) -> int: ...
@@ -117,7 +123,7 @@ def _now() -> datetime:
 
 
 def _execute(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQueue,
-             engine_for: Callable[[int], IdempiereOrders | None], now: Callable[[], datetime]) -> Outcome:
+             engine_for: Callable[[int, int], IdempiereOrders | None], now: Callable[[], datetime]) -> Outcome:
     try:
         order = parse_placed_order(claim.data)
     except PayloadError as exc:
@@ -145,7 +151,10 @@ def _execute(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQ
             raise _dead("AMENDMENT_UNSUPPORTED", "a later version of an executed order; amendment is not implemented")
 
         lines = _resolve_lines(masters, target, order)
-        engine = engine_for(target.ad_client_id)
+        try:
+            engine = engine_for(target.ad_client_id, target.ad_org_id)
+        except EngineOrgMismatch:
+            raise _blocked("ENGINE_ORG_MISMATCH", "the engine credentials are for another AD_Org than the tenant's mapping") from None
         if engine is None:
             raise _blocked("ENGINE_UNCONFIGURED", "no engine credentials for the tenant's AD_Client")
         customer = masters.native(target.engine_instance_id, order.legal_entity_id, CUSTOMER_KIND, order.customer_id)
@@ -188,6 +197,31 @@ def _resolve_lines(masters: PostgresOrderMasterData, target: Target, order: Plac
     return tuple(lines)
 
 
+def _reference(value, what: str) -> int:
+    if isinstance(value, dict):
+        value = value.get("id")
+    if isinstance(value, bool) or not isinstance(value, (int, str)) or not str(value).isdigit():
+        raise IdempiereClientError(f"{what} is not a record reference")
+    return int(value)
+
+
+def _verify_units(engine: IdempiereOrders, order: PlacedOrder, lines: tuple[OrderLine, ...]) -> None:
+    """The order line sends a bare quantity, which the engine reads in the product's own unit of measure. So the canonical unit
+    must be that unit's X12 code; a different one (12 KG for a product sold in EA) would silently order a different quantity and
+    is refused instead. There is no unit conversion here."""
+    codes: dict[str, str] = {}
+    wrong = []
+    for placed, native in zip(order.lines, lines):
+        if native.product_canonical_id not in codes:
+            product = engine.get_record("M_Product", int(native.product_canonical_id))
+            uom = engine.get_record("C_UOM", _reference(product.get("C_UOM_ID"), "C_UOM_ID"))
+            codes[native.product_canonical_id] = str(uom.get("X12DE355"))
+        if codes[native.product_canonical_id] != placed.unit:
+            wrong.append(placed.line_id)
+    if wrong:
+        raise _dead("UNIT_MISMATCH", "line(s) in a unit other than the product's own: " + ", ".join(wrong[:10]))
+
+
 def _find_or_create(engine: IdempiereOrders, order: PlacedOrder, customer: int, lines: tuple[OrderLine, ...]
                     ) -> tuple[int, bool]:
     """The engine order for this Trade order: the one an earlier attempt already created, or a new one."""
@@ -197,6 +231,7 @@ def _find_or_create(engine: IdempiereOrders, order: PlacedOrder, customer: int, 
             raise _dead("DUPLICATE_NATIVE_ORDERS", f"{len(existing)} engine orders carry the order's reference")
         if existing:
             return int(existing[0]["id"] if "id" in existing[0] else existing[0]["C_Order_ID"]), True
+        _verify_units(engine, order, lines)
         return engine.create_record(
             "C_Order", sales_order_fields(customer, order.currency, lines, reference=order.commerce_order_id)), False
     except IdempiereApiError as exc:
@@ -208,7 +243,7 @@ def _find_or_create(engine: IdempiereOrders, order: PlacedOrder, customer: int, 
 
 
 def run_claim(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQueue,
-              engine_for: Callable[[int], IdempiereOrders | None], *, now: Callable[[], datetime] = _now) -> Outcome:
+              engine_for: Callable[[int, int], IdempiereOrders | None], *, now: Callable[[], datetime] = _now) -> Outcome:
     """Executes one claimed row and settles it. Never raises for an event-level failure; a lost lease or an unexpected error
     is reported as the outcome it is (a lost lease leaves the row to its new holder)."""
     try:

@@ -9,8 +9,10 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 ORDER_PLACED = "com.baobab-platform.trade.order.placed.v1"
-MAX_ATTEMPTS = 8
+MAX_ATTEMPTS = 24
+RETRY_BASE_SECONDS = 30
 RETRY_CEILING_SECONDS = 3600
+ALL_ORGANIZATIONS_AD_ORG_ID = 0  # a tenant mapping at AD_Org 0 spans every organisation of its AD_Client
 CONTENTION_DELAY_SECONDS = 5
 BLOCKED_DELAY_SECONDS = 900
 BLOCKED_HORIZON = timedelta(hours=72)
@@ -38,7 +40,8 @@ def erp_order_id(tenant_id: str, commerce_order_id: str) -> str:
 
 
 def retry_delay_seconds(attempts: int) -> int:
-    return min(2 ** attempts, RETRY_CEILING_SECONDS)
+    """30 s, 1 min, 2 min ... doubling to a 1 h ceiling reached at the 8th attempt; 24 attempts span roughly 17 hours."""
+    return min(RETRY_BASE_SECONDS * 2 ** (attempts - 1), RETRY_CEILING_SECONDS)
 
 
 def failure_outcome(outcome: Outcome, *, attempts: int, received_at: datetime, now: datetime) -> Outcome:

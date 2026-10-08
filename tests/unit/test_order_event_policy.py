@@ -68,13 +68,18 @@ class ParsePlacedOrderTests(unittest.TestCase):
 
 class BudgetTests(unittest.TestCase):
     def test_retry_backoff_doubles_to_a_ceiling(self):
-        self.assertEqual([retry_delay_seconds(n) for n in (1, 2, 3, 4)], [2, 4, 8, 16])
-        self.assertEqual(retry_delay_seconds(30), RETRY_CEILING_SECONDS)
+        self.assertEqual([retry_delay_seconds(n) for n in (1, 2, 3, 4)], [30, 60, 120, 240])
+        self.assertEqual(retry_delay_seconds(8), RETRY_CEILING_SECONDS)
+        self.assertEqual(retry_delay_seconds(60), RETRY_CEILING_SECONDS)
+
+    def test_the_attempt_budget_spans_hours_not_minutes(self):
+        total = sum(retry_delay_seconds(n) for n in range(1, MAX_ATTEMPTS))
+        self.assertGreater(total, 12 * 3600)
 
     def test_a_transient_failure_is_retried_until_the_budget_is_spent(self):
         retry = Outcome("retry", "ENGINE_UNAVAILABLE")
         early = failure_outcome(retry, attempts=3, received_at=NOW, now=NOW)
-        self.assertEqual((early.status, early.delay_seconds), ("retry", 8))
+        self.assertEqual((early.status, early.delay_seconds), ("retry", 120))
         last = failure_outcome(retry, attempts=MAX_ATTEMPTS, received_at=NOW, now=NOW)
         self.assertEqual((last.status, last.code, last.detail), ("dead_letter", "ATTEMPTS_EXHAUSTED", "ENGINE_UNAVAILABLE"))
 

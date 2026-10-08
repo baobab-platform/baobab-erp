@@ -25,6 +25,9 @@ class _Engine:
     def __init__(self):
         self.created = []
 
+    def get_record(self, table, record_id):
+        return {"C_UOM_ID": 1} if table == "M_Product" else {"X12DE355": "EA"}
+
     def query(self, table, conditions, select):
         return [{"id": rec["id"]} for rec in self.created if rec["POReference"] == conditions[0].value]
 
@@ -81,7 +84,7 @@ class OrderExecutionConformanceTests(unittest.TestCase):
         PostgresInboxStore(self.db).record_received(event, __import__("json").dumps(event.data, sort_keys=True))
         engine = _Engine()
 
-        report = run_once(self.db, lambda _ad_client: engine, worker_id="conformance", limit=5)
+        report = run_once(self.db, lambda _ad_client, _ad_org: engine, worker_id="conformance", limit=5)
 
         self.assertEqual(report["codes"], {"EXECUTED": 1})
         self.assertEqual(len(engine.created), 1)

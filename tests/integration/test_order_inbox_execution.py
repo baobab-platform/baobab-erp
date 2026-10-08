@@ -72,6 +72,10 @@ class _Engine(BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802
         state = type(self).state
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path.startswith("/models/M_Product/"):
+            return self._send(200, {"id": 601, "C_UOM_ID": {"id": 33, "identifier": "unit"}})
+        if parsed.path == "/models/C_UOM/33":
+            return self._send(200, {"id": 33, "X12DE355": state["uom"]})
         if parsed.path != "/models/C_Order":
             return self._send(404, {"title": "Not Found", "status": 404, "detail": self.path})
         flt = urllib.parse.parse_qs(parsed.query).get("$filter", [""])[0]
@@ -84,7 +88,7 @@ class _Engine(BaseHTTPRequestHandler):
 
 def _reset_engine():
     _Engine.state = {"lock": threading.Lock(), "orders": [], "next_id": 7000, "create_attempts": 0, "queries": 0,
-                     "create_status": 201, "create_gate": None, "create_entered": threading.Event()}
+                     "create_status": 201, "uom": "EA", "create_gate": None, "create_entered": threading.Event()}
 
 
 class _Base(unittest.TestCase):
@@ -160,11 +164,14 @@ class _Base(unittest.TestCase):
                         (self.engine_instance, self.entity, kind, canonical, native))
         self.db.commit()
 
-    def engine_for(self, ad_client_id):
+    def engine_for(self, ad_client_id, ad_org_id):
         from integration.idempiere_client import IdempiereCredentials, RestIdempiereClient
+        from order_to_cash.inbox_execution import EngineOrgMismatch
 
         if ad_client_id != self.ad_client:
             return None
+        if ad_org_id != 0 and ad_org_id != 1:  # these credentials are for AD_Org 1
+            raise EngineOrgMismatch()
         return RestIdempiereClient(IdempiereCredentials(base_url=self.engine_url, username="u", password="p",
                                                         client_id=ad_client_id, role_id=1, organization_id=1))
 
@@ -376,6 +383,38 @@ class MissingPreconditionTests(_Base):
 
 
 class EngineFailureTests(_Base):
+    def test_a_unit_other_than_the_products_own_is_refused_not_silently_reinterpreted(self):
+        self.seed()
+        _Engine.state["uom"] = "KG"  # the product is sold in KG; the event orders 12 EA
+        wire = self.placed()
+        self.deliver(wire)
+        self.work()
+        row = self.row(wire["id"])
+        self.assertEqual((row["status"], row["code"]), ("dead_letter", "UNIT_MISMATCH"))
+        self.assertIn("line_001", row["error"])
+        self.assertEqual(_Engine.state["create_attempts"], 0)
+
+    def test_credentials_for_another_ad_org_are_never_used_for_the_tenants_org(self):
+        self.seed()
+        with self.db.cursor() as cursor:
+            cursor.execute("UPDATE baobab.tenant_mapping SET ad_org_id = 7 WHERE tenant_id = %s", (self.tenant,))
+        self.db.commit()
+        wire = self.placed()
+        self.deliver(wire)
+        self.work()
+        self.assertEqual((self.row(wire["id"])["status"], self.row(wire["id"])["code"]), ("blocked", "ENGINE_ORG_MISMATCH"))
+        self.assertEqual(_Engine.state["create_attempts"] + _Engine.state["queries"], 0)
+
+    def test_a_tenant_mapped_to_all_organisations_uses_the_clients_credentials(self):
+        self.seed()
+        with self.db.cursor() as cursor:
+            cursor.execute("UPDATE baobab.tenant_mapping SET ad_org_id = 0 WHERE tenant_id = %s", (self.tenant,))
+        self.db.commit()
+        wire = self.placed()
+        self.deliver(wire)
+        self.work()
+        self.assertEqual(self.row(wire["id"])["code"], "EXECUTED")
+
     def test_an_unavailable_engine_retries_with_backoff_then_exhausts(self):
         self.seed()
         wire = self.placed()
@@ -390,7 +429,7 @@ class EngineFailureTests(_Base):
         self.assertEqual(self.work()["pass"], {})
         # the last attempt of the budget
         with self.db.cursor() as cursor:
-            cursor.execute("UPDATE baobab.event_inbox SET attempts = 7, next_attempt_at = now() WHERE event_id = %s::uuid",
+            cursor.execute("UPDATE baobab.event_inbox SET attempts = 23, next_attempt_at = now() WHERE event_id = %s::uuid",
                            (wire["id"],))
         self.db.commit()
         self.work()

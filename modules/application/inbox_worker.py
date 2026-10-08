@@ -27,13 +27,20 @@ import psycopg
 
 from inbox.postgres_queue import PostgresInboxQueue
 from integration.idempiere_client import RestIdempiereClient
-from order_to_cash.inbox_execution import ORDER_PLACED, run_claim
+from order_to_cash.execution_policy import ALL_ORGANIZATIONS_AD_ORG_ID
+from order_to_cash.inbox_execution import ORDER_PLACED, EngineOrgMismatch, run_claim
 
 
 def _engine_factory(credentials: dict):
-    def engine_for(ad_client_id: int):
+    def engine_for(ad_client_id: int, ad_org_id: int):
         found = credentials.get(ad_client_id)
-        return RestIdempiereClient(found) if found is not None else None
+        if found is None:
+            return None
+        # an engine session is bound to one AD_Org: use it only for the organisation the tenant mapping names (or, at AD_Org 0,
+        # for the whole AD_Client), never silently for another legal entity's organisation
+        if ad_org_id != ALL_ORGANIZATIONS_AD_ORG_ID and found.organization_id != ad_org_id:
+            raise EngineOrgMismatch()
+        return RestIdempiereClient(found)
 
     return engine_for
 
