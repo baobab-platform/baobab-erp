@@ -1,4 +1,8 @@
-"""Executes received ``trade.order.placed`` events: claims due inbox rows and runs each to an outcome (ADR-ERP-006, ADR-ERP-016).
+"""Executes received Trade events: claims due inbox rows and runs each to an outcome (ADR-ERP-006, ADR-ERP-016).
+
+Two event types are executed. ``trade.customer.projected`` is claimed first in every pass, so a customer that arrives together with its
+first order is a business partner (and mapped) by the time the order is looked at; ``trade.order.placed`` follows. Each type has its own
+executor and its own locks (``customers.projection_execution``, ``order_to_cash.inbox_execution``); both share ``inbox.execution_support``.
 
 Like ``dispatch_worker`` it runs to completion and exits; an external scheduler (the ``baobab-inbox-worker`` Compose loop, cron, a
 systemd timer) decides how often, so scheduling stays deployment configuration. HTTP ingress stays responsible for signature,
@@ -28,6 +32,7 @@ import psycopg
 from inbox.postgres_queue import PostgresInboxQueue
 from integration.idempiere_client import RestIdempiereClient
 from order_to_cash.execution_policy import ALL_ORGANIZATIONS_AD_ORG_ID, ORDER_PLACED
+from customers.projection_execution import CUSTOMER_PROJECTED, run_claim as run_customer_claim
 from order_to_cash.inbox_execution import EngineOrgMismatch, run_claim
 
 
@@ -46,18 +51,21 @@ def _engine_factory(credentials: dict):
 
 
 def run_once(connection: psycopg.Connection, engine_for, *, worker_id: str, limit: int = 50, lease_seconds: int = 300) -> dict:
+    """One pass: up to ``limit`` rows per event type, customers first. ``pass`` and ``codes`` count outcomes across both types; the
+    backlog is reported per type so an alert can watch each."""
     queue = PostgresInboxQueue(connection)
     done: dict[str, int] = {}
     codes: dict[str, int] = {}
-    for _ in range(limit):
-        claim = queue.claim(event_type=ORDER_PLACED, worker_id=worker_id, lease_seconds=lease_seconds)
-        if claim is None:
-            break
-        outcome = run_claim(claim, connection, queue, engine_for)
-        done[outcome.status] = done.get(outcome.status, 0) + 1
-        codes[outcome.code] = codes.get(outcome.code, 0) + 1
-    return {"event": "inbox.execute", "event_type": ORDER_PLACED, "worker": worker_id, "pass": done, "codes": codes,
-            "backlog": queue.counts(ORDER_PLACED)}
+    for event_type, run in ((CUSTOMER_PROJECTED, run_customer_claim), (ORDER_PLACED, run_claim)):
+        for _ in range(limit):
+            claim = queue.claim(event_type=event_type, worker_id=worker_id, lease_seconds=lease_seconds)
+            if claim is None:
+                break
+            outcome = run(claim, connection, queue, engine_for)
+            done[outcome.status] = done.get(outcome.status, 0) + 1
+            codes[outcome.code] = codes.get(outcome.code, 0) + 1
+    return {"event": "inbox.execute", "worker": worker_id, "pass": done, "codes": codes,
+            "backlog": queue.counts(ORDER_PLACED), "customer_backlog": queue.counts(CUSTOMER_PROJECTED)}
 
 
 def main() -> None:

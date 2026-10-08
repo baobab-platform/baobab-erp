@@ -251,6 +251,11 @@ adrs:
       - tests/integration/test_postgres_outbox_store.py
       - tests/integration/test_postgres_inbox_store.py
       - tests/integration/test_http_server.py
+      - modules/inbox/execution_support.py
+      - modules/customers/payload.py
+      - modules/customers/projection_execution.py
+      - tests/unit/test_customer_projection_payload.py
+      - tests/integration/test_customer_projection_execution.py
     gap: >
       Record -> dispatch -> signed HTTP delivery -> mark-delivered, and
       receive -> verify -> deduplicate -> persist, are both proven end-to-end
@@ -280,7 +285,7 @@ adrs:
       CORRECTION 2026-10-08: of the eight registered ERP-produced types only erp.order.consequence-changed
       and erp.provisioning.changed have producers; the other six are registry entries only. Consumed:
       trade.order.placed is now EXECUTED by baobab-inbox-worker (#67; migration 0019, replay/crash/concurrency
-      tests, no second sales order). trade.customer.projected is received but not executed. The statement that
+      tests, no second sales order). trade.customer.projected is executed by the same worker since ERP-CAP-06 (business partner + mapping). The statement that
       no ERP-produced event is delivered is no longer true for those two types. Live-iDempiere status of order
       execution: unproven.
 
