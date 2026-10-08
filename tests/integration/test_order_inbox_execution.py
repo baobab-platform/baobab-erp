@@ -280,19 +280,21 @@ class ExecutionTests(_Base):
                          {"commerce_order_id": self.order, "status": "accepted", "revision": 1, "erp_order_id": erp_id,
                           "order_version": 1})
 
-    def test_only_order_placed_events_are_executed(self):
+    def test_a_customer_event_is_never_executed_as_an_order(self):
         self.seed()
         other = self.placed()
         other["type"] = CUSTOMER_PROJECTED
         other["dataschema"] = "https://contracts.baobab-platform.com/erp/v1/customer-projection.schema.json"
         other["data"] = {"customer_id": self.customer}
-        # ingress may reject a payload that is not its schema; what matters is that the order worker never touches it
+        # ingress may reject a payload that is not its schema; what matters is that nothing turns it into an engine order
         try:
             self.deliver(other)
         except Exception:  # noqa: BLE001
             self.skipTest("ingress rejected the customer event shape in this fixture")
         self.work()
-        self.assertEqual(self.row(other["id"])["status"], "received")
+        # the customer executor owns this type now and refuses the malformed body; the order executor never saw it
+        row = self.row(other["id"])
+        self.assertEqual((row["status"], row["code"]), ("dead_letter", "PAYLOAD_INVALID"))
         self.assertEqual(self.engine_orders(), [])
 
     def test_invalid_payload_is_a_dead_letter_and_the_engine_is_never_called(self):

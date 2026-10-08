@@ -43,8 +43,9 @@ Same one-shot pattern as the dispatch worker (`modules/scripts/inbox_worker_loop
 may run at once. It needs `DATABASE_URL` (a direct connection) and `IDEMPIERE_CLIENT_CREDENTIALS_JSON` (the same per-AD_Client JSON the
 application reads; a tenant without an entry is blocked, not failed). `BAOBAB_INBOX_BATCH_LIMIT` (default 50) bounds a pass and
 `BAOBAB_INBOX_LEASE_SECONDS` (default 300, minimum 30) is the claim lease: keep it above the longest time one order can spend in the engine, because an
-expired lease lets another worker take the row. Each run prints one JSON line (`event: inbox.execute`) with this pass's outcomes by status and
-code and the backlog by status afterwards: alert on any `dead_letter`, on `blocked` rows older than an hour, and on a growing `received` count.
+expired lease lets another worker take the row. The worker executes `trade.customer.projected` as well as `trade.order.placed` (customers first); each
+client it creates partners in needs exactly one default business-partner group. Each run prints one JSON line (`event: inbox.execute`) with this pass's outcomes by status and
+code across both types and the backlog by status afterwards (`backlog` for orders, `customer_backlog` for customers): alert on any `dead_letter`, on `blocked` rows older than an hour, and on a growing `received` count.
 Deploying it also executes any `trade.order.placed` rows already `received` before it existed.
 
 ### Provisioning worker
