@@ -93,6 +93,8 @@ jobs:
     env:
       DATABASE_URL: postgresql://baobab:baobab@localhost:5432/baobab_test
       BAOBAB_SHARED_PATH: ${{ github.workspace }}/.shared-contracts
+      # The registration preflight refuses a Shared checkout with stray files, so nothing here may write bytecode into it.
+      PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -113,6 +115,10 @@ jobs:
         run: ./db/migrate.sh
       - name: Shared conformance
         run: PYTHONPATH=modules:tests/conformance python3 -m unittest discover -s tests/conformance -p 'test_*.py' -v
+      - name: Provider registration preflight
+        # ERP-CAP-07: the declaration validates at the pinned Shared commit and the DRAFT registrations it generates are the
+        # IMPLEMENTED support only. Read-only; it registers and activates nothing (docs/operations/provider-support-publication.md).
+        run: python3 scripts/provider_publication.py --shared-checkout "$BAOBAB_SHARED_PATH" --require-registrable
 
   integration:
     runs-on: ubuntu-26.04
