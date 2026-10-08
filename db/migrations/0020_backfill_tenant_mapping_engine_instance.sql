@@ -4,9 +4,10 @@
 -- operation's own desired state (tenant, legal entity, engine_instance_id).
 --
 -- Only an unambiguous answer is applied: a tenant mapping is filled when every non-failed provisioning operation for its
--- (tenant, legal entity) names the same EngineInstance. Rows with no operation, or with operations that disagree, stay NULL
--- (and keep failing closed as unmapped) for an operator to resolve; nothing is guessed. Rows that already have a value are
--- never changed.
+-- (tenant, legal entity) names the same, non-blank EngineInstance. An operation that names none counts against agreement
+-- (there is no evidence it used the same instance). Rows with no operation, or with operations that disagree or are
+-- incomplete, stay NULL (and keep failing closed as unmapped) for an operator to resolve; nothing is guessed. Rows that
+-- already have a value are never changed.
 UPDATE baobab.tenant_mapping AS mapping
    SET engine_instance_id = source.engine_instance_id, updated_at = now()
   FROM (
@@ -15,9 +16,9 @@ UPDATE baobab.tenant_mapping AS mapping
                min(desired_state ->> 'engine_instance_id') AS engine_instance_id
           FROM baobab.erp_provisioning_operation
          WHERE status IN ('applying', 'reconciling', 'ready', 'active')
-           AND coalesce(desired_state ->> 'engine_instance_id', '') <> ''
          GROUP BY 1, 2
-        HAVING count(DISTINCT desired_state ->> 'engine_instance_id') = 1
+        HAVING bool_and(coalesce(desired_state ->> 'engine_instance_id', '') <> '')
+           AND count(DISTINCT desired_state ->> 'engine_instance_id') = 1
        ) AS source
  WHERE mapping.engine_instance_id IS NULL
    AND mapping.status = 'active'

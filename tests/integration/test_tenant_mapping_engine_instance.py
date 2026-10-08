@@ -137,15 +137,21 @@ class BackfillMigrationTests(_Base):
         self._operation("FOXTROT", "ei_failed", status="failed")
         self._mapping("GOLF", base + 7)            # an operation that names no instance
         self._operation("GOLF", None)
+        self._mapping("HOTEL", base + 8)           # one names an instance, another names none: no evidence they agree
+        self._operation("HOTEL", "ei_hotel")
+        self._operation("HOTEL", None)
+        self._mapping("INDIA", base + 9)           # a blank instance counts as none
+        self._operation("INDIA", "ei_india")
+        self._operation("INDIA", "")
 
         with self.db.cursor() as cursor:
             cursor.execute(MIGRATION.read_text())
         self.db.commit()
 
         self.assertEqual({e: self._instance(e) for e in
-                          ("ALPHA", "BRAVO", "CHARLIE", "DELTA", "ECHO", "FOXTROT", "GOLF")},
+                          ("ALPHA", "BRAVO", "CHARLIE", "DELTA", "ECHO", "FOXTROT", "GOLF", "HOTEL", "INDIA")},
                          {"ALPHA": "ei_alpha", "BRAVO": "ei_bravo", "CHARLIE": None, "DELTA": None, "ECHO": "ei_kept",
-                          "FOXTROT": None, "GOLF": None})
+                          "FOXTROT": None, "GOLF": None, "HOTEL": None, "INDIA": None})
 
     def test_running_it_twice_changes_nothing_more(self):
         self._mapping("ALPHA", self.ad_client + 1)
