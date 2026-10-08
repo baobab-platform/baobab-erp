@@ -8,7 +8,8 @@ applies `db/migrations/` before anything else starts, a `baobab-app` service bui
 (`modules/application/server.py`: `/health/live`, `/health/ready`,
 `POST /events/inbound`), and a `baobab-dispatch-worker` service (same image) that
 periodically invokes `modules/application/dispatch_worker.py` to drain the event
-outbox.
+outbox, and a `baobab-inbox-worker` service that periodically invokes `modules/application/inbox_worker.py` to execute received
+`trade.order.placed` events (see `docs/events.md`, "Executing `trade.order.placed`").
 
 `modules/application/dispatch_worker.py` (outbox delivery) runs to completion and exits
 by design -- it is not itself a long-lived daemon. The `baobab-dispatch-worker` Compose
@@ -34,6 +35,16 @@ destination (`event: outbox.dispatch`) with what this pass did (`delivered`, `re
 `oldest_undelivered_seconds`. The delivery key is provisioned by an operator, never committed; rotate it by adding the new key to the
 Control Plane first, switching `BAOBAB_CP_EVENT_KEY_ID`/`BAOBAB_CP_EVENT_SECRET_B64`, then retiring the old key after the Control
 Plane's replay window (300 seconds) and the longest retry horizon (72 hours) have passed.
+
+### Inbox worker
+
+Same one-shot pattern as the dispatch worker (`modules/scripts/inbox_worker_loop.sh`, `BAOBAB_INBOX_INTERVAL_SECONDS`, default 15s), and any number
+may run at once. It needs `DATABASE_URL` (a direct connection) and `IDEMPIERE_CLIENT_CREDENTIALS_JSON` (the same per-AD_Client JSON the
+application reads; a tenant without an entry is blocked, not failed). `BAOBAB_INBOX_BATCH_LIMIT` (default 50) bounds a pass and
+`BAOBAB_INBOX_LEASE_SECONDS` (default 300, minimum 30) is the claim lease: keep it above the longest time one order can spend in the engine, because an
+expired lease lets another worker take the row. Each run prints one JSON line (`event: inbox.execute`) with this pass's outcomes by status and
+code and the backlog by status afterwards: alert on any `dead_letter`, on `blocked` rows older than an hour, and on a growing `received` count.
+Deploying it also executes any `trade.order.placed` rows already `received` before it existed.
 
 ## Production requirements
 
