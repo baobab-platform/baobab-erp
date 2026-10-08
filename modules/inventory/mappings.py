@@ -1,7 +1,7 @@
 """Resolves the public identifiers of GET /inventory-availability to native iDempiere records, through explicit mappings only.
 
-* the warehouse: the ERP-minted ``erp_`` identifier of an active ``M_Warehouse`` mapping of the token's tenant, which also
-  names the legal entity the warehouse belongs to;
+* the warehouse: the ERP-minted ``erp_`` identifier of an active warehouse of the token's tenant (``baobab.erp_warehouse``: the
+  identity provisioning registers, migration 0024), which also names the legal entity the warehouse belongs to;
 * the SKU: the Trade-owned canonical SKU id mapped to an ``M_Product`` for that legal entity's engine instance (ADR-ERP-014
   master-data mapping). The tenant's AD_Client comes from the same legal entity's active tenant mapping.
 
@@ -35,9 +35,8 @@ class PostgresInventoryMappings:
     def warehouse(self, tenant_id: str, erp_warehouse_id: str) -> ResolvedWarehouse | None:
         with self._connection.cursor() as cursor:
             cursor.execute(
-                "SELECT legal_entity_id, native_id FROM baobab.entity_mapping "
-                "WHERE tenant_id = %s AND erp_resource_id = %s AND native_table = 'M_Warehouse' AND status = 'active' "
-                "AND legal_entity_id IS NOT NULL AND (effective_to IS NULL OR effective_to > now())",
+                "SELECT legal_entity_id, native_id FROM baobab.erp_warehouse "
+                "WHERE tenant_id = %s AND erp_resource_id = %s AND status = 'active' AND native_id IS NOT NULL",
                 (tenant_id, erp_warehouse_id))
             row = cursor.fetchone()
         return ResolvedWarehouse(row[0], int(row[1])) if row else None

@@ -79,17 +79,34 @@ the partner, so they are omitted. `status` is the one ERP applied (the engine it
 suspended versus closed is ERP's record of what it applied, not an engine fact). A partner mapped before migration 0023 has an id but
 announces nothing until its next change.
 
-Still not produced: `warehouse.changed`. Its `timezone` is now an ERP input: each warehouse in a market's deployment configuration
-declares one (`warehouse_timezones`, exactly the `warehouse_codes`, IANA `Region/City`; a placeholder leaves the market unconfigured, a
-missing or malformed one is a configuration error, and nothing is defaulted or derived from the country). It reaches the
-`create_warehouse` step payload and the approved plan digest, and a request accepted before the member existed serialises and digests
-exactly as it did. What is still missing is the public identity: `GET /inventory-availability` resolves a warehouse through
-`baobab.entity_mapping` (`erp_resource_id`, `M_Warehouse`), but provisioning records warehouses only in
-`erp_provisioning_native_mapping`, and the unwired `WarehouseProvisioner` uses a different key scheme. Converging them needs one
-warehouse identity (an `entity_mapping` row, whose canonical id must be a UUID, which a warehouse code is not, or a relaxation of
-that key) and recovery for an uncertain create, before the event is produced.
-`inventory.availability-changed` has no engine change signal (ERP only answers reads) and `buyer-commercial-profile.changed` has no
-credit facts in ERP yet.
+## `warehouse.changed` (ERP-CAP-08)
+
+Produced by the provisioning executor each time a provisioned warehouse is registered or changes. Identity follows the business
+partner's pattern (migration 0024, `baobab.erp_warehouse`): the `erp_` public id is minted once at this boundary and is independent of
+the approved warehouse code (which can change), of the provisioning attempt, and of the iDempiere record number (private to an engine
+instance, replaceable on migration). The row binds the id to the current code and the verified native record, and it is found by the
+code within the legal entity or by the native record within the engine instance, so a code change and an engine migration each keep
+the id. A code and a native record that belong to different identities, or a native record claimed across legal entities or tenants,
+is `WAREHOUSE_IDENTITY_CONFLICT` for an operator, never resolved by picking one. No platform canonical id is invented and the general
+`entity_mapping` UUID rule is untouched.
+
+The step runs the existing marker adoption for the engine record, then registers the identity, the published revision
+(`baobab.document_outcome`, type `warehouse`) and the outbox row in one PostgreSQL transaction; the engine call is not part of that
+transaction, and a restart between the two registers the adopted record. Registration is idempotent and also covers warehouses
+created before identities existed, so a replay announces nothing. `timezone` is the ERP input from deployment configuration
+(`warehouse_timezones`, exactly the `warehouse_codes`, a member of the IANA database; a placeholder leaves the market unconfigured, a
+missing or unknown one is a configuration error, and nothing is defaulted or derived from the country). A warehouse provisioned
+before the input existed is registered but not announced, because ERP does not invent the member. `name` is what ERP wrote to the
+engine (the code), `country` is the market's and `status` is `active`.
+
+`GET /inventory-availability` resolves `warehouse_id` through `baobab.erp_warehouse`. Hand-written `entity_mapping` warehouse rows were
+carried over with the same public id and retired there, so a warehouse never has two live identities. The earlier unwired
+`WarehouseProvisioner`, which used a different key scheme, is removed: the step flow is the one path. Still open there: the step flow
+sets no `AD_Org_ID` on the warehouse and has no per-warehouse legal-entity validation (ADR-ERP-015), and none of it has run against a
+live iDempiere.
+
+Still not produced: `inventory.availability-changed` (no engine change signal; ERP only answers reads) and
+`buyer-commercial-profile.changed` (no credit facts in ERP yet).
 
 ## Executing `trade.order.placed` (inbox worker)
 

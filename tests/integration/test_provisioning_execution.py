@@ -145,6 +145,54 @@ class ProvisioningExecutionTests(_Fixture):
         self.assertEqual(self.engine.records, before)
         self.assertEqual(self.row()[1], 1)
 
+    # -- the warehouse's ERP public identity (ERP-CAP-08) -----------------------------------------------------------------------
+    def warehouses(self):
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT erp_resource_id, code, country, timezone, status, engine_instance_id, native_id "
+                           "FROM baobab.erp_warehouse WHERE tenant_id = %s AND legal_entity_id = %s", (self.tenant, self.entity))
+            return cursor.fetchall()
+
+    def warehouse_events(self):
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT payload_json FROM baobab.event_outbox WHERE tenant_id = %s AND event_type = %s ORDER BY occurred_at",
+                           (self.tenant, "com.baobab-platform.erp.warehouse.changed.v1"))
+            return [row[0] for row in cursor.fetchall()]
+
+    def test_a_provisioned_warehouse_gets_one_public_identity_and_one_announcement(self):
+        self.run_worker()
+        [(public, code, country, zone, status, instance, native)] = self.warehouses()
+        [warehouse_record] = self.engine.tables("M_Warehouse")
+        self.assertEqual((code, status, native), ("JNB", "active", warehouse_record))
+        self.assertEqual((country, zone), ("ZA", "Africa/Johannesburg"))
+        self.assertRegex(public, r"^erp_[a-z0-9]{4,59}$")
+        [event] = self.warehouse_events()
+        self.assertEqual({k: event[k] for k in ("warehouse_id", "code", "timezone", "country", "status", "revision", "legal_entity_id")},
+                         {"warehouse_id": public, "code": "JNB", "timezone": "Africa/Johannesburg", "country": "ZA", "status": "active",
+                          "revision": 1, "legal_entity_id": self.entity})
+        self.assertNotIn(str(native), str(event))  # the engine's record id never leaves the engine instance
+        self.make_due()
+        self.run_worker()
+        self.assertEqual(len(self.warehouses()), 1)
+        self.assertEqual(len(self.warehouse_events()), 1)  # a replay announces nothing
+
+    def test_a_lost_warehouse_create_is_adopted_and_still_one_identity_and_one_event(self):
+        self.engine.script = ["ok", "lose-response"]  # AD_Client created normally; the warehouse is created but its id is lost
+        self.assertEqual(self.run_worker()["codes"], {"ENGINE_UNAVAILABLE": 1})
+        self.assertEqual((len(self.engine.tables("M_Warehouse")), self.warehouses(), self.warehouse_events()), (1, [], []))
+        self.make_due()
+        self.assertEqual(self.run_worker()["codes"], {"READY": 1})
+        self.assertEqual(len(self.engine.tables("M_Warehouse")), 1)
+        self.assertEqual((len(self.warehouses()), len(self.warehouse_events())), (1, 1))
+
+    def test_inventory_resolution_uses_the_public_identity_for_the_tenant_only(self):
+        from inventory.mappings import PostgresInventoryMappings
+        self.run_worker()
+        [(public, *_rest, native)] = self.warehouses()
+        mappings = PostgresInventoryMappings(self.connection)
+        resolved = mappings.warehouse(self.tenant, public)
+        self.assertEqual((resolved.legal_entity_id, resolved.native_id), (self.entity, native))
+        self.assertIsNone(mappings.warehouse("tn_someoneelse", public))
+
     # -- an uncertain outcome is not repeated --------------------------------------------------------------------------------------
     def test_a_response_lost_after_the_engine_acted_is_adopted_not_repeated(self):
         self.engine.script = ["lose-response"]  # the AD_Client is created; this side never learns its id

@@ -243,10 +243,9 @@ class HttpContractTests(unittest.TestCase):
             cursor.execute("INSERT INTO baobab.erp_master_data_mapping (engine_instance_id, legal_entity_id, resource_kind, "
                            "canonical_id, native_id, desired_digest, source_version) VALUES (%s,%s,'product',%s,77,'d','1')",
                            (instance, entity, sku))
-        mapping_id = PostgresCanonicalMappingStore(self.connection).create_mapping(
-            self.tenant, entity, "Warehouse", str(uuid.uuid4()), "M_Warehouse", 88)
         with self.connection.cursor() as cursor:
-            cursor.execute("SELECT erp_resource_id FROM baobab.entity_mapping WHERE mapping_id = %s", (mapping_id,))
+            cursor.execute("INSERT INTO baobab.erp_warehouse (tenant_id, legal_entity_id, code, engine_instance_id, native_id) "
+                           "VALUES (%s,%s,'MAIN',%s,88) RETURNING erp_resource_id", (self.tenant, entity, instance))
             warehouse = cursor.fetchone()[0]
         self.connection.commit()
         return warehouse
