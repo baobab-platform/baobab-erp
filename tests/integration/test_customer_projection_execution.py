@@ -223,6 +223,85 @@ class CustomerProjectionTests(_Base):
         self.assertEqual(fields["Name"], "Example Importer")  # neither touched the partner
         self.assertEqual(self.partners.writes, [("create", 5001)])
 
+    # -- business-partner.changed ------------------------------------------------------------------------------------------------------
+    BP_EVENT = "com.baobab-platform.erp.business-partner.changed.v1"
+
+    def announced(self):
+        with self.db.cursor() as cursor:
+            cursor.execute("SELECT payload_json, ce_idempotency_key FROM baobab.event_outbox WHERE tenant_id = %s AND event_type = %s "
+                           "ORDER BY occurred_at, event_id", (self.tenant, self.BP_EVENT))
+            rows = cursor.fetchall()
+        self.db.commit()
+        return rows
+
+    def public_id(self):
+        with self.db.cursor() as cursor:
+            cursor.execute("SELECT erp_resource_id FROM baobab.erp_master_data_mapping WHERE canonical_id = %s", (self.customer,))
+            found = cursor.fetchone()
+        self.db.commit()
+        return found[0]
+
+    def test_a_projected_customer_is_announced_once_under_a_stable_erp_public_id(self):
+        self.seed_tenant()
+        self.deliver(self.projected(version=1))
+        self.work()
+        [(payload, key)] = self.announced()
+        public = self.public_id()
+        self.assertRegex(public, r"^erp_[a-z0-9]{4,59}$")
+        self.assertEqual((payload["business_partner_id"], payload["source_customer_id"], payload["revision"], payload["roles"]),
+                         (public, self.customer, 1, ["customer"]))
+        self.assertEqual(key, f"erp-business-partner-{public}-r1")
+        self.assertNotIn("5001", str(payload))  # the engine's record id never leaves the engine instance
+
+        self.deliver(self.projected(version=2, name="Renamed Importer Ltd", status="suspended"))
+        self.work()
+        rows = self.announced()
+        self.assertEqual([(p["revision"], p["status"], p["display_name"]) for p, _ in rows],
+                         [(1, "active", "Example Importer"), (2, "suspended", "Renamed Importer Ltd")])
+        self.assertEqual(self.public_id(), public)  # the public id survives the update
+
+    def test_a_replay_a_redelivery_and_a_stale_version_announce_nothing_more(self):
+        self.seed_tenant()
+        wire = self.projected(version=2)
+        self.deliver(wire)
+        self.work()
+        self.deliver(self.projected(version=2))  # same version, new event id
+        self.deliver(self.projected(version=1, name="Older"))
+        self.work()
+        self.assertEqual(len(self.announced()), 1)
+
+    def test_a_newer_version_with_the_same_content_does_not_advance_the_published_revision(self):
+        self.seed_tenant()
+        self.deliver(self.projected(version=1))
+        self.work()
+        self.deliver(self.projected(version=2))  # content unchanged
+        self.work()
+        self.assertEqual([p["revision"] for p, _ in self.announced()], [1])
+
+    def test_a_crash_before_the_commit_leaves_neither_a_mapping_nor_an_announcement(self):
+        self.seed_tenant()
+        self.deliver(self.projected())
+        crashed = self.connect()
+        with unittest.mock.patch("customers.projection_execution.PostgresMasterDataMappingStore.put", side_effect=_Crash()):
+            with self.assertRaises(_Crash):
+                self.work(crashed, worker="doomed", lease=300)
+        crashed.close()
+        self.assertEqual(self.announced(), [])
+        self.assertIsNone(self.mapping())
+
+    def test_public_ids_are_distinct_per_tenant_for_the_same_customer_id(self):
+        self.seed_tenant()
+        self.deliver(self.projected())
+        self.work()
+        first = self.public_id()
+        with self.db.cursor() as cursor:
+            cursor.execute("INSERT INTO baobab.erp_master_data_mapping (engine_instance_id, legal_entity_id, resource_kind, canonical_id, "
+                           "native_id, desired_digest, source_version) VALUES ('other-engine', %s, 'business_partner', %s, 9, 'd', '1') "
+                           "RETURNING erp_resource_id", (self.entity, self.customer))
+            second = cursor.fetchone()[0]
+        self.db.commit()
+        self.assertNotEqual(first, second)
+
     # -- an uncertain outcome is not repeated --------------------------------------------------------------------------------------------
     def test_restarting_after_an_uncertain_outcome_adopts_the_partner_instead_of_creating_another(self):
         self.seed_tenant()

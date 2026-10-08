@@ -28,10 +28,13 @@ from typing import Callable, Protocol
 
 import psycopg
 
+from customers.partner_events import business_partner_changed_event
 from customers.payload import CustomerProjection, PayloadError, marker, parse_customer_projected
 from inbox.execution_support import (AdvisoryLock, EngineOrgMismatch, PostgresMasterData, blocked, dead, engine_errors, settle,
                                      utc_now)
 from inbox.postgres_queue import Claim, PostgresInboxQueue
+from order_to_cash.outcome_store import PostgresDocumentOutcomeStore
+from outbox.postgres_store import PostgresOutboxStore
 from integration.idempiere_client import Eq, IdempiereApiError
 from order_to_cash.execution_policy import CONTENTION_DELAY_SECONDS, CUSTOMER_KIND, Outcome
 from provisioning.master_data_mapping import PostgresMasterDataMappingStore
@@ -82,6 +85,20 @@ def _numeric_version(source_version: str) -> int:
 
 def _update_fields(customer: CustomerProjection) -> dict:
     return {"Name": customer.display_name, "IsActive": customer.active, "IsCustomer": True}
+
+
+def _announce_partner(connection: psycopg.Connection, claim: Claim, customer: CustomerProjection, public_id: str) -> None:
+    """business-partner.changed, once per change ERP made to the partner, in the transaction that records the mapping. A redelivery that
+    changes nothing leaves the revision, and so the outbox, untouched."""
+    now = utc_now()
+    step = PostgresDocumentOutcomeStore(connection).advance(
+        tenant_id=claim.tenant_id, document_type="business_partner", document_id=public_id, status=customer.status,
+        detail={"display_name": customer.display_name, "source_customer_id": customer.customer_id}, now=now)
+    if step.changed:
+        PostgresOutboxStore(connection).record_event(business_partner_changed_event(
+            tenant_id=claim.tenant_id, legal_entity_id=customer.legal_entity_id, business_partner_id=public_id,
+            source_customer_id=customer.customer_id, display_name=customer.display_name, status=customer.status,
+            revision=step.revision, now=now, correlation_id=claim.correlation_id))
 
 
 def _execute(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQueue,
@@ -148,9 +165,11 @@ def _execute(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQ
 
         # one transaction: the mapping order execution resolves the customer through, and the inbox outcome
         try:
-            mappings.put(engine_instance_id=target.engine_instance_id, legal_entity_id=customer.legal_entity_id, kind=CUSTOMER_KIND,
-                         canonical_id=customer.customer_id, native_id=native_id, desired_digest=digest,
-                         source_version=str(customer.customer_version), commit=False)
+            public_id = mappings.put(
+                engine_instance_id=target.engine_instance_id, legal_entity_id=customer.legal_entity_id, kind=CUSTOMER_KIND,
+                canonical_id=customer.customer_id, native_id=native_id, desired_digest=digest,
+                source_version=str(customer.customer_version), commit=False)
+            _announce_partner(connection, claim, customer, public_id)
             queue.processed(claim, code)
             connection.commit()
         except BaseException:

@@ -59,7 +59,7 @@ outbox.
 |---|---|---|---|---|
 | 1 | `erp.order.consequence-changed.v1` | Produce | **Produced** | `modules/order_to_cash/consequence_events.py` (`new_event`), recorded in the outbox by `order_to_cash/service.py:121`; `tests/conformance/test_events.py` |
 | 2 | `erp.provisioning.changed.v1` | Produce | **Produced** | `modules/provisioning/command_events.py`, `command_store.py`; delivered over signed delivery (#64) |
-| 3 | `erp.business-partner.changed.v1` | Produce | Not produced | Registry entry only; no `new_event` or `CloudEvent(` call names it |
+| 3 | `erp.business-partner.changed.v1` | Produce | Produced (implementation evidence) | Customer projection execution; stable `erp_` public id (migration 0023). Live-provider conformance not yet proven |
 | 4 | `erp.inventory.availability-changed.v1` | Produce | Not produced | Registry entry only |
 | 5 | `erp.warehouse.changed.v1` | Produce | Not produced | Registry entry only |
 | 6 | `erp.invoice.changed.v1` | Produce | Produced (implementation evidence) | Posting and allocation read the engine back; see `docs/events.md`. Live-provider conformance not yet proven |
