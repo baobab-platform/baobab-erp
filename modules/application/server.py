@@ -71,6 +71,7 @@ from mapping.postgres_store import PostgresCanonicalMappingStore
 from mapping.resolver import resolve_to_canonical, resolve_to_native
 from order_to_cash import service as order_to_cash
 from order_to_cash.consequence_store import PostgresOrderConsequenceStore
+from order_to_cash.outcome_store import PostgresDocumentOutcomeStore
 from order_to_cash.model import OrderLine, OrderToCashError, TenantScope
 from outbox.postgres_store import PostgresOutboxStore
 from provisioning.operation_request import is_tenant_id
@@ -708,7 +709,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
         def _handle_complete_sales_order(self, body: dict) -> None:
             self._handle_complete_document(
                 body, required_id_field="commerce_order_canonical_id",
-                run=lambda scope, idempiere, mappings, outbox, process_ids, correlation_id, consequences: order_to_cash.complete_sales_order(
+                run=lambda scope, idempiere, mappings, outbox, process_ids, correlation_id, consequences, outcomes: order_to_cash.complete_sales_order(
                     scope=scope, commerce_order_canonical_id=body["commerce_order_canonical_id"],
                     correlation_id=correlation_id, process_ids=process_ids,
                     idempiere=idempiere, mappings=mappings, outbox=outbox, consequences=consequences,
@@ -750,7 +751,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
         def _handle_complete_shipment(self, body: dict) -> None:
             self._handle_complete_document(
                 body, required_id_field="shipment_canonical_id",
-                run=lambda scope, idempiere, mappings, outbox, process_ids, correlation_id, consequences: order_to_cash.complete_shipment(
+                run=lambda scope, idempiere, mappings, outbox, process_ids, correlation_id, consequences, outcomes: order_to_cash.complete_shipment(
                     scope=scope, shipment_canonical_id=body["shipment_canonical_id"],
                     correlation_id=correlation_id, process_ids=process_ids,
                     idempiere=idempiere, mappings=mappings, outbox=outbox, consequences=consequences,
@@ -789,10 +790,10 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
         def _handle_post_customer_invoice(self, body: dict) -> None:
             self._handle_complete_document(
                 body, required_id_field="invoice_canonical_id",
-                run=lambda scope, idempiere, mappings, outbox, process_ids, correlation_id, consequences: order_to_cash.post_customer_invoice(
+                run=lambda scope, idempiere, mappings, outbox, process_ids, correlation_id, consequences, outcomes: order_to_cash.post_customer_invoice(
                     scope=scope, invoice_canonical_id=body["invoice_canonical_id"],
                     correlation_id=correlation_id, process_ids=process_ids,
-                    idempiere=idempiere, mappings=mappings, outbox=outbox, consequences=consequences,
+                    idempiere=idempiere, mappings=mappings, outbox=outbox, consequences=consequences, outcomes=outcomes,
                 ),
             )
 
@@ -828,10 +829,10 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
         def _handle_complete_payment(self, body: dict) -> None:
             self._handle_complete_document(
                 body, required_id_field="payment_canonical_id",
-                run=lambda scope, idempiere, mappings, outbox, process_ids, correlation_id, consequences: order_to_cash.complete_payment(
+                run=lambda scope, idempiere, mappings, outbox, process_ids, correlation_id, consequences, outcomes: order_to_cash.complete_payment(
                     scope=scope, payment_canonical_id=body["payment_canonical_id"],
                     correlation_id=correlation_id, process_ids=process_ids,
-                    idempiere=idempiere, mappings=mappings, outbox=outbox,
+                    idempiere=idempiere, mappings=mappings, outbox=outbox, outcomes=outcomes,
                 ),
             )
 
@@ -859,6 +860,8 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                         invoice_canonical_id=body["invoice_canonical_id"], amount=str(body["amount"]),
                         correlation_id=body.get("correlation_id", ""), process_ids=process_ids,
                         idempiere=idempiere, mappings=mappings, outbox=outbox,
+                        consequences=PostgresOrderConsequenceStore(connection),
+                        outcomes=PostgresDocumentOutcomeStore(connection),
                     )
             except MappingNotFoundError as exc:
                 self._error(404, str(exc))
@@ -892,7 +895,8 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                     idempiere = self._build_idempiere_client(scope.ad_client_id)
                     mappings = PostgresCanonicalMappingStore(connection)
                     outbox = PostgresOutboxStore(connection)
-                    run(scope, idempiere, mappings, outbox, process_ids, correlation_id, PostgresOrderConsequenceStore(connection))
+                    run(scope, idempiere, mappings, outbox, process_ids, correlation_id, PostgresOrderConsequenceStore(connection),
+                        PostgresDocumentOutcomeStore(connection))
             except MappingNotFoundError as exc:
                 self._error(404, str(exc))
                 return

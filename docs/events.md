@@ -44,9 +44,23 @@ transaction as the change, and a repeated fact (which changes nothing) announces
 `erp-order-consequence-{commerce_order_id}-r{revision}`. A correlation id that is not a UUID is replaced by one derived from the
 order, so related events share a correlation without inventing one per call.
 
-Still not produced: `invoice.changed` and `payment.accounting-changed`. Their registered payloads need facts ERP does not hold yet
-(invoice number, total and due date; payment amount and capture id), and ERP does not invent them; they follow once those facts
-are recorded as ERP-owned projections. The legacy-shaped rows the order-to-cash steps record are still stored as `held` beside the
+## Accounting outcomes: `invoice.changed` and `payment.accounting-changed`
+
+Produced (ERP-CAP-05/08) from facts read back from the engine after the native process ran, never from the request: invoice number,
+total and currency (ISO code and the currency's own precision), and whether the engine reports the invoice completed and paid. An
+invoice or payment the engine has not completed is not announced, and neither is an invoice with no commerce-order link (the
+contract requires one). `outstanding` and `due_on` are optional and ERP does not hold them (the engine computes them), so they are
+omitted rather than guessed.
+
+Statuses: invoice `posted` on posting, `partially_paid` / `paid` after an allocation (paid is the engine's `IsPaid`); payment
+`posted` on completion, `allocated` when the engine reports the payment fully allocated (`IsAllocated`, which counts every allocation, so a payment split across invoices is judged on its total), otherwise `partially_allocated` after an allocation. A document's status only moves forward: a retried completion never re-announces an allocated payment or paid invoice as posted.
+`baobab.document_outcome` (migration 0022) holds each document's revision, advanced only when status or the observed facts change, in
+the same transaction as the outbox row; so a retried request announces nothing twice. Event ids are derived from tenant, document
+and revision; idempotency keys are `erp-invoice-{id}-r{revision}` and `erp-payment-{capture id}-r{revision}`. `issued_at` is when ERP
+first observed the posting, `accounted_at` when it observed that revision. If the read-back fails the request fails and rolls back,
+like every other engine error; if the facts are absent or inconsistent no event is built.
+
+The legacy-shaped rows the order-to-cash steps record are still stored as `held` beside the
 canonical event and are never delivered.
 
 ## Executing `trade.order.placed` (inbox worker)
