@@ -35,7 +35,7 @@ class ConfigurationTests(unittest.TestCase):
                                                            if k != "warehouse_timezones"}}})
 
     def test_only_iana_region_city_names_are_accepted(self):
-        for bad in ("UTC", "Kampala", "Africa Kampala", "", 3, None, "Africa/" + "x" * 80):
+        for bad in ("UTC", "Kampala", "Africa Kampala", "", 3, None, "Africa/" + "x" * 80, "Africa/Kampalaa", "Mars/Olympus_Mons"):
             with self.subTest(bad):
                 with self.assertRaises(MarketConfigurationError):
                     parse_market_configuration(market(warehouse_timezones={"KLA": bad, "JIN": "Africa/Kampala"}))
@@ -49,6 +49,36 @@ class ConfigurationTests(unittest.TestCase):
         import pathlib
         template = pathlib.Path(__file__).resolve().parents[2] / "config/provisioning/deployment.template.json"
         self.assertEqual(parse_deployment_configuration(json.loads(template.read_text())).markets, {})
+
+
+class RequestFileTests(unittest.TestCase):
+    """The per-entity request files (``provisioning.config.load_request``) are new requests: the constraint is enforced at that boundary."""
+
+    def load(self, **member):
+        import pathlib
+        import tempfile
+        from provisioning.config import load_request
+        template = json.loads((pathlib.Path(__file__).resolve().parents[2] / "config/provisioning/zuribeans-ug.production.template.json").read_text())
+        market_entry = template["markets"][0]
+        market_entry.pop("warehouse_timezones", None)
+        market_entry.update(member)
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+            json.dump(template, handle)
+        return load_request(handle.name)
+
+    def test_the_shipped_template_still_loads_with_its_placeholders(self):
+        self.assertTrue(self.load(**{"warehouse_timezones": {"REQUIRED_APPROVED_UG_WAREHOUSE": "REQUIRED_X_IANA_TIMEZONE"}}).markets)
+
+    def test_a_missing_extra_or_unreal_timezone_is_refused_at_the_boundary(self):
+        for bad in (None, {}, {"KLA": "Africa/Kampala", "X": "Africa/Kampala"}, {"KLA": "Africa/Kampalaa"}, {"KLA": "UTC"}):
+            with self.subTest(bad):
+                member = {"warehouse_codes": ["KLA"], **({} if bad is None else {"warehouse_timezones": bad})}
+                with self.assertRaises(ValueError):
+                    self.load(**member)
+
+    def test_a_valid_declaration_loads(self):
+        request = self.load(warehouse_codes=["KLA"], warehouse_timezones={"KLA": "Africa/Kampala"})
+        self.assertEqual(request.markets[0].warehouse_timezones, (("KLA", "Africa/Kampala"),))
 
 
 class PlanTests(unittest.TestCase):
