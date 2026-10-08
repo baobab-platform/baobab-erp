@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-from order_to_cash.accounting_outcomes import Advanced
+from order_to_cash.accounting_outcomes import RANK, Advanced
 
 
 class PostgresDocumentOutcomeStore:
@@ -35,6 +35,8 @@ class PostgresDocumentOutcomeStore:
             revision, stored_status, stored_detail, first_seen = row
             if isinstance(stored_detail, str):
                 stored_detail = json.loads(stored_detail)
+            if RANK.get(status, 0) < RANK.get(stored_status, 0):  # statuses only move forward
+                return Advanced(int(revision), first_seen, False)
             if stored_status == status and stored_detail == detail:
                 return Advanced(int(revision), first_seen, False)
             cursor.execute(

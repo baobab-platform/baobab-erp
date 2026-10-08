@@ -25,7 +25,7 @@ class Engine:
             ("C_Currency", 1): {"ISO_Code": "KES", "StdPrecision": 2},
             ("C_Invoice", 11): {"DocumentNo": "INV-1001", "GrandTotal": "1160", "C_Currency_ID": 1, "DocStatus": {"id": "CO"},
                                 "IsPaid": False},
-            ("C_Payment", 21): {"PayAmt": "1160", "C_Currency_ID": 1, "DocStatus": {"id": "CO"}},
+            ("C_Payment", 21): {"PayAmt": "1160", "C_Currency_ID": 1, "DocStatus": {"id": "CO"}, "IsAllocated": False},
         }
 
     def get_record(self, table, record_id):
@@ -134,6 +134,7 @@ class AccountingOutcomeTests(unittest.TestCase):
         self.post()
         self.complete()
         self.engine.records[("C_Invoice", 11)]["IsPaid"] = True
+        self.engine.records[("C_Payment", 21)]["IsAllocated"] = True
         self.allocate("1160")
         by_type = {}
         for event in self.outbox.events:
@@ -152,6 +153,14 @@ class AccountingOutcomeTests(unittest.TestCase):
         self.allocate("400")
         self.assertEqual(self.outbox.events[-2].data["status"], "partially_allocated")
         self.assertEqual(self.outbox.events[-1].data["status"], "partially_paid")
+
+    def test_a_payment_split_across_invoices_is_allocated_when_the_engine_says_so_not_by_the_last_request(self):
+        self.complete()
+        self.allocate("60")
+        self.engine.records[("C_Payment", 21)]["IsAllocated"] = True  # the second request completes the allocation
+        self.allocate("40")
+        self.assertEqual([e.data["status"] for e in self.outbox.events if e.type == rules.PAYMENT_EVENT],
+                         ["posted", "partially_allocated", "allocated"])
 
     def test_event_identity_is_a_function_of_document_and_revision(self):
         self.post()

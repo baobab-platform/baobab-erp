@@ -142,7 +142,7 @@ def _announce_invoice(*, scope: TenantScope, invoice_canonical_id: str, native_i
 
 
 def _announce_payment(*, scope: TenantScope, payment_canonical_id: str, native_id: int, invoice_public_id: str | None,
-                      allocated_amount: str | None, idempiere: IdempiereClient, mappings: MappingStore, outbox: "OutboxStore",
+                      allocation_requested: bool, idempiere: IdempiereClient, mappings: MappingStore, outbox: "OutboxStore",
                       outcomes: "outcomes_rules.DocumentOutcomeStore | None", correlation_id: str | None) -> None:
     if outcomes is None:
         return
@@ -151,7 +151,7 @@ def _announce_payment(*, scope: TenantScope, payment_canonical_id: str, native_i
         return
     try:
         facts = outcomes_rules.read_payment(idempiere, native_id)  # type: ignore[arg-type]
-        status = outcomes_rules.payment_status(facts, allocated_amount=allocated_amount)
+        status = outcomes_rules.payment_status(facts, allocation_requested=allocation_requested)
     except outcomes_rules.AccountingFactError:
         return
     now = _now()
@@ -561,7 +561,7 @@ def complete_payment(
         )
     )
     _announce_payment(scope=scope, payment_canonical_id=payment_canonical_id, native_id=native_id, invoice_public_id=None,
-                      allocated_amount=None, idempiere=idempiere, mappings=mappings, outbox=outbox, outcomes=outcomes,
+                      allocation_requested=False, idempiere=idempiere, mappings=mappings, outbox=outbox, outcomes=outcomes,
                       correlation_id=correlation_id)
 
 
@@ -618,7 +618,7 @@ def allocate_payment(
         return
     _announce_payment(scope=scope, payment_canonical_id=payment_canonical_id, native_id=payment_native_id,
                       invoice_public_id=mappings.erp_resource_id(scope.tenant_id, "CustomerInvoice", invoice_canonical_id),
-                      allocated_amount=amount, idempiere=idempiere, mappings=mappings, outbox=outbox, outcomes=outcomes,
+                      allocation_requested=True, idempiere=idempiere, mappings=mappings, outbox=outbox, outcomes=outcomes,
                       correlation_id=correlation_id)
     _announce_invoice(scope=scope, invoice_canonical_id=invoice_canonical_id, native_id=invoice_native_id, allocated=True,
                       idempiere=idempiere, mappings=mappings, outbox=outbox, consequences=consequences, outcomes=outcomes,

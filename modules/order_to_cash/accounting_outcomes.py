@@ -50,10 +50,7 @@ class InvoiceFacts:
 class PaymentFacts:
     amount: Money
     completed: bool
-
-    @property
-    def payment_amount_text(self) -> str:
-        return self.amount.amount
+    fully_allocated: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,11 +64,13 @@ class Advanced:
 
 class DocumentOutcomeStore(Protocol):
     def advance(self, *, tenant_id: str, document_type: str, document_id: str, status: str, detail: dict,
-                now: datetime) -> Advanced: ...
+                now: datetime) -> Advanced:
+        pass
 
 
 class Engine(Protocol):
-    def get_record(self, table: str, record_id: int) -> dict[str, Any]: ...
+    def get_record(self, table: str, record_id: int) -> dict[str, Any]:
+        pass
 
 
 # -- reading facts from the engine -----------------------------------------------------------------------------------------------
@@ -119,7 +118,7 @@ def read_invoice(engine: Engine, native_id: int) -> InvoiceFacts:
 def read_payment(engine: Engine, native_id: int) -> PaymentFacts:
     record = engine.get_record("C_Payment", native_id)
     return PaymentFacts(_money(engine, record.get("PayAmt"), record.get("C_Currency_ID"), "the payment"),
-                        _code(record.get("DocStatus")) in _COMPLETED)
+                        _code(record.get("DocStatus")) in _COMPLETED, _flag(record.get("IsAllocated", False)))
 
 
 # -- what the facts establish ----------------------------------------------------------------------------------------------------
@@ -134,20 +133,18 @@ def invoice_status(facts: InvoiceFacts, *, allocated: bool = False) -> str:
     return "partially_paid" if allocated else "posted"
 
 
-def payment_status(facts: PaymentFacts, *, allocated_amount: str | None = None) -> str:
-    """posted once the payment is completed; allocated or partially_allocated after an allocation, by comparing the amount allocated
-    with the payment's own amount."""
+def payment_status(facts: PaymentFacts, *, allocation_requested: bool = False) -> str:
+    """posted once the payment is completed; allocated when the engine reports it fully allocated (``IsAllocated``, which counts every
+    allocation, not only this request's), partially_allocated when an allocation ran but the engine does not report it fully allocated."""
     if not facts.completed:
         raise AccountingFactError("the payment is not completed in the engine")
-    if allocated_amount is None:
-        return "posted"
-    try:
-        allocated = Decimal(allocated_amount)
-    except InvalidOperation:
-        raise AccountingFactError("the allocated amount is not a number") from None
-    if not allocated.is_finite() or allocated <= 0:
-        raise AccountingFactError("the allocated amount must be positive")
-    return "allocated" if allocated >= Decimal(facts.payment_amount_text) else "partially_allocated"
+    if facts.fully_allocated:
+        return "allocated"
+    return "partially_allocated" if allocation_requested else "posted"
+
+
+# Statuses only move forward: a retried completion must not announce an allocated payment or a paid invoice as merely posted.
+RANK = {"posted": 0, "partially_allocated": 1, "partially_paid": 1, "allocated": 2, "paid": 2}
 
 
 # -- the events ------------------------------------------------------------------------------------------------------------------

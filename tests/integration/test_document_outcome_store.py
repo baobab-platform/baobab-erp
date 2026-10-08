@@ -31,6 +31,11 @@ class DocumentOutcomeStoreTests(unittest.TestCase):
         self.assertEqual((paid.revision, paid.changed, paid.first_seen_at), (2, True, NOW))
         self.assertEqual((reworded.revision, reworded.changed), (3, True))
 
+    def test_a_status_never_moves_backwards(self):
+        self.advance("paid")
+        stale = self.advance("posted", at=NOW + timedelta(hours=1))
+        self.assertEqual((stale.revision, stale.changed), (1, False))
+
     def test_documents_are_independent(self):
         self.advance()
         other = self.store.advance(**{**KEY, "document_type": "payment"}, status="posted", detail={}, now=NOW)

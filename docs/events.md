@@ -53,7 +53,7 @@ contract requires one). `outstanding` and `due_on` are optional and ERP does not
 omitted rather than guessed.
 
 Statuses: invoice `posted` on posting, `partially_paid` / `paid` after an allocation (paid is the engine's `IsPaid`); payment
-`posted` on completion, `partially_allocated` / `allocated` by comparing the amount allocated with the payment's own amount.
+`posted` on completion, `allocated` when the engine reports the payment fully allocated (`IsAllocated`, which counts every allocation, so a payment split across invoices is judged on its total), otherwise `partially_allocated` after an allocation. A document's status only moves forward: a retried completion never re-announces an allocated payment or paid invoice as posted.
 `baobab.document_outcome` (migration 0022) holds each document's revision, advanced only when status or the observed facts change, in
 the same transaction as the outbox row; so a retried request announces nothing twice. Event ids are derived from tenant, document
 and revision; idempotency keys are `erp-invoice-{id}-r{revision}` and `erp-payment-{capture id}-r{revision}`. `issued_at` is when ERP
