@@ -27,8 +27,8 @@ import psycopg
 
 from inbox.postgres_queue import PostgresInboxQueue
 from integration.idempiere_client import RestIdempiereClient
-from order_to_cash.execution_policy import ALL_ORGANIZATIONS_AD_ORG_ID
-from order_to_cash.inbox_execution import ORDER_PLACED, EngineOrgMismatch, run_claim
+from order_to_cash.execution_policy import ALL_ORGANIZATIONS_AD_ORG_ID, ORDER_PLACED
+from order_to_cash.inbox_execution import EngineOrgMismatch, run_claim
 
 
 def _engine_factory(credentials: dict):

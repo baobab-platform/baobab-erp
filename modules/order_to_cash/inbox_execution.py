@@ -25,18 +25,17 @@ from typing import Callable, Protocol
 
 import psycopg
 
-from events.cloudevent import CloudEvent
 from inbox.postgres_queue import Claim, LeaseLostError, PostgresInboxQueue
 from integration.idempiere_client import Eq, IdempiereApiError, IdempiereClientError
 from order_to_cash.consequence_events import consequence_changed_event
 from order_to_cash.consequence_store import PostgresOrderConsequenceStore
-from order_to_cash.execution_policy import (ALL_ORGANIZATIONS_AD_ORG_ID, BLOCKED_DELAY_SECONDS, BLOCKED_HORIZON, CONTENTION_DELAY_SECONDS, CUSTOMER_KIND,
-                                            MAX_ATTEMPTS, ORDER_PLACED, PRODUCT_KIND, RETRY_CEILING_SECONDS, Outcome,
-                                            erp_order_id, failure_outcome, retry_delay_seconds)
+from order_to_cash.execution_policy import (CONTENTION_DELAY_SECONDS, CUSTOMER_KIND, PRODUCT_KIND, Outcome, erp_order_id,
+                                            failure_outcome)
 from order_to_cash.model import OrderLine
 from order_to_cash.placed_order import PayloadError, PlacedOrder, parse_placed_order
 from order_to_cash.service import sales_order_fields
 from outbox.postgres_store import PostgresOutboxStore
+
 
 class EngineOrgMismatch(Exception):
     """The engine credentials for the tenant's AD_Client are for a different AD_Org than the one its mapping names."""
