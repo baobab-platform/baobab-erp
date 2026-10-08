@@ -758,6 +758,9 @@ adrs:
       - tests/golden/test_activation.py
       - tests/golden/test_zuribeans_release1.py
       - scripts/validate.sh
+      - scripts/provider_publication.py
+      - tests/conformance/test_provider_publication.py
+      - docs/operations/provider-support-publication.md
     gap: >
       Gate ZB-06 adds the machine-readable readiness gate section 9 describes:
       ActivationEvaluator.evaluate() takes a single LegalEntity's Evidence set and
@@ -795,6 +798,16 @@ adrs:
       are deliberately never replaced with mocks for release evidence. Production
       readiness for ZuriBeans itself has therefore not been demonstrated; this
       gate provides the mechanism that will evaluate it once real evidence exists.
+
+      UPDATE 2026-10-08 (ERP-CAP-07): the capability-provider declaration (.baobab/capability-provider.yaml) is now
+      checked at the pinned Shared commit on every pull request. scripts/provider_publication.py (and
+      tests/conformance/test_provider_publication.py, run by the shared-conformance job) validates the catalogue and
+      the declaration, generates canonical DRAFT EngineRegistration documents through Shared's own generator for
+      IMPLEMENTED support only (today inventory.availability.query; finance.order-consequence.process is PARTIAL and is
+      excluded), and detects drift against a reviewed registration export. It is read-only and offline: it does NOT
+      contact the Control Plane, so Control Plane registration, certification (EA-09), tenant bindings and health remain
+      unproven and are owned by the Control Plane; they need runtime evidence, not this declaration.
+
 
   - id: ADR-ERP-021
     title: ZuriBeans multi-market AD_Client topology
