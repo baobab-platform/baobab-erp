@@ -67,8 +67,9 @@ canonical event and are never delivered.
 
 `POST /events/inbound` verifies the signature, the registered type, producer and `dataschema`, and records the event durably;
 it executes nothing. `modules/application/inbox_worker.py` (service `baobab-inbox-worker`) claims due `trade.order.placed` rows and
-runs each to an outcome (`modules/order_to_cash/inbox_execution.py`). `trade.customer.projected` is received but is **not** executed
-yet; that is a separate increment, and the worker never claims it.
+runs each to an outcome (`modules/order_to_cash/inbox_execution.py`). The same worker executes `trade.customer.projected` (see
+"Executing `trade.customer.projected`" below), claiming customers first in every pass so a customer that arrives with its first order is a
+business partner, and mapped, before the order is looked at.
 
 Per event, in one pass: read the payload (`placed_order.py`) -> resolve the tenant's engine placement and the customer and every
 SKU through explicit master-data mappings -> take the per-order lock -> look the order up in the engine by `POReference` (the
@@ -93,9 +94,37 @@ leaves an engine order carrying the `POReference`, which the next attempt adopts
 is never resolved by choosing; it is `DUPLICATE_NATIVE_ORDERS`. Settling a row is fenced on the lease, so a worker that lost it
 rolls back everything it wrote.
 
+## Executing `trade.customer.projected` (same worker)
+
+`modules/customers/projection_execution.py` turns an accepted customer event into a business partner (`C_BPartner`) and writes the
+master-data mapping (`baobab.erp_master_data_mapping`, kind `business_partner`, canonical id = the Trade `customer_id`) that order
+execution resolves its customer through. Until it existed an order for a customer nobody had mapped by hand was blocked as
+`CUSTOMER_UNMAPPED`.
+
+Per event: read the payload (`customers/payload.py`) -> resolve the tenant's engine placement -> take the per-customer lock -> compare the
+version with the mapping -> create the partner (or update it, or adopt one an earlier attempt created) -> in **one transaction** write the
+mapping and the inbox outcome. The partner is created with `Value` = the Trade customer id, `Name` = `display_name`, `IsCustomer`, `IsActive`
+(true only for status `active`) and the client's default business-partner group; a suspended or closed customer becomes an inactive partner
+and is never deleted. Not projected: tax registration references (the contract carries no raw values) and billing country / preferred
+currency (a partner has no such field; they belong to locations and price lists).
+
+| Outcome | Code | Meaning |
+|---|---|---|
+| `processed` | `CREATED`, `UPDATED`, `ADOPTED_NATIVE_PARTNER` (found by its marker after an uncertain attempt, then brought to this version) | done |
+| `processed` | `ALREADY_PROJECTED` (same version again), `STALE_VERSION` (older than the mapped one) | nothing written |
+| `retry` | `ENGINE_UNAVAILABLE`, `UNEXPECTED_ERROR`, `CUSTOMER_CONTENDED` (another worker holds the customer; refunds its attempt) | same backoff as orders |
+| `blocked` | `TENANT_UNMAPPED`, `ENGINE_UNCONFIGURED`, `ENGINE_ORG_MISMATCH`, `BP_GROUP_UNAVAILABLE` (the client has no, or more than one, default business-partner group) | retried every 15 min until 72 h after receipt |
+| `dead_letter` | `PAYLOAD_INVALID`, `TENANT_MISSING`, `ENGINE_REJECTED`, `VERSION_CONFLICT` (the same version with different content), `DUPLICATE_NATIVE_PARTNERS` (more than one partner carries the marker), `NATIVE_PARTNER_MISSING` (mapped, but gone from the engine), plus the two exhausted codes | an operator |
+
+The marker is `baobab-customer:<tenant>:<legal entity>:<customer id>`, written to the partner's `Description`; an uncertain create is
+recovered by finding that marker, never by matching a name or search key, so two tenants' partners can not be mistaken for each other.
+Limits: this has run against a fake engine, not a live iDempiere. `Description` as the marker column, the default-group lookup and the
+written fields are what a live run must confirm, and `Value` is limited by the engine's search-key length (a longer Trade id is refused as
+`ENGINE_REJECTED`).
+
 To retry a dead letter once its cause is fixed: `UPDATE baobab.event_inbox SET status = 'received', attempts = 0, next_attempt_at = now(), outcome_code = NULL, last_error = NULL WHERE id = <row>` (it is then executed again under the same guards, so an order that did get created is recognised, not repeated).
 
-Placement precondition: the worker resolves the engine placement from `baobab.tenant_mapping.engine_instance_id` (as do the master-data mappings and the inventory read). The provisioning `PERSIST_MAPPING` step now writes it from the plan (`engine_instance_id` in the step payload) and refuses to write a mapping without one; migration 0020 filled rows written earlier where the provisioning records name exactly one instance. A row it could not fill (no provisioning record, or records that disagree) still blocks as `TENANT_UNMAPPED`; an operator sets it deliberately: `UPDATE baobab.tenant_mapping SET engine_instance_id = '<ei_...>' WHERE tenant_id = '<tn_...>' AND entity_id = '<LEGAL-ENTITY>' AND engine_instance_id IS NULL`. Note that in this repository nothing outside the tests constructs `IdempiereProvisioningAdapter`, so no running component applies provisioning steps yet; mappings for today's tenants are created outside the application.
+Placement precondition: the worker resolves the engine placement from `baobab.tenant_mapping.engine_instance_id` (as do the master-data mappings and the inventory read). The provisioning `PERSIST_MAPPING` step now writes it from the plan (`engine_instance_id` in the step payload) and refuses to write a mapping without one; migration 0020 filled rows written earlier where the provisioning records name exactly one instance. A row it could not fill (no provisioning record, or records that disagree) still blocks as `TENANT_UNMAPPED`; an operator sets it deliberately: `UPDATE baobab.tenant_mapping SET engine_instance_id = '<ei_...>' WHERE tenant_id = '<tn_...>' AND entity_id = '<LEGAL-ENTITY>' AND engine_instance_id IS NULL`. Provisioning steps are applied by `baobab-provisioning-worker` (ERP-CAP-04, `docs/operations.md`); tenants provisioned before it existed were mapped outside the application.
 
 Limits, stated plainly: this has run against a fake engine, not a live iDempiere (`POReference` as the lookup column is
 unconfirmed there). It creates the draft sales order and the `accepted` consequence; completing the order, shipment and invoice

@@ -66,14 +66,14 @@ outbox.
 | 7 | `erp.payment.accounting-changed.v1` | Produce | Produced (implementation evidence) | Payment completion and allocation; see `docs/events.md`. Live-provider conformance not yet proven |
 | 8 | `customer.buyer-commercial-profile.changed.v1` | Produce | Not produced | Registry entry only (ERP owns authoritative credit; the older #32-#35 stack is unreconciled) |
 | 9 | `trade.order.placed.v1` | Consume | **Executed** (since #67) | `POST /events/inbound` -> `inbox.receive`; `baobab-inbox-worker` claims it, finds or creates the engine order by `POReference`, and records the consequence, order link, outbox event and outcome in one transaction. Replay and restart tests in `tests/integration/test_order_inbox_execution.py`. Live iDempiere: unproven |
-| 10 | `trade.customer.projected.v1` | Consume | **Received, not executed** | Same path; `integration/trade_projection*.py` is not called from the inbox |
+| 10 | `trade.customer.projected.v1` | Consume | **Executed** (ERP-CAP-06) | `customers/projection_execution.py` creates or updates the business partner and writes the `business_partner` mapping orders resolve their customer through; version-ordered, adopts an uncertain create by marker. `tests/integration/test_customer_projection_execution.py`. Live iDempiere: unproven |
 
 Legacy-shaped order-to-cash step events (`erp.sales-order.accepted.v1` and similar) are recorded as `held` and never
 delivered (`docs/events.md`). They are not canonical events.
 
 Update 2026-10-08 (after #67 and #68): `trade.order.placed` is executed by a separate worker, so the accepted-but-ignored
 gap is closed for orders; `finance.order-consequence.process` stays PARTIAL because the full lifecycle (shipment, invoice,
-accounting stages) and live-iDempiere proof are still open. `trade.customer.projected` remains received, not executed. The
+accounting stages) and live-iDempiere proof are still open. `trade.customer.projected` is now executed too (ERP-CAP-06). The
 six missing producers are deliberately out of scope.
 
 ## 4. Reconciliation with #58 and main
