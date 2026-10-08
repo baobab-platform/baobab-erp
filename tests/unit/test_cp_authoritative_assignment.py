@@ -57,8 +57,8 @@ class FakeFinance:
         return max(eligible, key=lambda b: (b.effective_from, b.version), default=None)
 
 
-MARKETS = {"ZA": ErpMarketConfiguration(("ZAR", "USD"), "za-v1", ("JNB",)),
-           "UG": ErpMarketConfiguration(("UGX", "USD"), "ug-v1", ("KLA",))}
+MARKETS = {"ZA": ErpMarketConfiguration(("ZAR", "USD"), "za-v1", ("JNB",), (("JNB", "Africa/Johannesburg"),)),
+           "UG": ErpMarketConfiguration(("UGX", "USD"), "ug-v1", ("KLA",), (("KLA", "Africa/Kampala"),))}
 
 
 def placement(mode=NativeClientMode.DEDICATED_CLIENT) -> ConfiguredNativePlacementPolicy:

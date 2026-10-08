@@ -61,7 +61,7 @@ outbox.
 | 2 | `erp.provisioning.changed.v1` | Produce | **Produced** | `modules/provisioning/command_events.py`, `command_store.py`; delivered over signed delivery (#64) |
 | 3 | `erp.business-partner.changed.v1` | Produce | Produced (implementation evidence) | Customer projection execution; stable `erp_` public id (migration 0023). Live-provider conformance not yet proven |
 | 4 | `erp.inventory.availability-changed.v1` | Produce | Not produced | Registry entry only |
-| 5 | `erp.warehouse.changed.v1` | Produce | Not produced | Registry entry only |
+| 5 | `erp.warehouse.changed.v1` | Produce | Produced (implementation evidence) | Provisioning executor; stable `erp_` warehouse id (migration 0024); timezone is an ERP deployment input. Live-provider conformance not yet proven |
 | 6 | `erp.invoice.changed.v1` | Produce | Produced (implementation evidence) | Posting and allocation read the engine back; see `docs/events.md`. Live-provider conformance not yet proven |
 | 7 | `erp.payment.accounting-changed.v1` | Produce | Produced (implementation evidence) | Payment completion and allocation; see `docs/events.md`. Live-provider conformance not yet proven |
 | 8 | `customer.buyer-commercial-profile.changed.v1` | Produce | Not produced | Registry entry only (ERP owns authoritative credit; the older #32-#35 stack is unreconciled) |

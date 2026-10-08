@@ -23,7 +23,7 @@ process ids are what a live iDempiere run must still confirm (ERP-CAP-03).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Mapping, Protocol
 
 from integration.idempiere_client import IdempiereApiError, IdempiereAuthenticationError, IdempiereClientError
@@ -33,6 +33,7 @@ from provisioning.model import ProvisioningStatus, ProvisioningStep, StepKind
 from provisioning.native_processes import NativeProvisioningProcesses, ProcessUnconfigured, enrich_step
 from provisioning.planner import build_plan
 from provisioning.request_state import StateDrift, StateUnreadable, verified_request
+from provisioning.warehouse_events import WarehouseIdentityConflict
 from provisioning.validation import InvalidProvisioningRequestError, validate_request
 
 MAX_ATTEMPTS = 24
@@ -102,6 +103,8 @@ def classify(exc: Exception) -> Outcome:
         return Outcome("failed", "DUPLICATE_NATIVE_RECORDS")
     if isinstance(exc, MappingConflict):
         return Outcome("failed", "TENANT_MAPPING_CONFLICT")
+    if isinstance(exc, WarehouseIdentityConflict):
+        return Outcome("failed", "WAREHOUSE_IDENTITY_CONFLICT")
     if isinstance(exc, (InvalidProvisioningRequestError, ValueError)):
         return Outcome("failed", "STEP_INVALID", type(exc).__name__)
     return Outcome("retry", "UNEXPECTED_ERROR", type(exc).__name__)
@@ -122,7 +125,9 @@ def apply_budgets(outcome: Outcome, *, attempts: int, created_at: datetime, now:
 
 class ProvisioningExecutor:
     def __init__(self, *, store: StepStore, mappings, tenant_mappings, engine_for: Callable[[str], Any],
-                 processes: NativeProvisioningProcesses | None) -> None:
+                 processes: NativeProvisioningProcesses | None, warehouses=None, now: Callable[[], datetime] | None = None) -> None:
+        self._warehouses = warehouses  # registers each provisioned warehouse's ERP public identity; absent in engine-only unit runs
+        self._now = now or (lambda: datetime.now(timezone.utc))
         self._store = store
         self._mappings = mappings
         self._tenant_mappings = tenant_mappings
@@ -153,6 +158,7 @@ class ProvisioningExecutor:
         for step in pending:
             result = adapter.apply(request, step)
             self._store.mark_step(operation.provisioning_id, step.key, "completed", result)
+        self._register_warehouses(request, runnable, adapter)
         if operation.status != ProvisioningStatus.RECONCILING.value:
             self._store.set_status(operation.provisioning_id, ProvisioningStatus.RECONCILING)
         checks = list(validate_request(request)) + [adapter.check(request, step) for step in runnable]
@@ -161,3 +167,21 @@ class ProvisioningExecutor:
             return Outcome("retry", "NOT_READY", ",".join(sorted(failing))[:200])
         self._store.set_status(operation.provisioning_id, ProvisioningStatus.READY)
         return Outcome("ready", "READY")
+
+    def _register_warehouses(self, request, steps, adapter) -> None:
+        """Gives every provisioned warehouse its ERP public identity and announces it. Covers warehouses created in an earlier pass or
+        before identities existed too (it is idempotent), and runs only once the native record is known."""
+        if self._warehouses is None:
+            return
+        countries = {market.market_id: market.country_code for market in request.markets}
+        for step in steps:
+            if step.kind is not StepKind.CREATE_WAREHOUSE:
+                continue
+            native_id = self._mappings.get_native_id(provisioning_id=request.provisioning_id, resource_key=adapter._resource_key(step))
+            if native_id is None:
+                continue
+            code = step.payload["warehouse_code"]
+            self._warehouses.record(
+                tenant_id=request.tenant_id, legal_entity_id=request.legal_entity_id, code=code, name=code,
+                country=countries[step.payload["market_id"]], timezone=step.payload.get("timezone"), status="active",
+                engine_instance_id=request.engine_instance_id, native_id=native_id, now=self._now())

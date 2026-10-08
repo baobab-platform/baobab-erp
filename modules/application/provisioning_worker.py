@@ -38,6 +38,7 @@ from provisioning.execution_store import ConfirmingTenantMappings, PostgresProvi
 from provisioning.native_mapping_store import PostgresNativeProvisioningMappingStore
 from provisioning.native_processes import NativeProvisioningProcesses, load_native_processes
 from provisioning.store import PostgresProvisioningStore
+from provisioning.warehouse_identity_store import PostgresWarehouseIdentityStore
 
 
 def load_provisioner_credentials(raw: str | None) -> dict[str, IdempiereCredentials]:
@@ -71,7 +72,8 @@ def run_once(connection: psycopg.Connection, engine_for, processes: NativeProvis
     store = PostgresProvisioningStore(connection)
     executor = ProvisioningExecutor(
         store=store, mappings=PostgresNativeProvisioningMappingStore(connection),
-        tenant_mappings=ConfirmingTenantMappings(connection), engine_for=engine_for, processes=processes)
+        tenant_mappings=ConfirmingTenantMappings(connection), engine_for=engine_for, processes=processes,
+        warehouses=PostgresWarehouseIdentityStore(connection), now=now)
     done: dict[str, int] = {}
     codes: dict[str, int] = {}
     contended = 0

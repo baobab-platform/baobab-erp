@@ -574,7 +574,11 @@ adrs:
     status: partial
     evidence:
       - modules/provisioning/warehouse.py
-      - modules/provisioning/warehouse_adapter.py
+      - modules/provisioning/warehouse_identity_store.py
+      - modules/provisioning/warehouse_events.py
+      - db/migrations/0024_erp_warehouse_identity.sql
+      - tests/integration/test_warehouse_identity.py
+      - tests/conformance/test_warehouse_event.py
       - modules/provisioning/zuribeans_entities.py
       - config/provisioning/zuribeans.warehouses.example.json
       - tests/unit/test_zuribeans_warehouses.py
@@ -586,15 +590,14 @@ adrs:
       this ADR's own legal-entity-isolation intent), a duplicate warehouse code,
       or a missing explicit ERP-organisation mapping (never inferred from country,
       per ADR-ERP-002 SS28/SS30 -- market and infrastructure region never
-      automatically become an AD_Org). WarehouseProvisioner creates/reuses the
-      native M_Warehouse record under a caller-supplied AD_Org_ID (mapping-driven
-      idempotency, same pattern as IdempiereProvisioningAdapter). What's still
-      open: WarehouseProvisioner is not yet wired into the planner/
-      IdempiereProvisioningAdapter step flow, which has its own CREATE_WAREHOUSE
-      handling that never sets AD_Org_ID and has no per-warehouse legal-entity/
-      market validation -- the two paths use different resource_key schemes and
-      must not both run for the same warehouse until reconciled, or they would
-      create duplicate native records. Buy-side procurement (this ADR's other
+      automatically become an AD_Org). The planner/IdempiereProvisioningAdapter
+      step flow is the one provisioning path (the earlier unwired
+      WarehouseProvisioner and its different resource_key scheme are removed),
+      and each provisioned warehouse gets a stable ERP public id and a
+      warehouse.changed announcement (migration 0024; docs/events.md). What's
+      still open: that step flow never sets AD_Org_ID and has no per-warehouse
+      legal-entity/market validation (validate_warehouses is not yet applied to
+      it), and nothing has run against a live iDempiere. Buy-side procurement (this ADR's other
       major scope) is entirely out of scope for this gate, as ADR-ERP-021 already
       records. config/provisioning/zuribeans.warehouses.example.json's
       organisation_mapping_id/legal_entity_id/market_id fields are still
