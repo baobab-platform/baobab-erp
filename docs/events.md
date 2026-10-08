@@ -79,9 +79,17 @@ the partner, so they are omitted. `status` is the one ERP applied (the engine it
 suspended versus closed is ERP's record of what it applied, not an engine fact). A partner mapped before migration 0023 has an id but
 announces nothing until its next change.
 
-Still not produced: `warehouse.changed` (the payload requires a `timezone` no ERP source holds, the declaration has no timezone, and
-warehouse creation is split across two unconverged paths), `inventory.availability-changed` (no engine change signal; ERP only
-answers reads) and `buyer-commercial-profile.changed` (ERP holds no credit facts yet).
+Still not produced: `warehouse.changed`. Its `timezone` is now an ERP input: each warehouse in a market's deployment configuration
+declares one (`warehouse_timezones`, exactly the `warehouse_codes`, IANA `Region/City`; a placeholder leaves the market unconfigured, a
+missing or malformed one is a configuration error, and nothing is defaulted or derived from the country). It reaches the
+`create_warehouse` step payload and the approved plan digest, and a request accepted before the member existed serialises and digests
+exactly as it did. What is still missing is the public identity: `GET /inventory-availability` resolves a warehouse through
+`baobab.entity_mapping` (`erp_resource_id`, `M_Warehouse`), but provisioning records warehouses only in
+`erp_provisioning_native_mapping`, and the unwired `WarehouseProvisioner` uses a different key scheme. Converging them needs one
+warehouse identity (an `entity_mapping` row, whose canonical id must be a UUID, which a warehouse code is not, or a relaxation of
+that key) and recovery for an uncertain create, before the event is produced.
+`inventory.availability-changed` has no engine change signal (ERP only answers reads) and `buyer-commercial-profile.changed` has no
+credit facts in ERP yet.
 
 ## Executing `trade.order.placed` (inbox worker)
 
