@@ -7,7 +7,7 @@
 #   partial    - some of the decision is implemented and tested; a material gap remains
 #   planned    - decided in the ADR, not yet implemented
 schema_version: "1.0"
-updated: "2026-09-18"
+updated: "2026-10-08"
 adrs:
   - id: ADR-ERP-001
     title: iDempiere as an isolated, headless, multi-tenant Baobab ERP engine
@@ -202,6 +202,13 @@ adrs:
       granted by Baobab IAM today (only erp:integrate), so these routes fail closed until the
       owner grants them.
 
+      CORRECTION 2026-10-08 (supersedes the 501 list above): all four operations are now served. Code
+      evidence, per axis. Implementation: POST/GET /provisioning-operations, GET /order-consequences/{id}
+      (#52) and GET /inventory-availability (#53) have handlers and tests in this repository. Live-provider
+      conformance: NONE of the engine-backed routes has run against a live iDempiere (inventory reads
+      unconfirmed AD column names; order execution runs against a simulated REST server). Certification:
+      not started (EA-09). Implementation is therefore not a statement about the other two.
+
       ERP-COMPAT-04: every error from the pre-contract routes (context, mapping, outbox, order-to-cash,
       inbound events, readiness) is now RFC 9457 application/problem+json with the correlation id echoed
       (a valid X-Correlation-ID is kept, otherwise one is generated) and trace_id from traceparent;
@@ -269,6 +276,13 @@ adrs:
       (never delivered, counted by held_count) until an outcome projection maps them to the registered
       erp.* types with canonical payloads (order_version, revisions, totals), which also needs the
       order-consequence read model. No ERP-produced event is delivered until then.
+
+      CORRECTION 2026-10-08: of the eight registered ERP-produced types only erp.order.consequence-changed
+      and erp.provisioning.changed have producers; the other six are registry entries only. Consumed:
+      trade.order.placed is now EXECUTED by baobab-inbox-worker (#67; migration 0019, replay/crash/concurrency
+      tests, no second sales order). trade.customer.projected is received but not executed. The statement that
+      no ERP-produced event is delivered is no longer true for those two types. Live-iDempiere status of order
+      execution: unproven.
 
       ERP-COMPAT-06/07: every Shared example event round-trips through CloudEvent, validates against the pinned
       envelope and its registered dataschema, ERP's produced-type index equals Shared's event registry, the
