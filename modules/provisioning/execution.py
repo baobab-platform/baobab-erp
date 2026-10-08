@@ -70,9 +70,14 @@ class LoadedOperation:
 
 
 class StepStore(Protocol):
-    def mark_step(self, provisioning_id: str, step_key: str, status: str, result: dict[str, Any]) -> None: ...
-    def completed_steps(self, provisioning_id: str) -> frozenset[str]: ...
-    def set_status(self, provisioning_id: str, status: ProvisioningStatus, error: str | None = None) -> None: ...
+    def mark_step(self, provisioning_id: str, step_key: str, status: str, result: dict[str, Any]) -> None:
+        pass
+
+    def completed_steps(self, provisioning_id: str) -> frozenset[str]:
+        pass
+
+    def set_status(self, provisioning_id: str, status: ProvisioningStatus, error: str | None = None) -> None:
+        pass
 
 
 def classify(exc: Exception) -> Outcome:
