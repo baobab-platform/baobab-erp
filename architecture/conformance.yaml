@@ -602,6 +602,11 @@ adrs:
     evidence:
       - modules/order_to_cash/model.py
       - modules/order_to_cash/service.py
+      - modules/order_to_cash/accounting_outcomes.py
+      - modules/order_to_cash/outcome_store.py
+      - db/migrations/0022_document_outcome.sql
+      - tests/conformance/test_accounting_outcomes.py
+      - tests/integration/test_document_outcome_store.py
       - modules/application/server.py
       - idempiere/extensions/org.nabhold.baobab.erp.outbox/
       - idempiere/extensions/org.nabhold.baobab.erp.events/
@@ -624,7 +629,11 @@ adrs:
       the `events` bundle now emits its own generic erp.*.synced.v1 facts for any
       native postCreate/postUpdate (a reconciliation safety net for mutations made
       directly in iDempiere's own UI, distinct from this primary path -- see
-      ADR-ERP-004's evidence). What's still open: buy-side procure-to-pay (Gate
+      ADR-ERP-004's evidence). ERP also produces erp.invoice.changed.v1 and
+      erp.payment.accounting-changed.v1 (ERP-CAP-05/08) from facts read back from the
+      engine, once per observed change (docs/events.md), validated against the pinned
+      Shared schemas; implementation evidence only, with no live-provider proof.
+      What's still open: buy-side procure-to-pay (Gate
       ZB-07/08) is not started; this has never run against a live iDempiere
       instance, only the fake REST server the integration test stands up (the
       same REST-plugin-install gap as ADR-ERP-005/013); and

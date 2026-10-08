@@ -62,8 +62,8 @@ outbox.
 | 3 | `erp.business-partner.changed.v1` | Produce | Not produced | Registry entry only; no `new_event` or `CloudEvent(` call names it |
 | 4 | `erp.inventory.availability-changed.v1` | Produce | Not produced | Registry entry only |
 | 5 | `erp.warehouse.changed.v1` | Produce | Not produced | Registry entry only |
-| 6 | `erp.invoice.changed.v1` | Produce | Not produced | Registry entry only; `docs/events.md`: payload needs invoice number, total and due date ERP does not yet hold |
-| 7 | `erp.payment.accounting-changed.v1` | Produce | Not produced | Registry entry only; payload needs amount and capture id |
+| 6 | `erp.invoice.changed.v1` | Produce | Produced (implementation evidence) | Posting and allocation read the engine back; see `docs/events.md`. Live-provider conformance not yet proven |
+| 7 | `erp.payment.accounting-changed.v1` | Produce | Produced (implementation evidence) | Payment completion and allocation; see `docs/events.md`. Live-provider conformance not yet proven |
 | 8 | `customer.buyer-commercial-profile.changed.v1` | Produce | Not produced | Registry entry only (ERP owns authoritative credit; the older #32-#35 stack is unreconciled) |
 | 9 | `trade.order.placed.v1` | Consume | **Executed** (since #67) | `POST /events/inbound` -> `inbox.receive`; `baobab-inbox-worker` claims it, finds or creates the engine order by `POReference`, and records the consequence, order link, outbox event and outcome in one transaction. Replay and restart tests in `tests/integration/test_order_inbox_execution.py`. Live iDempiere: unproven |
 | 10 | `trade.customer.projected.v1` | Consume | **Received, not executed** | Same path; `integration/trade_projection*.py` is not called from the inbox |

@@ -83,6 +83,20 @@ class _FakeIdempiereHandler(BaseHTTPRequestHandler):
             return
         self._send_json(404, {"title": "Not Found", "status": 404, "detail": self.path})
 
+    def do_GET(self):  # noqa: N802
+        """The read-back of a completed document (accounting outcomes): the facts a real engine reports after the process."""
+        parts = self.path.removeprefix("/models/").split("/")
+        records = {
+            "C_Invoice": {"DocumentNo": "INV-5001", "GrandTotal": 100, "C_Currency_ID": {"id": 1}, "DocStatus": {"id": "CO"},
+                          "IsPaid": False},
+            "C_Payment": {"PayAmt": 100, "C_Currency_ID": {"id": 1}, "DocStatus": {"id": "CO"}},
+            "C_Currency": {"ISO_Code": "KES", "StdPrecision": 2},
+        }
+        if self.path.startswith("/models/") and len(parts) == 2 and parts[0] in records:
+            self._send_json(200, {"id": int(parts[1]), **records[parts[0]]})
+            return
+        self._send_json(404, {"title": "Not Found", "status": 404, "detail": self.path})
+
     _created: dict[str, list[dict]] = {}
     _processes_executed: list[tuple[str, dict]] = []
 
@@ -291,14 +305,17 @@ class OrderToCashHttpIntegrationTests(unittest.TestCase):
         })
         self.assertEqual(status, 200, body)
 
-        # Real Postgres proof: exactly the five distinct canonical facts, in order.
+        # Real Postgres proof: the five distinct canonical facts, in order, each payment step followed by the accounting outcome ERP
+        # observed (the invoice here has no commerce-order link, so no invoice.changed: the contract requires one).
         event_types = [row[0] for row in self._outbox_rows(tenant_id)]
         self.assertEqual(event_types, [
             "erp.sales-order.accepted.v1",
             "erp.goods-shipment.completed.v1",
             "erp.customer-invoice.posted.v1",
             "erp.payment.completed.v1",
+            "com.baobab-platform.erp.payment.accounting-changed.v1",
             "erp.payment.allocated.v1",
+            "com.baobab-platform.erp.payment.accounting-changed.v1",
         ])
 
         # Real fake-iDempiere proof: every *_complete/_post call invoked its
