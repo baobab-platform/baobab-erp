@@ -19,26 +19,27 @@ against a fake engine, not a live iDempiere; ``POReference`` as the lookup key i
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Callable, Protocol
 
 import psycopg
 
-from inbox.postgres_queue import Claim, LeaseLostError, PostgresInboxQueue
+from inbox.execution_support import (AdvisoryLock, EngineOrgMismatch, PostgresMasterData, Stop, Target, blocked as _blocked,
+                                     dead as _dead, settle, utc_now as _now)
+from inbox.postgres_queue import Claim, PostgresInboxQueue
 from integration.idempiere_client import Eq, IdempiereApiError, IdempiereClientError
 from order_to_cash.consequence_events import consequence_changed_event
 from order_to_cash.consequence_store import PostgresOrderConsequenceStore
-from order_to_cash.execution_policy import (CONTENTION_DELAY_SECONDS, CUSTOMER_KIND, PRODUCT_KIND, Outcome, erp_order_id,
-                                            failure_outcome)
+from order_to_cash.execution_policy import CONTENTION_DELAY_SECONDS, CUSTOMER_KIND, PRODUCT_KIND, Outcome, erp_order_id
 from order_to_cash.model import OrderLine
 from order_to_cash.placed_order import PayloadError, PlacedOrder, parse_placed_order
 from order_to_cash.service import sales_order_fields
 from outbox.postgres_store import PostgresOutboxStore
 
 
-class EngineOrgMismatch(Exception):
-    """The engine credentials for the tenant's AD_Client are for a different AD_Org than the one its mapping names."""
+_Stop = Stop
+PostgresOrderMasterData = PostgresMasterData
+__all__ = ["EngineOrgMismatch", "Target", "run_claim"]  # EngineOrgMismatch: the worker and the tests import it from here
 
 
 class IdempiereOrders(Protocol):
@@ -47,78 +48,6 @@ class IdempiereOrders(Protocol):
     def query(self, table: str, conditions, select) -> list[dict]: ...
 
     def create_record(self, table: str, fields: dict) -> int: ...
-
-
-class _Stop(Exception):
-    def __init__(self, outcome: Outcome) -> None:
-        self.outcome = outcome
-
-
-def _dead(code: str, detail: str = "") -> _Stop:
-    return _Stop(Outcome("dead_letter", code, detail))
-
-
-def _blocked(code: str, detail: str = "") -> _Stop:
-    return _Stop(Outcome("blocked", code, detail))
-
-
-@dataclass(frozen=True, slots=True)
-class Target:
-    ad_client_id: int
-    ad_org_id: int
-    engine_instance_id: str | None
-
-
-class PostgresOrderMasterData:
-    """Explicit mappings only (ADR-ERP-007): a tenant's engine placement and the master-data mapping of a customer or product.
-    Nothing is matched by name, code or position."""
-
-    def __init__(self, connection: psycopg.Connection) -> None:
-        self._connection = connection
-
-    def target(self, tenant_id: str, legal_entity_id: str) -> Target | None:
-        with self._connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT ad_client_id, ad_org_id, engine_instance_id FROM baobab.tenant_mapping "
-                "WHERE tenant_id = %s AND entity_id = %s AND status = 'active'", (tenant_id, legal_entity_id))
-            row = cursor.fetchone()
-        return Target(int(row[0]), int(row[1]), row[2]) if row else None
-
-    def native(self, engine_instance_id: str, legal_entity_id: str, kind: str, canonical_id: str) -> int | None:
-        with self._connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT native_id FROM baobab.erp_master_data_mapping "
-                "WHERE engine_instance_id = %s AND legal_entity_id = %s AND resource_kind = %s AND canonical_id = %s",
-                (engine_instance_id, legal_entity_id, kind, canonical_id))
-            row = cursor.fetchone()
-        return int(row[0]) if row else None
-
-
-class _OrderLock:
-    """A session advisory lock on one (tenant, order). Session-level, so it survives the transaction boundaries inside the
-    attempt and is released by the database if the worker's connection dies. Needs a direct (non-pooled) connection."""
-
-    def __init__(self, connection: psycopg.Connection, tenant_id: str, commerce_order_id: str) -> None:
-        self._connection, self._key = connection, f"baobab.order|{tenant_id}|{commerce_order_id}"
-        self.held = False
-
-    def __enter__(self) -> "_OrderLock":
-        with self._connection.cursor() as cursor:
-            cursor.execute("SELECT pg_try_advisory_lock(hashtextextended(%s, 0))", (self._key,))
-            self.held = bool(cursor.fetchone()[0])
-        self._connection.commit()
-        return self
-
-    def __exit__(self, *_exc) -> None:
-        if self.held:
-            self._connection.rollback()  # an aborted transaction could not run the unlock
-            with self._connection.cursor() as cursor:
-                cursor.execute("SELECT pg_advisory_unlock(hashtextextended(%s, 0))", (self._key,))
-            self._connection.commit()
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 def _execute(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQueue,
@@ -135,7 +64,7 @@ def _execute(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQ
     if target is None or target.engine_instance_id is None:
         raise _blocked("TENANT_UNMAPPED", "no active engine placement for the tenant and legal entity")
 
-    with _OrderLock(connection, claim.tenant_id, order.commerce_order_id) as lock:
+    with AdvisoryLock(connection, f"baobab.order|{claim.tenant_id}|{order.commerce_order_id}") as lock:
         if not lock.held:
             # another worker is on this very order; neither a failure nor an attempt
             return Outcome("retry", "ORDER_CONTENDED", delay_seconds=CONTENTION_DELAY_SECONDS, refund_attempt=True)
@@ -243,38 +172,6 @@ def _find_or_create(engine: IdempiereOrders, order: PlacedOrder, customer: int, 
 
 def run_claim(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQueue,
               engine_for: Callable[[int, int], IdempiereOrders | None], *, now: Callable[[], datetime] = _now) -> Outcome:
-    """Executes one claimed row and settles it. Never raises for an event-level failure; a lost lease or an unexpected error
-    is reported as the outcome it is (a lost lease leaves the row to its new holder)."""
-    try:
-        try:
-            outcome = _execute(claim, connection, queue, engine_for, now)
-        except _Stop as stop:
-            outcome = stop.outcome
-        if outcome.status == "processed" and outcome.code in ("EXECUTED", "ADOPTED_NATIVE_ORDER"):
-            return outcome  # settled inside the transaction that made it true
-        outcome = failure_outcome(outcome, attempts=claim.attempts, received_at=claim.received_at, now=now())
-        connection.rollback()
-        if outcome.status == "processed":
-            queue.processed(claim, outcome.code)
-        else:
-            queue.release(claim, status=outcome.status, outcome_code=outcome.code, error=outcome.detail,
-                          next_attempt_at=(now() + timedelta(seconds=outcome.delay_seconds)
-                                           if outcome.delay_seconds is not None else None),
-                          refund_attempt=outcome.refund_attempt)
-        connection.commit()
-        return outcome
-    except LeaseLostError:
-        connection.rollback()
-        return Outcome("retry", "LEASE_LOST", "another worker holds the row now")
-    except Exception as exc:  # noqa: BLE001 - settle the row; the type name is the only thing recorded
-        connection.rollback()
-        outcome = failure_outcome(Outcome("retry", "UNEXPECTED_ERROR", type(exc).__name__), attempts=claim.attempts,
-                                  received_at=claim.received_at, now=now())
-        try:
-            queue.release(claim, status=outcome.status, outcome_code=outcome.code, error=outcome.detail,
-                          next_attempt_at=(now() + timedelta(seconds=outcome.delay_seconds)
-                                           if outcome.delay_seconds is not None else None))
-            connection.commit()
-        except Exception:  # noqa: BLE001 - the lease will expire and the row will be re-claimed
-            connection.rollback()
-        return outcome
+    """Executes one claimed row and settles it (see ``inbox.execution_support.settle``)."""
+    return settle(claim, connection, queue, lambda: _execute(claim, connection, queue, engine_for, now),
+                  settled_in_attempt=frozenset({"EXECUTED", "ADOPTED_NATIVE_ORDER"}), now=now)
