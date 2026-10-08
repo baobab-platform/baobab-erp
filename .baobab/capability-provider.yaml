@@ -14,15 +14,19 @@
 # 854b1d315e188f6f39295df31618aab31655518e and Shared capability authority
 # 40d180756461f3fbbdcf06d1dcd3e1fe6481bed2.
 #
-# finance.order-consequence.process remains PARTIAL because canonical
-# trade.order.placed ingress is validated/deduplicated into the ERP inbox but
-# is not yet dispatched into order-to-cash execution. The consequence read
-# model, canonical query and outcome event are implemented.
+# finance.order-consequence.process remains PARTIAL. Canonical trade.order.placed
+# ingress is now executed by a separate worker (idempotent, crash-adopting; #67),
+# and the consequence read model, canonical query and outcome event are
+# implemented. What keeps it PARTIAL: the order lifecycle after placement
+# (shipment, invoice and accounting stages) is not driven from canonical
+# events, and nothing has run against a live iDempiere.
 #
 # inventory.availability.query is IMPLEMENTED: Shared now carries the explicit
 # request/response contract and catalogue entry, and ERP serves the canonical
 # GET boundary from ERP-owned physical stock with mapping, fail-closed and
-# contract/integration proof.
+# contract/integration proof. IMPLEMENTED is the implementation axis only: the
+# stock read has not run against a live iDempiere (see
+# architecture/conformance.yaml).
 #
 # See docs/architecture/capability-census-2026-10-07.md.
 #
@@ -71,6 +75,18 @@ providers:
             path: modules/inbox/service.py
             description: Signed canonical CloudEvent validation and durable idempotent ingress.
           - type: source
+            path: modules/order_to_cash/inbox_execution.py
+            description: Executes a received trade.order.placed under a per-order lock; finds or adopts the engine order by POReference so a replay or restart cannot create a second sales order.
+          - type: source
+            path: modules/order_to_cash/execution_policy.py
+            description: Outcome codes, bounded retry/backoff and failure classification for order execution.
+          - type: source
+            path: modules/inbox/postgres_queue.py
+            description: Leased FOR UPDATE SKIP LOCKED claim with fenced settle (crash recovery, no double claim).
+          - type: source
+            path: modules/application/inbox_worker.py
+            description: Separate worker entry point (baobab-inbox-worker) that drives the executor.
+          - type: source
             path: modules/order_to_cash/service.py
             description: Real sell-side order-to-cash ERP consequence execution.
           - type: source
@@ -99,7 +115,16 @@ providers:
             description: Real HTTP and Postgres order-to-cash execution against an iDempiere transport fake.
           - type: integration-test
             path: tests/integration/test_http_server.py
-            description: Canonical Trade order event ingress is authenticated, validated and deduplicated; execution dispatch remains the PARTIAL gap.
+            description: Canonical Trade order event ingress is authenticated, validated and deduplicated.
+          - type: integration-test
+            path: tests/integration/test_order_inbox_execution.py
+            description: Replay, restart after an uncertain outcome, concurrent workers and adoption of an engine order created before a crash each leave exactly one sales order.
+          - type: contract-test
+            path: tests/conformance/test_order_execution.py
+            description: Executed order publishes the registered order.consequence-changed event.
+          - type: test
+            path: tests/unit/test_order_event_policy.py
+            description: Retry, backoff and outcome classification rules.
 
       - capability_key: inventory.availability.query
         contract_versions: [1]

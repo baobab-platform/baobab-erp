@@ -20,8 +20,8 @@ a CapabilityBinding, certification, health, tenant entitlement, or production re
 
 | Capability | Canonical in Shared | ERP main evidence | Census status |
 |---|---:|---|---|
-| `finance.order-consequence.process` | Yes | Real order-to-cash execution, ERP-owned consequence read model, canonical consequence event, canonical query endpoint | **PARTIAL provider support** |
-| `inventory.availability.query` | Contract complete; catalogue completion tracked by Shared capability PR | Canonical GET boundary, mapping-driven SKU/warehouse resolution, live iDempiere physical-stock read, exact contract tests | **IMPLEMENTED provider support once canonical catalogue entry lands** |
+| `finance.order-consequence.process` | Yes | Real order-to-cash execution, ERP-owned consequence read model, canonical consequence event, canonical query endpoint | **PARTIAL provider support** (inbox execution landed in #67; lifecycle stages and live proof open) |
+| `inventory.availability.query` | Contract complete; catalogue completion tracked by Shared capability PR | Canonical GET boundary, mapping-driven SKU/warehouse resolution, live iDempiere physical-stock read, exact contract tests | **IMPLEMENTED provider support** (implementation axis only; not run against a live iDempiere) |
 
 ### finance.order-consequence.process
 
@@ -35,30 +35,27 @@ The repository now implements materially more than the original 2026-09-30 EA-02
   `GET /order-consequences/{commerce_order_id}` query;
 - contract and integration tests cover the projection and event shape.
 
-It is still **PARTIAL**, not `IMPLEMENTED`, because the canonical
-`com.baobab-platform.trade.order.placed.v1` ingress is currently authenticated,
-validated and durably deduplicated by the inbox but is not yet dispatched from that inbox
-into the order-to-cash execution workflow. Current order-to-cash execution is driven by
-the ERP's explicit application endpoints. Declaring the entire capability implemented
-before canonical ingress drives execution would overstate the contract.
+Update 2026-10-08 (reconciled with main after #67 and #68): canonical
+`com.baobab-platform.trade.order.placed.v1` is now executed. `baobab-inbox-worker` claims received
+events under a lease, finds or adopts the engine order by `POReference` under a per-order lock, and in one
+transaction records the consequence projection, the order link, the canonical outcome event and the inbox
+outcome. Replay, a second worker, and a restart after an uncertain outcome do not create a second sales order
+(`tests/integration/test_order_inbox_execution.py`). Provisioning now persists the EngineInstance with the tenant mapping (#68).
+
+The capability is still **PARTIAL**, not `IMPLEMENTED`, for two reasons:
+
+1. the order lifecycle after placement (shipment, invoice and accounting stages) is not driven from canonical events;
+2. nothing has run against a live iDempiere (see `architecture/conformance.yaml`).
 
 Promotion criterion:
 
 ```text
-canonical trade.order.placed
-        |
-        v
-validated/deduplicated ERP inbox
-        |
-        v
-idempotent order-consequence execution
-        |
-        v
-ERP consequence projection + canonical outcome event
+canonical trade.order.placed -> inbox -> idempotent execution -> consequence projection + outcome event   (done, #67)
+later lifecycle stages driven from canonical events                                                        (open)
+run against a live iDempiere                                                                                (open)
 ```
 
-When that path is implemented and proven, change provider support from `PARTIAL` to
-`IMPLEMENTED`.
+When the open items are proven, change provider support from `PARTIAL` to `IMPLEMENTED`.
 
 ### inventory.availability.query
 
@@ -205,10 +202,16 @@ Those remain Control Plane / EA-09 authorities.
 
 1. Land the Shared catalogue completion for `inventory.availability.query`.
 2. Publish the evidence-backed ERP provider declaration.
-3. Implement canonical `trade.order.placed` inbox-to-order-consequence execution and
-   promote `finance.order-consequence.process` only after contract proof.
+3. ~~Implement canonical `trade.order.placed` inbox-to-order-consequence execution~~ (done, #67). Promote
+   `finance.order-consequence.process` only after the lifecycle stages and a live-iDempiere run are proven.
 4. Re-audit/rebase the ZuriBeans #32–#35 stack and decide whether its commercial decision
    warrants a new Shared capability or belongs within an existing finance/customer
    composition.
 5. Keep Nabhold, ZuriBeans and Thamani consumers provider-neutral: resolve capability,
    never vendor/provider identity.
+
+## Related
+
+`docs/architecture/capability-census-additional-areas-2026-10-08.md` extends this census with the additional business
+areas, an event-by-event inventory and the four-axes model (implementation, live-provider conformance, certification,
+activation).
