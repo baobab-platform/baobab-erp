@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Sequence
 
@@ -22,6 +22,7 @@ from provisioning import command_state
 from provisioning.command_events import provisioning_changed
 from provisioning.model import ErpProvisioningRequest, ProvisioningPlan
 from provisioning.operation_request import ProvisioningCommand
+from provisioning.planner import desired_state_json
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,7 +95,7 @@ class PostgresProvisioningCommandStore:
                        (provisioning_id, idempotency_key, desired_state, desired_state_digest, plan, status)
                        VALUES (%s, %s, %s::jsonb, %s, %s::jsonb, 'planned')""",
                     (entity.request.provisioning_id, entity.request.idempotency_key,
-                     json.dumps(asdict(entity.request), default=str), entity.plan.desired_state_digest,
+                     desired_state_json(entity.request), entity.plan.desired_state_digest,
                      json.dumps([{"key": s.key, "kind": s.kind.value, "payload": s.payload} for s in entity.plan.steps])))
             authority = command.authority
             cursor.execute(

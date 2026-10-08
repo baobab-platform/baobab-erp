@@ -17,8 +17,9 @@ one; server.py's real wiring always will.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Protocol, Sequence
 
+from integration.idempiere_client import Eq
 from provisioning.model import ErpProvisioningRequest, ProvisioningStep, ReadinessCheck, StepKind
 
 _ALL_ORGANIZATIONS_AD_ORG_ID = 0
@@ -29,8 +30,13 @@ class ProvisioningMappingStore(Protocol):
     def put_native_id(self, *, provisioning_id: str, resource_key: str, native_id: int) -> None: ...
 
 
+class DuplicateNativeRecords(Exception):
+    """More than one engine record carries one step's marker. Not resolved by picking one: an operator decides."""
+
+
 class ProvisioningIdempiereClient(Protocol):
     def get_record(self, table: str, record_id: int) -> dict[str, Any]: ...
+    def query(self, table: str, conditions: Sequence[Eq], select: Sequence[str]) -> list[dict[str, Any]]: ...
     def create_record(self, table: str, fields: dict[str, Any]) -> int: ...
     def update_record(self, table: str, record_id: int, fields: dict[str, Any]) -> None: ...
     def execute_process(self, process_id: int, parameters: dict[str, Any]) -> dict[str, Any]: ...
@@ -166,9 +172,33 @@ class IdempiereProvisioningAdapter:
         if existing is not None:
             self.client.get_record(table, existing)
             return {"table": table, "id": existing, "reused": True}
-        native_id = self.client.create_record(table, fields)
+        # Creating the engine record and recording its id cannot be one transaction. If an earlier attempt died between the
+        # two, the record exists and no mapping says so. The record is found by the marker this step wrote into it (the step
+        # key, unique to this operation and desired state), never by Name, so an unrelated record can not be adopted.
+        marker = self._marker(step)
+        adopted = self._find_marked(table, marker)
+        if adopted is not None:
+            self.mappings.put_native_id(provisioning_id=request.provisioning_id, resource_key=key, native_id=adopted)
+            return {"table": table, "id": adopted, "reused": True, "adopted": True}
+        native_id = self.client.create_record(table, {**fields, "Description": marker})
         self.mappings.put_native_id(provisioning_id=request.provisioning_id, resource_key=key, native_id=native_id)
         return {"table": table, "id": native_id, "reused": False}
+
+    def _find_marked(self, table, marker):
+        rows = self.client.query(table, [Eq("Description", marker)], [f"{table}_ID"])
+        if len(rows) > 1:
+            raise DuplicateNativeRecords(f"{len(rows)} {table} records carry one provisioning step's marker")
+        if not rows:
+            return None
+        row = rows[0]
+        return int(row["id"] if "id" in row else row[f"{table}_ID"])
+
+    @staticmethod
+    def _marker(step):
+        marker = f"baobab-provisioning:{step.key}"
+        if len(marker) > 255:  # AD Description length; a longer marker would be truncated and could not be matched again
+            raise ValueError("provisioning step key too long to record as an engine marker")
+        return marker
 
     def _mark_applied(self, request, step):
         # 1 is a non-native sentinel only for process/marker steps. Resource mappings

@@ -1,8 +1,8 @@
-from dataclasses import asdict
+import json
 from typing import Protocol
 
 from provisioning.model import ErpProvisioningRequest, ProvisioningPlan, ProvisioningReadiness, ProvisioningStatus, ProvisioningStep, ReadinessCheck
-from provisioning.planner import build_plan
+from provisioning.planner import build_plan, desired_state_json
 from provisioning.store import ProvisioningStore
 from provisioning.validation import validate_request
 
@@ -23,7 +23,7 @@ class ErpProvisioningService:
             request.provisioning_id,
             request.idempotency_key,
             plan.desired_state_digest,
-            asdict(request),
+            json.loads(desired_state_json(request)),
         )
         if existing_id != request.provisioning_id:
             raise ValueError(f"idempotency key already belongs to provisioning operation {existing_id}")

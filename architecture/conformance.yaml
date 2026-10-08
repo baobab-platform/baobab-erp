@@ -658,7 +658,14 @@ adrs:
       - modules/provisioning/store.py
       - modules/provisioning/idempiere_adapter.py
       - modules/provisioning/native_mapping_store.py
-      - modules/provisioning/planner_patch.py
+      - modules/provisioning/native_processes.py
+      - modules/provisioning/request_state.py
+      - modules/provisioning/execution.py
+      - modules/provisioning/execution_store.py
+      - modules/application/provisioning_worker.py
+      - db/migrations/0021_provisioning_execution.sql
+      - tests/unit/test_provisioning_execution_rules.py
+      - tests/integration/test_provisioning_execution.py
       - modules/context/postgres_store.py
       - db/migrations/0007_create_erp_provisioning.sql
       - db/migrations/0008_add_control_plane_mapping_context.sql
@@ -685,10 +692,10 @@ adrs:
       baobab.erp_provisioning_native_mapping), so a retried step reuses the
       native ID a prior attempt already created instead of duplicating it.
       CONFIGURE_ACCOUNTING/CONFIGURE_LOCALISATION fail closed with no invented
-      process ID unless the plan payload already carries an approved
-      process_id (planner_patch.enrich_step_payload shows the intended
-      integration point into planner.py once real process IDs are configured
-      per deployment). PERSIST_MAPPING additionally writes the resulting
+      process ID unless the step carries an approved process_id, which the
+      executor adds from deployment configuration (native_processes.py) after
+      the plan is built, so the plan digest does not depend on the installation.
+      PERSIST_MAPPING additionally writes the resulting
       (tenant_id, legal_entity_id) -> (AD_Client_ID, AD_Org_ID) row into
       baobab.tenant_mapping (PostgresTenantMappingStore.create_mapping, via the
       adapter's optional tenant_mappings collaborator) so modules/context can
@@ -711,6 +718,26 @@ adrs:
       CONFIGURE_ACCOUNTING/CONFIGURE_LOCALISATION cannot actually run against a
       real deployment until those are supplied; and a live Control Plane client
       and real migration source system still don't exist.
+
+      UPDATE 2026-10-08 (ERP-CAP-04): an accepted command is now executed.
+      application/provisioning_worker.py (the baobab-provisioning-worker Compose
+      service) claims each due operation with a session advisory lock and runs it
+      through ProvisioningExecutor: the stored desired state is decoded and must
+      reproduce the digest it was accepted under (STATE_DRIFT otherwise), the
+      engine session and every process id are resolved before the first step so
+      nothing is created that cannot be finished, completed steps are skipped on
+      resume, and an engine record created just before a crash is adopted by the
+      marker its step wrote into Description rather than created again. Failure is
+      classified (retry with backoff, blocked until an operator configures a
+      credential or process id, failed with a fixed code) and projects onto the
+      command state and its provisioning.changed events. Proven against Postgres
+      and a fake engine (tests/integration/test_provisioning_execution.py), NOT a
+      live iDempiere: AD_Client creation through the REST plugin, Description as
+      the marker column, and the process ids are what ERP-CAP-03 must confirm.
+      Still open: the new AD_Client's own integration credentials
+      (IDEMPIERE_CLIENT_CREDENTIALS_JSON) are set by hand afterwards; the
+      provisioner identity is a deployment secret whose least-privilege role is
+      not yet defined; CREATE_ORGANISATION is never planned.
 
   - id: ADR-ERP-020
     title: ERP production readiness, governance and architecture conformance

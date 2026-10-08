@@ -44,6 +44,9 @@ class _Client:
     def get_record(self, table, record_id):
         return {}
 
+    def query(self, table, conditions, select):
+        return []  # nothing in the engine carries this step's marker yet
+
 
 class _Mappings:
     def __init__(self):

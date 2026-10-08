@@ -11,6 +11,8 @@ DOMAIN_MODULES = (
     # The service and its store protocol, and the pure parts of the event path (FB-04b).
     "provisioning.service", "provisioning.store", "provisioning.command_state", "provisioning.command_events",
     "integration.signed_delivery", "outbox.service",
+    # Execution: the executor and everything it decides with. The Postgres side is provisioning.execution_store.
+    "provisioning.execution", "provisioning.native_processes", "provisioning.request_state", "provisioning.idempiere_adapter",
 )
 
 
