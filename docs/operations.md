@@ -9,7 +9,8 @@ applies `db/migrations/` before anything else starts, a `baobab-app` service bui
 `POST /events/inbound`), and a `baobab-dispatch-worker` service (same image) that
 periodically invokes `modules/application/dispatch_worker.py` to drain the event
 outbox, and a `baobab-inbox-worker` service that periodically invokes `modules/application/inbox_worker.py` to execute received
-`trade.order.placed` events (see `docs/events.md`, "Executing `trade.order.placed`").
+`trade.order.placed` events (see `docs/events.md`, "Executing `trade.order.placed`"), and a `baobab-provisioning-worker` service that
+periodically invokes `modules/application/provisioning_worker.py` to provision accepted legal-entity commands.
 
 `modules/application/dispatch_worker.py` (outbox delivery) runs to completion and exits
 by design -- it is not itself a long-lived daemon. The `baobab-dispatch-worker` Compose
@@ -45,6 +46,32 @@ application reads; a tenant without an entry is blocked, not failed). `BAOBAB_IN
 expired lease lets another worker take the row. Each run prints one JSON line (`event: inbox.execute`) with this pass's outcomes by status and
 code and the backlog by status afterwards: alert on any `dead_letter`, on `blocked` rows older than an hour, and on a growing `received` count.
 Deploying it also executes any `trade.order.placed` rows already `received` before it existed.
+
+### Provisioning worker
+
+`POST /provisioning-operations` accepts a command and answers 202; `baobab-provisioning-worker` then provisions each legal entity
+(`modules/scripts/provisioning_worker_loop.sh`, `BAOBAB_PROVISIONING_INTERVAL_SECONDS`, default 30s; `BAOBAB_PROVISIONING_BATCH_LIMIT`,
+default 10). Same one-shot pattern as the other workers, and any number may run: an operation is claimed with a session advisory lock, so
+`DATABASE_URL` must be a direct connection. A worker that dies releases its lock with its connection and the next one resumes from the recorded
+steps; nothing is created twice (native ids are recorded per step, and an engine record created just before a crash is adopted by the marker
+the step wrote into its `Description`).
+
+It needs, per EngineInstance, a provisioner identity in `IDEMPIERE_PROVISIONER_CREDENTIALS_JSON` (`{"<engine_instance_id>": {base_url, username,
+password, client_id, role_id, organization_id}}`). It is deliberately not the per-AD_Client integration credential: that AD_Client does not exist
+until provisioning runs, and ADR-ERP-019 forbids a shared superuser, so grant it only what client provisioning needs. Accounting and localisation
+run iDempiere processes whose ids differ per installation: set both `IDEMPIERE_PROVISIONING_PROCESS_ACCOUNTING` and
+`IDEMPIERE_PROVISIONING_PROCESS_LOCALISATION_JSON` (`{"<country>": <id>}`) or neither. They are checked before the first step, so an operation
+never creates an AD_Client it cannot then configure.
+
+Outcomes are fixed codes (`baobab.erp_provisioning_operation.outcome_code`): `READY`; `ENGINE_UNAVAILABLE` and `NOT_READY` (retried with backoff,
+30 s doubling to 1 h, 24 attempts); `ENGINE_UNCONFIGURED`, `PROCESS_UNCONFIGURED`, `ENGINE_AUTH` (blocked: an operator can fix it; retried every
+15 minutes for 72 hours); and failures (`ENGINE_REJECTED`, `STATE_DRIFT`, `STATE_UNREADABLE`, `STEP_INVALID`, `DUPLICATE_NATIVE_RECORDS`,
+`TENANT_MAPPING_CONFLICT`, `ATTEMPTS_EXHAUSTED`, `BLOCKED_HORIZON_EXCEEDED`), after which the command reports `failed` with `ERP_PROVISIONING_FAILED`
+and the worker leaves it for an operator. Each run prints one JSON line (`event: provisioning.execute`): alert on `failed`, on `blocked` older than
+an hour, and on `planned` operations that are not draining.
+
+Not covered yet: the new AD_Client's own integration credentials (`IDEMPIERE_CLIENT_CREDENTIALS_JSON`, which order execution reads) are still set by
+hand after provisioning, and none of this has run against a live iDempiere.
 
 ## Production requirements
 

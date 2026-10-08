@@ -1,7 +1,7 @@
 import unittest
 from dataclasses import dataclass
 
-from provisioning.idempiere_adapter import IdempiereProvisioningAdapter
+from provisioning.idempiere_adapter import DuplicateNativeRecords, IdempiereProvisioningAdapter
 from provisioning.model import ProvisioningStep, StepKind
 
 
@@ -17,6 +17,11 @@ class FakeClient:
 
     def get_record(self, table, record_id):
         return self.records[(table, record_id)]
+
+    def query(self, table, conditions, select):
+        wanted = {condition.column: condition.value for condition in conditions}
+        return [{f"{table}_ID": record_id} for (name, record_id), fields in self.records.items()
+                if name == table and all(fields.get(column) == value for column, value in wanted.items())]
 
     def update_record(self, table, record_id, fields):
         self.records[(table, record_id)].update(fields)
@@ -52,7 +57,50 @@ class Request:
     legal_name: str = "Zuribeans South Africa"
 
 
+class _DiesOnce(FakeMappings):
+    """A mapping store whose first write fails: the engine record exists, the process 'died' before recording its id."""
+
+    def __init__(self):
+        super().__init__()
+        self.fail_next = True
+
+    def put_native_id(self, **kwargs):
+        if self.fail_next:
+            self.fail_next = False
+            raise RuntimeError("process died")
+        super().put_native_id(**kwargs)
+
+
 class IdempiereProvisioningAdapterTests(unittest.TestCase):
+    def test_an_attempt_that_died_after_creating_the_client_is_adopted_not_repeated(self):
+        client, mappings = FakeClient(), _DiesOnce()
+        request, step = Request(), ProvisioningStep("client", StepKind.CREATE_CLIENT, {})
+        with self.assertRaises(RuntimeError):
+            IdempiereProvisioningAdapter(client, mappings).apply(request, step)
+        self.assertEqual(len(client.records), 1)  # created in the engine, unrecorded here
+
+        result = IdempiereProvisioningAdapter(client, mappings).apply(request, step)
+
+        self.assertEqual(len(client.records), 1)  # still one AD_Client
+        self.assertEqual((result["reused"], result.get("adopted")), (True, True))
+        self.assertEqual(mappings.get_native_id(provisioning_id="p1", resource_key="create_client:client"), result["id"])
+
+    def test_a_record_that_merely_shares_the_name_is_not_adopted(self):
+        client, mappings = FakeClient(), FakeMappings()
+        client.create_record("AD_Client", {"Name": "Zuribeans South Africa", "Value": "le-zb-za"})  # someone else's
+        result = IdempiereProvisioningAdapter(client, mappings).apply(Request(), ProvisioningStep("client", StepKind.CREATE_CLIENT, {}))
+        self.assertFalse(result["reused"])
+        self.assertEqual(len(client.records), 2)
+
+    def test_two_records_carrying_one_marker_are_left_to_an_operator(self):
+        client, mappings = FakeClient(), FakeMappings()
+        marker = "baobab-provisioning:client"
+        client.create_record("AD_Client", {"Description": marker})
+        client.create_record("AD_Client", {"Description": marker})
+        with self.assertRaises(DuplicateNativeRecords):
+            IdempiereProvisioningAdapter(client, mappings).apply(Request(), ProvisioningStep("client", StepKind.CREATE_CLIENT, {}))
+        self.assertEqual(len(client.records), 2)
+
     def test_create_client_is_idempotent(self):
         client, mappings = FakeClient(), FakeMappings()
         adapter = IdempiereProvisioningAdapter(client, mappings)
