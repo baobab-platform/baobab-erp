@@ -84,7 +84,13 @@ def parse_customer_projected(data: Any) -> CustomerProjection:
     return CustomerProjection(data["legal_entity_id"], customer_id, version, customer_type, name.strip(), status)
 
 
+MAX_MARKER = 255
+
+
 def marker(tenant_id: str, customer: CustomerProjection) -> str:
     """Written into the created partner and used to find it again. Unique to this tenant, legal entity and Trade customer, so a partner
     that merely shares a name or search key can not be adopted."""
-    return f"baobab-customer:{tenant_id}:{customer.legal_entity_id}:{customer.customer_id}"
+    text = f"baobab-customer:{tenant_id}:{customer.legal_entity_id}:{customer.customer_id}"
+    if len(text) <= MAX_MARKER:  # the engine's Description column holds 255 characters; a longer marker would be truncated
+        return text
+    return "baobab-customer-sha256:" + hashlib.sha256(text.encode()).hexdigest()

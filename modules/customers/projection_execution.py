@@ -42,13 +42,13 @@ TABLE = "C_BPartner"
 
 
 class IdempierePartners(Protocol):
-    def get_record(self, table: str, record_id: int) -> dict: ...
+    def get_record(self, table: str, record_id: int) -> dict: pass
 
-    def query(self, table: str, conditions, select) -> list[dict]: ...
+    def query(self, table: str, conditions, select) -> list[dict]: pass
 
-    def create_record(self, table: str, fields: dict) -> int: ...
+    def create_record(self, table: str, fields: dict) -> int: pass
 
-    def update_record(self, table: str, record_id: int, fields: dict) -> None: ...
+    def update_record(self, table: str, record_id: int, fields: dict) -> None: pass
 
 
 def _record_id(row: dict, table: str) -> int:
@@ -71,8 +71,17 @@ def _default_group(engine: IdempierePartners) -> int:
     return _record_id(rows[0], "C_BP_Group")
 
 
+def _numeric_version(source_version: str) -> int:
+    """A mapping written by the master-data bootstrapper may carry a non-numeric version. Such a partner predates any Trade
+    customer version, so every real (>= 1) version supersedes it."""
+    try:
+        return int(source_version)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _update_fields(customer: CustomerProjection) -> dict:
-    return {"Name": customer.display_name, "IsActive": customer.active}
+    return {"Name": customer.display_name, "IsActive": customer.active, "IsCustomer": True}
 
 
 def _execute(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQueue,
@@ -100,9 +109,10 @@ def _execute(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQ
         connection.commit()
         if mapped is not None:
             native_id, mapped_digest, mapped_version = mapped
-            if customer.customer_version < int(mapped_version):
+            known = _numeric_version(mapped_version)
+            if customer.customer_version < known:
                 return Outcome("processed", "STALE_VERSION")
-            if customer.customer_version == int(mapped_version):
+            if customer.customer_version == known:
                 if digest == mapped_digest:
                     return Outcome("processed", "ALREADY_PROJECTED")
                 raise dead("VERSION_CONFLICT", "the same customer version arrived with different content")

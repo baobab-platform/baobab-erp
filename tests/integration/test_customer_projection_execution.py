@@ -9,12 +9,12 @@ The acceptance tests mirror the order ones: replaying an accepted event, and res
 business partner. The last test closes the loop that motivated this: an order for a customer the engine learned about only from its event.
 """
 import unittest
+import unittest.mock
 import uuid
-from unittest import mock
 
 from integration.idempiere_client import IdempiereApiError, IdempiereClientError
 
-from test_order_inbox_execution import CUSTOMER_PROJECTED, ORDER_PLACED, _Base, _Crash, _Engine  # noqa: F401
+from test_order_inbox_execution import CUSTOMER_PROJECTED, _Base, _Crash
 
 
 class PartnerEngine:
@@ -187,6 +187,28 @@ class CustomerProjectionTests(_Base):
         self.assertEqual(self.mapping()[2], "2")
         self.assertEqual(self.partners.writes, [("create", native_id), ("update", native_id)])
 
+    def test_an_update_also_marks_a_hand_made_partner_as_a_customer(self):
+        self.seed_tenant()
+        self.deliver(self.projected(version=1))
+        self.work()
+        [(native_id, fields)] = self.partner_records().items()
+        fields["IsCustomer"] = False  # a partner the engine already held, mapped by hand
+        self.deliver(self.projected(version=2, name="Renamed Importer Ltd"))
+        self.work()
+        self.assertTrue(self.partner_records()[native_id]["IsCustomer"])
+
+    def test_a_mapping_with_a_non_numeric_bootstrap_version_is_superseded_by_the_first_event(self):
+        self.seed_tenant()
+        self.deliver(self.projected(version=1))
+        self.work()
+        with self.db.cursor() as cursor:
+            cursor.execute("UPDATE baobab.erp_master_data_mapping SET source_version = 'bootstrap', desired_digest = 'legacy' "
+                           "WHERE canonical_id = %s", (self.customer,))
+        self.db.commit()
+        self.deliver(self.projected(version=2, name="Renamed Importer Ltd"))
+        self.assertEqual(self.work()["codes"], {"UPDATED": 1})
+        self.assertEqual(self.mapping()[2], "2")
+
     def test_an_older_version_is_ignored_and_the_same_version_with_other_content_is_refused(self):
         self.seed_tenant()
         self.deliver(self.projected(version=3))
@@ -207,7 +229,7 @@ class CustomerProjectionTests(_Base):
         wire = self.projected()
         self.deliver(wire)
         crashed = self.connect()
-        with mock.patch("customers.projection_execution.PostgresMasterDataMappingStore.put", side_effect=_Crash()):
+        with unittest.mock.patch("customers.projection_execution.PostgresMasterDataMappingStore.put", side_effect=_Crash()):
             with self.assertRaises(_Crash):
                 self.work(crashed, worker="doomed", lease=300)
         crashed.close()  # a dead process: its session lock goes with it

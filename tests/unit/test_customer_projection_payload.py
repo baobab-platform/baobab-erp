@@ -74,5 +74,14 @@ class MarkerTests(unittest.TestCase):
         self.assertEqual(len(markers), 4)  # two tenants' same customer id can never adopt each other's partner
 
 
+    def test_a_marker_never_exceeds_the_engines_description_limit_and_stays_unique(self):
+        long_tenant = "tn_" + "a" * 60
+        a = CustomerProjection("E" * 63, "c" * 128, 1, "person", "A", "active")
+        b = CustomerProjection("E" * 63, "c" * 127 + "d", 1, "person", "A", "active")
+        self.assertLessEqual(len(marker(long_tenant, a)), 255)
+        self.assertNotEqual(marker(long_tenant, a), marker(long_tenant, b))
+        self.assertEqual(marker(long_tenant, a), marker(long_tenant, a))
+
+
 if __name__ == "__main__":
     unittest.main()
