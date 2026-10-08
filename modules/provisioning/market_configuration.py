@@ -23,7 +23,9 @@ _COUNTRY = re.compile(r"^[A-Z]{2}$")
 _CURRENCY = re.compile(r"^[A-Z]{3}$")
 _LEGAL_ENTITY = re.compile(r"^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*$")
 _PLACEHOLDER = "REQUIRED_"
-_MEMBERS = frozenset({"currencies", "localisation_profile", "warehouse_codes"})
+_MEMBERS = frozenset({"currencies", "localisation_profile", "warehouse_codes", "warehouse_timezones"})
+# The Shared warehouse projection's grammar (erp/v1 warehouse-projection timezone). Region/City form: "UTC" alone is not accepted.
+_TIMEZONE = re.compile(r"^[A-Za-z_]+(?:/[A-Za-z0-9_+.-]+)+$")
 
 
 class MarketConfigurationError(ValueError):
@@ -35,6 +37,8 @@ def _placeholder(value: Any) -> bool:
         return value.startswith(_PLACEHOLDER)
     if isinstance(value, list):
         return any(_placeholder(item) for item in value)
+    if isinstance(value, Mapping):
+        return any(_placeholder(item) for item in value.values())
     return False
 
 
@@ -95,7 +99,13 @@ def parse_market_configuration(document: Any) -> dict[str, ErpMarketConfiguratio
         if not isinstance(warehouses, list) or not warehouses or len(set(warehouses)) != len(warehouses) \
                 or not all(isinstance(w, str) and w.strip() for w in warehouses):
             raise MarketConfigurationError(f"{country}: warehouse_codes must be a non-empty list of distinct codes")
-        configured[country] = ErpMarketConfiguration(tuple(currencies), profile.strip(), tuple(warehouses))
+        zones = entry["warehouse_timezones"]
+        if not isinstance(zones, Mapping) or set(zones) != set(warehouses):
+            raise MarketConfigurationError(f"{country}: warehouse_timezones must name exactly the warehouse_codes, one timezone each")
+        if not all(isinstance(z, str) and len(z) <= 64 and _TIMEZONE.fullmatch(z) for z in zones.values()):
+            raise MarketConfigurationError(f"{country}: every warehouse timezone must be an IANA name such as Africa/Kampala")
+        configured[country] = ErpMarketConfiguration(tuple(currencies), profile.strip(), tuple(warehouses),
+                                                     tuple(sorted(zones.items())))
     return configured
 
 

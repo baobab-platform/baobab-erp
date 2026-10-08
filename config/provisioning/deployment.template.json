@@ -9,7 +9,10 @@
       "localisation_profile": "REQUIRED_CERTIFIED_ZA_ERP_LOCALISATION",
       "warehouse_codes": [
         "REQUIRED_APPROVED_ZA_WAREHOUSE"
-      ]
+      ],
+      "warehouse_timezones": {
+        "REQUIRED_APPROVED_ZA_WAREHOUSE": "REQUIRED_APPROVED_ZA_WAREHOUSE_IANA_TIMEZONE"
+      }
     },
     "UG": {
       "currencies": [
@@ -18,7 +21,10 @@
       "localisation_profile": "REQUIRED_CERTIFIED_UG_ERP_LOCALISATION",
       "warehouse_codes": [
         "REQUIRED_APPROVED_UG_WAREHOUSE"
-      ]
+      ],
+      "warehouse_timezones": {
+        "REQUIRED_APPROVED_UG_WAREHOUSE": "REQUIRED_APPROVED_UG_WAREHOUSE_IANA_TIMEZONE"
+      }
     }
   },
   "target_environment": "production",

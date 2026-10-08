@@ -65,6 +65,7 @@ def load_request(path: str | Path) -> ErpProvisioningRequest:
                 currencies=tuple(item["currencies"]),
                 localisation_profile=item["localisation_profile"],
                 warehouse_codes=tuple(item.get("warehouse_codes", ())),
+                warehouse_timezones=tuple(sorted((code, zone) for code, zone in item.get("warehouse_timezones", {}).items())),
             )
             for item in payload["markets"]
         ),

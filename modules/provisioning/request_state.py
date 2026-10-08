@@ -27,7 +27,8 @@ def _market(raw: Mapping[str, Any]) -> MarketConfiguration:
     return MarketConfiguration(
         market_id=raw["market_id"], country_code=raw["country_code"],
         participation_capabilities=frozenset(raw["participation_capabilities"]), currencies=tuple(raw["currencies"]),
-        localisation_profile=raw["localisation_profile"], warehouse_codes=tuple(raw.get("warehouse_codes", ())))
+        localisation_profile=raw["localisation_profile"], warehouse_codes=tuple(raw.get("warehouse_codes", ())),
+        warehouse_timezones=tuple((code, zone) for code, zone in raw.get("warehouse_timezones", ())))
 
 
 def _accounting(raw: Mapping[str, Any]) -> AccountingConfiguration:

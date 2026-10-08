@@ -33,6 +33,11 @@ class MarketConfiguration:
     currencies: tuple[str, ...]
     localisation_profile: str
     warehouse_codes: tuple[str, ...] = ()
+    # (warehouse code, IANA timezone), sorted by code. ERP deployment configuration, like the codes: Control Plane stores neither.
+    warehouse_timezones: tuple[tuple[str, str], ...] = ()
+
+    def timezone_of(self, warehouse_code: str) -> str | None:
+        return dict(self.warehouse_timezones).get(warehouse_code)
 
 
 @dataclass(frozen=True, slots=True)

@@ -23,7 +23,13 @@ def _json_default(value):
 def desired_state_json(request: ErpProvisioningRequest) -> str:
     """The canonical serialisation of a request: what the plan digest is taken over and what is stored as the operation's
     desired state. ``provisioning.request_state`` reads it back, so the digest can be recomputed from the stored state."""
-    return json.dumps(asdict(request), sort_keys=True, default=_json_default, separators=(",", ":"))
+    document = asdict(request)
+    for market in document["markets"]:
+        if not market["warehouse_timezones"]:
+            # Omitted when empty so the state of every request accepted before the member existed serialises, and so digests, exactly
+            # as it did: its stored desired state must still reproduce the digest it was approved under.
+            del market["warehouse_timezones"]
+    return json.dumps(document, sort_keys=True, default=_json_default, separators=(",", ":"))
 
 
 def desired_state_digest(request: ErpProvisioningRequest) -> str:
@@ -65,7 +71,8 @@ def build_plan(request: ErpProvisioningRequest) -> ProvisioningPlan:
                 ProvisioningStep(
                     f"{prefix}:warehouse:{market.market_id}:{warehouse}",
                     StepKind.CREATE_WAREHOUSE,
-                    {"market_id": market.market_id, "warehouse_code": warehouse},
+                    {"market_id": market.market_id, "warehouse_code": warehouse,
+                     **({"timezone": market.timezone_of(warehouse)} if market.timezone_of(warehouse) else {})},
                 )
             )
     steps.append(
