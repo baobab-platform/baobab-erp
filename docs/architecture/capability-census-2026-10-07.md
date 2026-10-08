@@ -21,7 +21,7 @@ a CapabilityBinding, certification, health, tenant entitlement, or production re
 | Capability | Canonical in Shared | ERP main evidence | Census status |
 |---|---:|---|---|
 | `finance.order-consequence.process` | Yes | Real order-to-cash execution, ERP-owned consequence read model, canonical consequence event, canonical query endpoint | **PARTIAL provider support** (inbox execution landed in #67; lifecycle stages and live proof open) |
-| `inventory.availability.query` | Contract complete; catalogue completion tracked by Shared capability PR | Canonical GET boundary, mapping-driven SKU/warehouse resolution, live iDempiere physical-stock read, exact contract tests | **IMPLEMENTED provider support** (implementation axis only; not run against a live iDempiere) |
+| `inventory.availability.query` | Canonical in Shared (catalogued at authority revision 40d1807) | Canonical GET boundary, mapping-driven SKU/warehouse resolution, iDempiere physical-stock read (written against the REST contract; not yet run live), exact contract tests | **IMPLEMENTED provider support** (implementation axis only; not run against a live iDempiere) |
 
 ### finance.order-consequence.process
 
@@ -80,7 +80,7 @@ The implementation reads the ERP engine's physical stock, does not reuse Trade
 reservations, returns no fabricated/stale figure when the engine cannot be read, and
 fails closed for unmapped SKU/warehouse identities.
 
-Once the Shared catalogue entry lands, this provider may declare contract major 1 as
+The Shared catalogue entry has landed (40d1807), so this provider declares contract major 1 as
 `IMPLEMENTED`. That declaration still does not make the provider ACTIVE or CERTIFIED.
 
 ## Explicit non-capabilities
@@ -200,8 +200,8 @@ Those remain Control Plane / EA-09 authorities.
 
 ## Next capability increments
 
-1. Land the Shared catalogue completion for `inventory.availability.query`.
-2. Publish the evidence-backed ERP provider declaration.
+1. ~~Land the Shared catalogue completion for `inventory.availability.query`~~ (done, Shared 40d1807).
+2. ~~Publish the evidence-backed ERP provider declaration~~ (this PR).
 3. ~~Implement canonical `trade.order.placed` inbox-to-order-consequence execution~~ (done, #67). Promote
    `finance.order-consequence.process` only after the lifecycle stages and a live-iDempiere run are proven.
 4. Re-audit/rebase the ZuriBeans #32–#35 stack and decide whether its commercial decision
