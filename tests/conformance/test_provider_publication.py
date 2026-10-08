@@ -146,3 +146,22 @@ class PublicationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SourceDirtinessTests(unittest.TestCase):
+    def test_a_shared_checkout_nested_in_the_tree_is_not_erp_source_but_a_changed_file_is(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as raw:
+            repo = Path(raw)
+            run = lambda *a: subprocess.run(["git", "-C", str(repo), *a], check=True, capture_output=True)  # noqa: E731
+            run("init", "-q")
+            (repo / "tracked.txt").write_text("a")
+            run("add", ".")
+            run("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "x")
+            nested = repo / ".shared-contracts"
+            nested.mkdir()
+            (nested / "file").write_text("shared")
+            self.assertFalse(publication.source_dirty(nested, repo))
+            (repo / "tracked.txt").write_text("changed")
+            self.assertTrue(publication.source_dirty(nested, repo))
+            self.assertTrue(publication.source_dirty(repo / "elsewhere", repo))

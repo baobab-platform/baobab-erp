@@ -18,6 +18,18 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def source_dirty(shared_checkout, repository=ROOT):
+    """Whether ERP's own source differs from its revision. The supplied Shared checkout (verified clean separately) may sit inside the
+    ERP tree as an untracked nested repository; it is not ERP source and must not make every report ineligible."""
+    command = ['git', '-C', str(repository), 'status', '--porcelain']
+    try:
+        relative = Path(shared_checkout).resolve().relative_to(Path(repository).resolve())
+        command += ['--', '.', f':(exclude){relative.as_posix()}']
+    except ValueError:
+        pass  # outside the repository: nothing to exclude
+    return bool(subprocess.check_output(command, text=True).strip())
+
+
 def load_shared(checkout, repository=ROOT):
     lock = yaml.safe_load((repository / 'contracts.lock.yaml').read_text())
     source = lock['source']
@@ -117,7 +129,7 @@ def main(argv=None):
             'shared_commit': commit,
             'declaration_sha256': hashlib.sha256(raw).hexdigest(),
             'source_revision': subprocess.check_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], text=True).strip(),
-            'source_dirty': bool(subprocess.check_output(['git', '-C', str(ROOT), 'status', '--porcelain'], text=True).strip()),
+            'source_dirty': source_dirty(args.shared_checkout),
             'draft_registrations': registrations,
             'excluded_support': excluded,
             'blocked_providers': blocked,
