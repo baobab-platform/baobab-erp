@@ -41,7 +41,8 @@ class TenantMappingWriter(Protocol):
     PostgresTenantMappingStore) that PERSIST_MAPPING needs to make context resolution
     actually work for the legal entity this operation just provisioned."""
 
-    def create_mapping(self, tenant_id: str, entity_id: str, ad_client_id: int, ad_org_id: int) -> None: ...
+    def create_mapping(self, tenant_id: str, entity_id: str, ad_client_id: int, ad_org_id: int,
+                       engine_instance_id: str) -> None: ...
 
 
 @dataclass(slots=True)
@@ -143,13 +144,20 @@ class IdempiereProvisioningAdapter:
                     "PERSIST_MAPPING requires AD_Client_ID from a completed CREATE_CLIENT step "
                     "(in this process or a prior one) before context resolution can be wired up"
                 )
+            # the planner puts the EngineInstance the entity is provisioned onto in this step; without it the mapping would
+            # resolve a context but nothing keyed by the instance (master data, inventory, order execution)
+            engine_instance_id = step.payload.get("engine_instance_id")
+            if not isinstance(engine_instance_id, str) or not engine_instance_id.strip():
+                raise ValueError("PERSIST_MAPPING requires the engine_instance_id the legal entity is provisioned onto")
             self.tenant_mappings.create_mapping(
                 tenant_id=step.payload["tenant_id"],
                 entity_id=step.payload["legal_entity_id"],
                 ad_client_id=ad_client_id,
                 ad_org_id=_ALL_ORGANIZATIONS_AD_ORG_ID,
+                engine_instance_id=engine_instance_id,
             )
-            result["tenant_mapping"] = {"ad_client_id": ad_client_id, "ad_org_id": _ALL_ORGANIZATIONS_AD_ORG_ID}
+            result["tenant_mapping"] = {"ad_client_id": ad_client_id, "ad_org_id": _ALL_ORGANIZATIONS_AD_ORG_ID,
+                                        "engine_instance_id": engine_instance_id}
         return result
 
     def _create_once(self, request, step, table, fields):

@@ -14,11 +14,14 @@ class PostgresTenantMappingStore:
     def __init__(self, connection: psycopg.Connection) -> None:
         self._connection = connection
 
-    def create_mapping(self, tenant_id: str, entity_id: str, ad_client_id: int, ad_org_id: int) -> None:
+    def create_mapping(self, tenant_id: str, entity_id: str, ad_client_id: int, ad_org_id: int,
+                       engine_instance_id: str) -> None:
         """Persists the tenant/legal-entity -> AD_Client/AD_Org mapping produced by
         provisioning (modules/provisioning/idempiere_adapter.py's PERSIST_MAPPING step),
         once the native AD_Client this legal entity now owns is actually configured and
-        ready. Must be called within the caller's own transaction, matching
+        ready. ``engine_instance_id`` is the Control Plane EngineInstance the legal entity was provisioned
+        onto; it is required because master-data mappings, inventory reads and order execution are all keyed by it
+        (a row without it makes those fail closed as unmapped). Must be called within the caller's own transaction, matching
         PostgresCanonicalMappingStore.create_mapping()'s convention.
 
         Raises psycopg.errors.UniqueViolation (uncaught) if an active mapping already
@@ -26,13 +29,15 @@ class PostgresTenantMappingStore:
         entity is not this method's job (see the table's own `status` column for
         superseding an existing mapping, not yet needed by any caller).
         """
+        if not isinstance(engine_instance_id, str) or not engine_instance_id.strip():
+            raise ValueError("engine_instance_id is required to persist a tenant mapping")
         with self._connection.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO baobab.tenant_mapping (tenant_id, entity_id, ad_client_id, ad_org_id)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO baobab.tenant_mapping (tenant_id, entity_id, ad_client_id, ad_org_id, engine_instance_id)
+                VALUES (%s, %s, %s, %s, %s)
                 """,
-                (tenant_id, entity_id, ad_client_id, ad_org_id),
+                (tenant_id, entity_id, ad_client_id, ad_org_id, engine_instance_id),
             )
 
     def find_active_mapping(self, tenant_id: str, entity_id: str) -> tuple[int, int] | None:
