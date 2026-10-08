@@ -65,15 +65,16 @@ outbox.
 | 6 | `erp.invoice.changed.v1` | Produce | Not produced | Registry entry only; `docs/events.md`: payload needs invoice number, total and due date ERP does not yet hold |
 | 7 | `erp.payment.accounting-changed.v1` | Produce | Not produced | Registry entry only; payload needs amount and capture id |
 | 8 | `customer.buyer-commercial-profile.changed.v1` | Produce | Not produced | Registry entry only (ERP owns authoritative credit; the older #32-#35 stack is unreconciled) |
-| 9 | `trade.order.placed.v1` | Consume | **Received, not executed** | `POST /events/inbound` -> `inbox.receive` records it (`server.py:535`, `inbox/service.py`); nothing reads inbox rows or calls order-to-cash. `test_http_server.py::test_inbound_event_end_to_end` proves receipt only |
+| 9 | `trade.order.placed.v1` | Consume | **Executed** (since #67) | `POST /events/inbound` -> `inbox.receive`; `baobab-inbox-worker` claims it, finds or creates the engine order by `POReference`, and records the consequence, order link, outbox event and outcome in one transaction. Replay and restart tests in `tests/integration/test_order_inbox_execution.py`. Live iDempiere: unproven |
 | 10 | `trade.customer.projected.v1` | Consume | **Received, not executed** | Same path; `integration/trade_projection*.py` is not called from the inbox |
 
 Legacy-shaped order-to-cash step events (`erp.sales-order.accepted.v1` and similar) are recorded as `held` and never
 delivered (`docs/events.md`). They are not canonical events.
 
-The consume side is the larger gap, and it is what stops `finance.order-consequence.process` being `IMPLEMENTED`: a signed
-`order.placed` is accepted with HTTP 200 and nothing then happens. That is the next increment (inbox execution). The six
-missing producers are deliberately out of that increment.
+Update 2026-10-08 (after #67 and #68): `trade.order.placed` is executed by a separate worker, so the accepted-but-ignored
+gap is closed for orders; `finance.order-consequence.process` stays PARTIAL because the full lifecycle (shipment, invoice,
+accounting stages) and live-iDempiere proof are still open. `trade.customer.projected` remains received, not executed. The
+six missing producers are deliberately out of scope.
 
 ## 4. Reconciliation with #58 and main
 
@@ -82,7 +83,7 @@ missing producers are deliberately out of that increment.
 - Main has advanced past #58's base (`854b1d3`) by #62-#65; none of those touch #58's files.
 - Disagreement to note: #58's census says Trade order-event execution is a gap but records no event inventory. Section 3 is
   that inventory.
-- Stale ledger, not changed here: `architecture/conformance.yaml` (~line 195-201) still lists `GET /order-consequences`
+- Stale ledger (corrected afterwards in `architecture/conformance.yaml`, 2026-10-08): `architecture/conformance.yaml` (~line 195-201) still lists `GET /order-consequences`
   ("no consequence read model") and `GET /inventory-availability` ("no iDempiere stock query") as unavailable, which #52
   and #53 made false. It also records no live-iDempiere status for either route. Correcting it belongs with the change that
   can state live status truthfully; #58's `IMPLEMENTED` for inventory is the implementation axis only (section 1).
