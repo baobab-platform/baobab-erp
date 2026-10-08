@@ -19,7 +19,6 @@ against a fake engine, not a live iDempiere; ``POReference`` as the lookup key i
 """
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Protocol
@@ -31,39 +30,18 @@ from inbox.postgres_queue import Claim, LeaseLostError, PostgresInboxQueue
 from integration.idempiere_client import Eq, IdempiereApiError, IdempiereClientError
 from order_to_cash.consequence_events import consequence_changed_event
 from order_to_cash.consequence_store import PostgresOrderConsequenceStore
+from order_to_cash.execution_policy import (BLOCKED_DELAY_SECONDS, BLOCKED_HORIZON, CONTENTION_DELAY_SECONDS, CUSTOMER_KIND,
+                                            MAX_ATTEMPTS, ORDER_PLACED, PRODUCT_KIND, RETRY_CEILING_SECONDS, Outcome,
+                                            erp_order_id, failure_outcome, retry_delay_seconds)
 from order_to_cash.model import OrderLine
 from order_to_cash.placed_order import PayloadError, PlacedOrder, parse_placed_order
 from order_to_cash.service import sales_order_fields
 from outbox.postgres_store import PostgresOutboxStore
 
-ORDER_PLACED = "com.baobab-platform.trade.order.placed.v1"
-MAX_ATTEMPTS = 8
-RETRY_CEILING_SECONDS = 3600
-CONTENTION_DELAY_SECONDS = 5
-BLOCKED_DELAY_SECONDS = 900
-BLOCKED_HORIZON = timedelta(hours=72)
-
-_NAMESPACE = uuid.UUID("b0b2c7a1-3d6e-5c41-8f0a-6d1e9a4c2b77")
-
-CUSTOMER_KIND = "business_partner"
-PRODUCT_KIND = "product"
-
-
 class IdempiereOrders(Protocol):
     def query(self, table: str, conditions, select) -> list[dict]: ...
 
     def create_record(self, table: str, fields: dict) -> int: ...
-
-
-@dataclass(frozen=True, slots=True)
-class Outcome:
-    """How a claimed row ended. ``status`` is processed, retry, blocked or dead_letter; ``code`` is a fixed identifier."""
-
-    status: str
-    code: str
-    detail: str = ""
-    delay_seconds: int | None = None
-    refund_attempt: bool = False
 
 
 class _Stop(Exception):
@@ -77,28 +55,6 @@ def _dead(code: str, detail: str = "") -> _Stop:
 
 def _blocked(code: str, detail: str = "") -> _Stop:
     return _Stop(Outcome("blocked", code, detail))
-
-
-def erp_order_id(tenant_id: str, commerce_order_id: str) -> str:
-    """The public ERP identifier of the order. Deterministic, so a retry after an uncertain outcome mints the same one."""
-    return "erp_" + uuid.uuid5(_NAMESPACE, f"order|{tenant_id}|{commerce_order_id}").hex
-
-
-def retry_delay_seconds(attempts: int) -> int:
-    return min(2 ** attempts, RETRY_CEILING_SECONDS)
-
-
-def failure_outcome(outcome: Outcome, *, attempts: int, received_at: datetime, now: datetime) -> Outcome:
-    """Applies the budgets: a retry past MAX_ATTEMPTS and a block past its horizon become dead letters."""
-    if outcome.status == "retry" and attempts >= MAX_ATTEMPTS:
-        return Outcome("dead_letter", "ATTEMPTS_EXHAUSTED", outcome.code)
-    if outcome.status == "blocked" and now - received_at > BLOCKED_HORIZON:
-        return Outcome("dead_letter", "BLOCKED_HORIZON_EXCEEDED", outcome.code)
-    if outcome.status == "retry" and outcome.delay_seconds is None:
-        return Outcome("retry", outcome.code, outcome.detail, retry_delay_seconds(attempts))
-    if outcome.status == "blocked":
-        return Outcome("blocked", outcome.code, outcome.detail, BLOCKED_DELAY_SECONDS)
-    return outcome
 
 
 @dataclass(frozen=True, slots=True)

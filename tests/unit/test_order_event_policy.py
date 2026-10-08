@@ -3,7 +3,7 @@ import copy
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from order_to_cash.inbox_execution import (BLOCKED_DELAY_SECONDS, BLOCKED_HORIZON, MAX_ATTEMPTS, RETRY_CEILING_SECONDS,
+from order_to_cash.execution_policy import (BLOCKED_DELAY_SECONDS, BLOCKED_HORIZON, MAX_ATTEMPTS, RETRY_CEILING_SECONDS,
                                            Outcome, erp_order_id, failure_outcome, retry_delay_seconds)
 from order_to_cash.placed_order import PayloadError, parse_placed_order
 
