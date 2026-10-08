@@ -200,6 +200,23 @@ def _resolve_native(
 # --- Sales Order --------------------------------------------------------
 
 
+def sales_order_fields(business_partner_native_id: int, document_currency: str, lines: tuple[OrderLine, ...],
+                       reference: str | None = None) -> dict[str, Any]:
+    """The C_Order record for a draft sales order. ``reference`` is written to POReference: it is how a later attempt finds
+    the order an earlier attempt created when that attempt died before it could record the result."""
+    fields: dict[str, Any] = {
+        "C_BPartner_ID": business_partner_native_id,
+        "CurrencyISO": document_currency,
+        "OrderLines": [
+            {"M_Product_ID": line.product_canonical_id, "QtyOrdered": line.quantity, "PriceEntered": line.unit_price}
+            for line in lines
+        ],
+    }
+    if reference is not None:
+        fields["POReference"] = reference
+    return fields
+
+
 def create_sales_order(
     *,
     scope: TenantScope,
@@ -225,14 +242,7 @@ def create_sales_order(
     integration, it is never guessed from a SKU or display name."""
     if not lines:
         raise OrderToCashError("A sales order requires at least one order line")
-    fields = {
-        "C_BPartner_ID": business_partner_native_id,
-        "CurrencyISO": document_currency,
-        "OrderLines": [
-            {"M_Product_ID": line.product_canonical_id, "QtyOrdered": line.quantity, "PriceEntered": line.unit_price}
-            for line in lines
-        ],
-    }
+    fields = sales_order_fields(business_partner_native_id, document_currency, lines)
     ref = _create_and_map(
         scope=scope,
         canonical_type="CommerceOrder",

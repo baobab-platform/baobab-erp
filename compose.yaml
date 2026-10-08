@@ -111,5 +111,26 @@ services:
       BAOBAB_DISPATCH_INTERVAL_SECONDS: ${BAOBAB_DISPATCH_INTERVAL_SECONDS:-60}
     entrypoint: ["bash", "/app/scripts/dispatch_worker_loop.sh"]
 
+  baobab-inbox-worker:
+    build:
+      context: .
+      dockerfile: modules/Dockerfile
+    image: ${BAOBAB_APP_IMAGE_TAG:-baobab-app:local}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      baobab-db-migrate:
+        condition: service_completed_successfully
+    environment:
+      # A direct Postgres connection: the per-order lock is session-level, so no transaction-mode pooler in between.
+      DATABASE_URL: postgresql://${DB_USER:-adempiere}:${DB_PASS:?Set DB_PASS}@postgres:5432/${DB_NAME:-idempiere}
+      # Per-AD_Client engine credentials (the same JSON the HTTP application reads). A tenant without an entry is blocked, not failed.
+      IDEMPIERE_CLIENT_CREDENTIALS_JSON: ${IDEMPIERE_CLIENT_CREDENTIALS_JSON:-}
+      BAOBAB_INBOX_INTERVAL_SECONDS: ${BAOBAB_INBOX_INTERVAL_SECONDS:-15}
+      BAOBAB_INBOX_BATCH_LIMIT: ${BAOBAB_INBOX_BATCH_LIMIT:-50}
+      BAOBAB_INBOX_LEASE_SECONDS: ${BAOBAB_INBOX_LEASE_SECONDS:-300}
+    entrypoint: ["bash", "/app/scripts/inbox_worker_loop.sh"]
+
 volumes:
   postgres-data:

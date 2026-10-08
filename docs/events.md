@@ -49,6 +49,47 @@ Still not produced: `invoice.changed` and `payment.accounting-changed`. Their re
 are recorded as ERP-owned projections. The legacy-shaped rows the order-to-cash steps record are still stored as `held` beside the
 canonical event and are never delivered.
 
+## Executing `trade.order.placed` (inbox worker)
+
+`POST /events/inbound` verifies the signature, the registered type, producer and `dataschema`, and records the event durably;
+it executes nothing. `modules/application/inbox_worker.py` (service `baobab-inbox-worker`) claims due `trade.order.placed` rows and
+runs each to an outcome (`modules/order_to_cash/inbox_execution.py`). `trade.customer.projected` is received but is **not** executed
+yet; that is a separate increment, and the worker never claims it.
+
+Per event, in one pass: read the payload (`placed_order.py`) -> resolve the tenant's engine placement and the customer and every
+SKU through explicit master-data mappings -> take the per-order lock -> look the order up in the engine by `POReference` (the
+Trade order id) and create it only if absent -> in **one transaction** write the consequence record
+(`baobab.order_consequence`, status `accepted`), the order link (`baobab.order_execution`), the registered
+`order.consequence-changed` event (outbox) and the inbox outcome. The event is then delivered by the dispatch worker like any other
+outbox row, and is the same record `GET /order-consequences/{id}` serves.
+
+| Inbox status | Meaning | Next |
+|---|---|---|
+| `received` | stored at ingress | claimed when due |
+| `processing` | claimed under a lease (`BAOBAB_INBOX_LEASE_SECONDS`) | settled, or re-claimed when the lease expires (worker crash) |
+| `retry` | transient failure (`ENGINE_UNAVAILABLE`, `UNEXPECTED_ERROR`, `ORDER_CONTENDED`) | backoff 30 s doubling to a 1 h ceiling (reached at the 8th attempt); dead letter `ATTEMPTS_EXHAUSTED` after 24 attempts, roughly 17 hours. `ORDER_CONTENDED` (another worker holds the order) refunds its attempt |
+| `blocked` | a precondition is missing: `TENANT_UNMAPPED`, `CUSTOMER_UNMAPPED`, `PRODUCT_UNMAPPED`, `ENGINE_UNCONFIGURED`, `ENGINE_ORG_MISMATCH` (the credentials are for another AD_Org than the tenant mapping; AD_Org 0 means the whole AD_Client) | retried every 15 min until 72 h after receipt, then dead letter `BLOCKED_HORIZON_EXCEEDED`. Nothing is created or invented; fix the mapping and it proceeds |
+| `processed` | `EXECUTED`, `ADOPTED_NATIVE_ORDER` (found by reference after an uncertain attempt), `ALREADY_EXECUTED`, `STALE_VERSION` | done |
+| `dead_letter` | `PAYLOAD_INVALID`, `ENGINE_REJECTED` (HTTP 400/422), `DUPLICATE_NATIVE_ORDERS`, `UNIT_MISMATCH` (a line's unit is not the product's own X12 unit; there is no conversion), `AMENDMENT_UNSUPPORTED` (a later `order_version` of an executed order), `TENANT_MISSING`, plus the two exhausted codes | an operator; `last_error` holds a fixed reason, never payload content |
+
+Why a replay or a restart cannot create a second sales order: an order has at most one row in `baobab.order_consequence` and
+`baobab.order_execution` (primary key tenant + Trade order); a session advisory lock per order serialises workers while the engine
+is touched; and creating the engine order and committing ERP's rows cannot be one transaction, so a worker that dies in between
+leaves an engine order carrying the `POReference`, which the next attempt adopts instead of creating another. More than one match
+is never resolved by choosing; it is `DUPLICATE_NATIVE_ORDERS`. Settling a row is fenced on the lease, so a worker that lost it
+rolls back everything it wrote.
+
+To retry a dead letter once its cause is fixed: `UPDATE baobab.event_inbox SET status = 'received', attempts = 0, next_attempt_at = now(), outcome_code = NULL, last_error = NULL WHERE id = <row>` (it is then executed again under the same guards, so an order that did get created is recognised, not repeated).
+
+Precondition not met by provisioning today: the worker resolves the engine placement from `baobab.tenant_mapping.engine_instance_id`, which the provisioning flow's `PERSIST_MAPPING` step does not yet write (it stores only `ad_client_id` and AD_Org 0). Until it does, a provisioned tenant's events block as `TENANT_UNMAPPED`; the inventory read has the same dependency.
+
+Limits, stated plainly: this has run against a fake engine, not a live iDempiere (`POReference` as the lookup column is
+unconfirmed there). It creates the draft sales order and the `accepted` consequence; completing the order, shipment and invoice
+remain the existing explicit endpoints. Order amendments (a higher `order_version`) are surfaced, not applied. An order that
+the older `POST /sales-orders` endpoint created without an `order_version` has no consequence record and carries no `POReference`,
+so an event for it would create a second engine order; do not mix the two paths for one order. The workers need a direct
+Postgres connection (the order lock is session-level).
+
 ## Delivery
 
 `modules/outbox.service.dispatch_pending` drains pending/retry canonical rows through an `EventTransport`;
