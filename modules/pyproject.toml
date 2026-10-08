@@ -6,6 +6,8 @@ requires-python = ">=3.11"
 dependencies = [
     "psycopg[binary]>=3.1,<4",
     "PyJWT[crypto]>=2.8,<3",
+    # The IANA timezone database warehouse timezones are verified against; the slim runtime image has none of its own.
+    "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]

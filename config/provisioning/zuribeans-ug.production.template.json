@@ -33,7 +33,8 @@
       "participation_capabilities": ["sourcing", "procurement", "selling", "warehousing", "distribution", "importing", "exporting"],
       "currencies": ["UGX", "USD"],
       "localisation_profile": "REQUIRED_CERTIFIED_UG_ERP_LOCALISATION",
-      "warehouse_codes": ["REQUIRED_APPROVED_UG_WAREHOUSE"]
+      "warehouse_codes": ["REQUIRED_APPROVED_UG_WAREHOUSE"],
+      "warehouse_timezones": {"REQUIRED_APPROVED_UG_WAREHOUSE": "REQUIRED_APPROVED_UG_WAREHOUSE_IANA_TIMEZONE"}
     }
   ]
 }

@@ -37,7 +37,7 @@ _LEGAL_ENTITY_MEMBERS = frozenset({
 })
 _NOT_CONTROL_PLANE_MEMBERS = frozenset({
     "native_client_mode", "native_client_key", "capability_binding_id", "capability_bindings", "isolation_profile_id",
-    "legal_entity_code", "target_environment", "currencies", "localisation_profile", "warehouse_codes",
+    "legal_entity_code", "target_environment", "currencies", "localisation_profile", "warehouse_codes", "warehouse_timezones",
 })
 ERP_ENGINE_ID = "baobab-erp"
 _COMPANY_REGISTRATION = "COMPANY_REGISTRATION"
@@ -143,6 +143,7 @@ class ErpMarketConfiguration:
     currencies: tuple[str, ...]
     localisation_profile: str
     warehouse_codes: tuple[str, ...] = ()
+    warehouse_timezones: tuple[tuple[str, str], ...] = ()
 
 
 def materialize_request(
@@ -164,7 +165,7 @@ def materialize_request(
             market_id=market.market, country_code=market.market,
             participation_capabilities=frozenset(a.lower() for a in market.activities),
             currencies=configured.currencies, localisation_profile=configured.localisation_profile,
-            warehouse_codes=configured.warehouse_codes))
+            warehouse_codes=configured.warehouse_codes, warehouse_timezones=configured.warehouse_timezones))
     return ErpProvisioningRequest(
         provisioning_id=assignment.provisioning_record_id(),
         idempotency_key=assignment.idempotency_key(),

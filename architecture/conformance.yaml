@@ -643,7 +643,8 @@ adrs:
       Shared schemas; implementation evidence only, with no live-provider proof. erp.business-partner.changed.v1
       is produced from customer projection execution under a stable ERP public id (migration 0023);
       warehouse.changed, inventory.availability-changed and buyer-commercial-profile.changed are not
-      produced (docs/events.md says what each lacks).
+      produced (docs/events.md says what each lacks); the warehouse timezone is now a required ERP
+      deployment-configuration input (modules/provisioning/market_configuration.py).
       What's still open: buy-side procure-to-pay (Gate
       ZB-07/08) is not started; this has never run against a live iDempiere
       instance, only the fake REST server the integration test stands up (the

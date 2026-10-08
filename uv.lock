@@ -36,6 +36,7 @@ source = { editable = "modules" }
 dependencies = [
     { name = "psycopg", extra = ["binary"] },
     { name = "pyjwt", extra = ["crypto"] },
+    { name = "tzdata" },
 ]
 
 [package.optional-dependencies]
@@ -52,6 +53,7 @@ requires-dist = [
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.8,<3" },
     { name = "pyyaml", marker = "extra == 'conformance'", specifier = ">=6,<7" },
     { name = "referencing", marker = "extra == 'conformance'", specifier = ">=0.35,<1" },
+    { name = "tzdata", specifier = ">=2024.1" },
 ]
 provides-extras = ["conformance"]
 

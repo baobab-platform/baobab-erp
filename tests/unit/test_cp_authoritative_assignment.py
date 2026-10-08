@@ -98,7 +98,7 @@ class AssignmentParsingTests(unittest.TestCase):
     def test_control_plane_registry_identifiers_and_erp_owned_decisions_are_refused_by_name(self):
         for field in ("capability_binding_id", "capability_bindings", "isolation_profile_id", "native_client_mode",
                       "native_client_key", "legal_entity_code", "target_environment", "currencies",
-                      "localisation_profile", "warehouse_codes"):
+                      "localisation_profile", "warehouse_codes", "warehouse_timezones"):
             with self.subTest(field):
                 with self.assertRaisesRegex(AssignmentError, field):
                     assignment_from_payload({**payload(), field: "x"})
