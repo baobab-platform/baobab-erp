@@ -63,6 +63,26 @@ like every other engine error; if the facts are absent or inconsistent no event 
 The legacy-shaped rows the order-to-cash steps record are still stored as `held` beside the
 canonical event and are never delivered.
 
+## `business-partner.changed` (ERP-CAP-08)
+
+Produced by the customer executor, in the same transaction as the mapping and the inbox outcome, each time ERP changes the partner it
+holds for a Trade customer (created, adopted or updated with different content). Identity has three separate parts and none replaces
+another: `source_customer_id` is the Trade customer id (the canonical source reference); `business_partner_id` is an `erp_` public id
+minted at this boundary, stored in `baobab.erp_master_data_mapping.erp_resource_id` when the mapping is first written (migration 0023,
+which also backfills existing rows by their own row, never by name) and never changed by an update, retry or restart; the iDempiere
+record id stays private to the engine instance and never appears in the event.
+
+`revision` counts published changes of the partner (`baobab.document_outcome`, type `business_partner`), not the Trade version: a new
+Trade version with unchanged content publishes nothing, and a replay or a stale version publishes nothing. Roles are `["customer"]`,
+the only role a customer projection establishes. `billing_country` and `default_currency` are Trade's and ERP does not hold them for
+the partner, so they are omitted. `status` is the one ERP applied (the engine itself records only active or inactive, so
+suspended versus closed is ERP's record of what it applied, not an engine fact). A partner mapped before migration 0023 has an id but
+announces nothing until its next change.
+
+Still not produced: `warehouse.changed` (the payload requires a `timezone` no ERP source holds, the declaration has no timezone, and
+warehouse creation is split across two unconverged paths), `inventory.availability-changed` (no engine change signal; ERP only
+answers reads) and `buyer-commercial-profile.changed` (ERP holds no credit facts yet).
+
 ## Executing `trade.order.placed` (inbox worker)
 
 `POST /events/inbound` verifies the signature, the registered type, producer and `dataschema`, and records the event durably;
