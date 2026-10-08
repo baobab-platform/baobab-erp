@@ -13,11 +13,14 @@ import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from application.server import make_handler
-from security.platform_context import ContextRejected, ContextUnavailable
+from security.platform_context import (ContextRejected, ContextUnavailable, ProvisioningAuthority, RUNTIME, TENANT_PROVISIONING,
+                                       ValidatedContext)
 
 CONTEXT = "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b"
 ISSUER = "https://iam.example.invalid"
 TENANT = "tn_01k4zuribeans"
+PLAN = ("tp_01k4zuribeans", "plan_01k4zuribeans", 2, "sha256:" + "ab" * 32)
+PROVISIONING_PATHS = ("/provisioning-operations",)
 
 
 class ContextBoundaryTests(unittest.TestCase):
@@ -25,6 +28,8 @@ class ContextBoundaryTests(unittest.TestCase):
         self.key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         self.calls = []
         self.rejection = None
+        self.default_answer = (RUNTIME, None)
+        self.answer = None  # (purpose, plan tuple) the Control Plane says the context is authority for; None = what the route needs
         test = self
 
         class Keys:
@@ -36,7 +41,8 @@ class ContextBoundaryTests(unittest.TestCase):
                 test.calls.append(kwargs)
                 if test.rejection:
                     raise test.rejection
-                return TENANT
+                purpose, plan = test.answer if test.answer is not None else test.default_answer
+                return ValidatedContext(TENANT, purpose, ProvisioningAuthority(*plan) if plan else None)
 
         self.validator = Validator()
         self.config = SimpleNamespace(
@@ -54,13 +60,18 @@ class ContextBoundaryTests(unittest.TestCase):
             claims["tenant_id"] = tenant
         return jwt.encode(claims, self.key, algorithm="RS256")
 
-    def call(self, method, path, *, token=None, context=CONTEXT, body_tenant=TENANT):
+    def call(self, method, path, *, token=None, context=CONTEXT, body_tenant=TENANT, authority=PLAN):
         token = token or self.token()
         data = None
+        # What a Control Plane context for this route is authority FOR, unless a test says otherwise.
+        self.default_answer = (TENANT_PROVISIONING, PLAN) if path.startswith(PROVISIONING_PATHS) else (RUNTIME, None)
         if method == "POST":
-            data = json.dumps({"context_id": context, "tenant_id": body_tenant}).encode()
+            body = {"context_id": context, "tenant_id": body_tenant}
+            if authority is not None:
+                body["control_plane_authority"] = dict(zip(("tenant_provisioning_id", "plan_id", "plan_version", "plan_digest"), authority))
+            data = json.dumps(body).encode()
         elif context is not None:
-            path += "?context_id=" + context
+            path += ("&" if "?" in path else "?") + "context_id=" + context
         request = urllib.request.Request(
             f"http://127.0.0.1:{self.server.server_address[1]}{path}", data=data, method=method,
             headers={"Authorization": "Bearer " + token, "Idempotency-Key": "idem-0123456789abcdef"})
@@ -75,6 +86,8 @@ class ContextBoundaryTests(unittest.TestCase):
     def test_rejected_authority_blocks_all_four_operations_before_database_or_replay_reads(self):
         self.rejection = ContextRejected()
         paths = [("POST", "/provisioning-operations"), ("GET", "/provisioning-operations/" + CONTEXT),
+                 ("GET", "/legal-entities/ZURIBEANS-ZA/effective-finance-baseline"),
+                 ("GET", "/finance-baselines/fb_" + "a" * 32 + "?version=1&digest=sha256:" + "c1" * 32),
                  ("GET", "/order-consequences/order-1"), ("GET", "/inventory-availability")]
         with patch("application.server.psycopg.connect") as database:
             for method, path in paths:
@@ -124,6 +137,8 @@ class ContextBoundaryTests(unittest.TestCase):
         self.rejection = ContextUnavailable()
 
     PATHS = [("POST", "/provisioning-operations"), ("GET", "/provisioning-operations/" + CONTEXT),
+             ("GET", "/legal-entities/ZURIBEANS-ZA/effective-finance-baseline"),
+             ("GET", "/finance-baselines/fb_" + "a" * 32 + "?version=1&digest=sha256:" + "c1" * 32),
              ("GET", "/order-consequences/order-1"), ("GET", "/inventory-availability")]
 
     def test_every_unavailable_answer_on_the_context_path_carries_retry_after(self):
@@ -146,6 +161,10 @@ class ContextBoundaryTests(unittest.TestCase):
         with patch("application.server.psycopg.connect") as database:
             status, body = self.call("GET", "/provisioning-operations/" + CONTEXT, token=reader)
             self.assertEqual((status, body["code"]), (403, "ERP_FORBIDDEN"))
+            for path in ("/legal-entities/ZURIBEANS-ZA/effective-finance-baseline",
+                         "/finance-baselines/fb_" + "a" * 32 + "?version=1&digest=sha256:" + "c1" * 32):
+                status, body = self.call("GET", path, token=reader)
+                self.assertEqual((status, body["code"]), (403, "ERP_FORBIDDEN"), path)
             status, body = self.call("GET", "/order-consequences/order-1", token=provisioner)
             self.assertEqual((status, body["code"]), (403, "ERP_FORBIDDEN"))
             status, body = self.call("GET", "/inventory-availability", token=provisioner)
@@ -153,11 +172,51 @@ class ContextBoundaryTests(unittest.TestCase):
             self.assertEqual(self.calls, [], "a caller without the scope must not cause a Control Plane call")
             # With the right scope each reaches validation, which here refuses.
             for path, token in (("/provisioning-operations/" + CONTEXT, provisioner), ("/order-consequences/order-1", reader),
-                                ("/inventory-availability", reader)):
+                                ("/inventory-availability", reader),
+                                ("/legal-entities/ZURIBEANS-ZA/effective-finance-baseline", provisioner),
+                                ("/finance-baselines/fb_" + "a" * 32 + "?version=1&digest=sha256:" + "c1" * 32, provisioner)):
                 status, body = self.call("GET", path, token=token)
                 self.assertEqual((status, body["code"]), (403, "ERP_CONTEXT_REJECTED"), path)
-            self.assertEqual(len(self.calls), 3)
+            self.assertEqual(len(self.calls), 5)
             database.assert_not_called()
+
+    def test_a_context_is_authority_only_for_the_purpose_the_route_needs(self):
+        # Shared erp/v1 1.2.0: provisioning accepts only a TENANT_PROVISIONING context, every business-data read only RUNTIME.
+        paths = [("POST", "/provisioning-operations", RUNTIME), ("GET", "/provisioning-operations/" + CONTEXT, RUNTIME),
+                 ("GET", "/legal-entities/ZURIBEANS-ZA/effective-finance-baseline", RUNTIME),
+                 ("GET", "/finance-baselines/fb_" + "a" * 32 + "?version=1&digest=sha256:" + "c1" * 32, RUNTIME),
+                 ("GET", "/order-consequences/order-1", TENANT_PROVISIONING), ("GET", "/inventory-availability", TENANT_PROVISIONING)]
+        with patch("application.server.psycopg.connect") as database:
+            for method, path, wrong in paths:
+                self.answer = (wrong, PLAN if wrong == TENANT_PROVISIONING else None)
+                with self.subTest(path, answered=wrong):
+                    status, body = self.call(method, path)
+                    self.assertEqual((status, body["code"]), (403, "ERP_CONTEXT_REJECTED"))
+            database.assert_not_called()
+
+    def test_the_plan_a_request_names_must_be_the_plan_its_context_is_bound_to(self):
+        names = ("tenant_provisioning_id", "plan_id", "plan_version", "plan_digest")
+        other = {"tenant_provisioning_id": "tp_01k4zuribeansb", "plan_id": "plan_01k4zuribeansb", "plan_version": 3,
+                 "plan_digest": "sha256:" + "cd" * 32}
+        with patch("application.server.psycopg.connect") as database:
+            for index, name in enumerate(names):
+                bound = list(PLAN)
+                bound[index] = other[name]
+                self.answer = (TENANT_PROVISIONING, tuple(bound))
+                with self.subTest(name):
+                    status, body = self.call("POST", "/provisioning-operations")
+                    self.assertEqual((status, body["code"]), (403, "ERP_CONTEXT_REJECTED"))
+            self.answer = None
+            database.assert_not_called()
+
+    def test_a_malformed_plan_in_the_request_is_an_invalid_document_not_a_rejected_context(self):
+        # Only a well-formed plan that differs from the context's is an authority disagreement; the request parser answers
+        # anything else with the contract's 400, and nothing is provisioned.
+        with patch("application.server.psycopg.connect") as database:
+            status, body = self.call("POST", "/provisioning-operations", authority=None)
+            self.assertEqual((status, body["code"]), (400, "ERP_INVALID_REQUEST"))
+            # The parser rejects it before any statement runs: the connection is opened for the handler and never used.
+            self.assertEqual(database.return_value.__enter__.return_value.cursor.call_count, 0)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ themselves.
 
 import json
 from dataclasses import dataclass
+from datetime import datetime
 
 import psycopg
 
@@ -25,6 +26,7 @@ class PostgresOutboxRecord:
     attempts: int
     status: str
     event: CloudEvent
+    created_at: datetime | None = None
 
 
 class PostgresOutboxStore:
@@ -90,28 +92,35 @@ class PostgresOutboxStore:
         self._connection.commit()
         return count
 
-    def pending(self, limit: int = 100) -> list[PostgresOutboxRecord]:
-        """Canonical events awaiting delivery, oldest business time first. Legacy 'held' rows are never
-        returned."""
+    def pending(self, limit: int = 100, *, types: tuple[str, ...] | None = None,
+                exclude_types: tuple[str, ...] | None = None) -> list[PostgresOutboxRecord]:
+        """Canonical events due for delivery, oldest business time first: pending ones, and retries whose backoff has
+        elapsed. Legacy 'held' rows are never returned. ``types`` restricts to those event types and ``exclude_types`` skips
+        them, so each destination drains only what it is configured to carry."""
         with self._connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT event_id, event_type, tenant_id, payload_json, occurred_at, attempts, status,
                        ce_source, ce_subject, ce_dataschema, ce_scope, ce_correlation_id, ce_causation_id,
-                       ce_idempotency_key, ce_traceparent, ce_tracestate
+                       ce_idempotency_key, ce_traceparent, ce_tracestate, created_at
                 FROM baobab.event_outbox
                 WHERE status IN ('pending', 'retry') AND envelope_format = 'cloudevents'
+                  AND (next_attempt_at IS NULL OR next_attempt_at <= now())
+                  AND (%s::text[] IS NULL OR event_type = ANY(%s::text[]))
+                  AND (%s::text[] IS NULL OR NOT (event_type = ANY(%s::text[])))
                 ORDER BY occurred_at
                 LIMIT %s
                 """,
-                (limit,),
+                (list(types) if types else None, list(types) if types else None,
+                 list(exclude_types) if exclude_types else None, list(exclude_types) if exclude_types else None, limit),
             )
             rows = cursor.fetchall()
         self._connection.commit()
 
         records = []
         for (event_id, event_type, tenant_id, data, occurred_at, attempts, status, source, subject,
-             dataschema, scope, correlation_id, causation_id, idempotency_key, traceparent, tracestate) in rows:
+             dataschema, scope, correlation_id, causation_id, idempotency_key, traceparent, tracestate,
+             created_at) in rows:
             event = CloudEvent(
                 id=str(event_id), type=event_type, source=source, subject=subject,
                 time=occurred_at.astimezone(UTC), dataschema=dataschema, baobabscope=scope,
@@ -119,26 +128,29 @@ class PostgresOutboxStore:
                 causationid=str(causation_id) if causation_id else None,
                 idempotencykey=idempotency_key, traceparent=traceparent, tracestate=tracestate,
             ).validate()
-            records.append(PostgresOutboxRecord(name=str(event_id), attempts=attempts, status=status, event=event))
+            records.append(PostgresOutboxRecord(name=str(event_id), attempts=attempts, status=status, event=event,
+                                                created_at=created_at))
         return records
 
     def mark_delivered(self, name: str) -> None:
         with self._connection.cursor() as cursor:
             cursor.execute(
-                "UPDATE baobab.event_outbox SET status = 'delivered' WHERE event_id = %s::uuid",
+                "UPDATE baobab.event_outbox SET status = 'delivered', delivered_at = now(), next_attempt_at = NULL "
+                "WHERE event_id = %s::uuid",
                 (name,),
             )
         self._connection.commit()
 
-    def mark_retry(self, name: str, attempts: int, error: str) -> None:
+    def mark_retry(self, name: str, attempts: int, error: str, delay_seconds: int = 0) -> None:
         with self._connection.cursor() as cursor:
             cursor.execute(
                 """
                 UPDATE baobab.event_outbox
-                SET status = 'retry', attempts = %s, last_error = %s
+                SET status = 'retry', attempts = %s, last_error = %s,
+                    next_attempt_at = now() + make_interval(secs => %s)
                 WHERE event_id = %s::uuid
                 """,
-                (attempts, error, name),
+                (attempts, error, delay_seconds, name),
             )
         self._connection.commit()
 
@@ -147,9 +159,36 @@ class PostgresOutboxStore:
             cursor.execute(
                 """
                 UPDATE baobab.event_outbox
-                SET status = 'dead_letter', attempts = %s, last_error = %s
+                SET status = 'dead_letter', attempts = %s, last_error = %s, dead_lettered_at = now(),
+                    next_attempt_at = NULL
                 WHERE event_id = %s::uuid
                 """,
                 (attempts, error, name),
             )
         self._connection.commit()
+
+    def stats(self, *, types: tuple[str, ...] | None = None, exclude_types: tuple[str, ...] | None = None) -> dict:
+        """The delivery backlog of the selected canonical events: counts by state, how many are due now, and the age in
+        seconds of the oldest undelivered one. Operators alert on dead_letter > 0 and a growing oldest_undelivered_seconds."""
+        with self._connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT count(*) FILTER (WHERE status = 'pending'),
+                       count(*) FILTER (WHERE status = 'retry'),
+                       count(*) FILTER (WHERE status = 'dead_letter'),
+                       count(*) FILTER (WHERE status = 'delivered'),
+                       count(*) FILTER (WHERE status IN ('pending', 'retry')
+                                         AND (next_attempt_at IS NULL OR next_attempt_at <= now())),
+                       COALESCE(EXTRACT(EPOCH FROM now() - min(created_at) FILTER (WHERE status IN ('pending', 'retry'))), 0)
+                  FROM baobab.event_outbox
+                 WHERE envelope_format = 'cloudevents'
+                   AND (%s::text[] IS NULL OR event_type = ANY(%s::text[]))
+                   AND (%s::text[] IS NULL OR NOT (event_type = ANY(%s::text[])))
+                """,
+                (list(types) if types else None, list(types) if types else None,
+                 list(exclude_types) if exclude_types else None, list(exclude_types) if exclude_types else None),
+            )
+            pending, retry, dead, delivered, due, oldest = cursor.fetchone()
+        self._connection.commit()
+        return {"pending": pending, "retry": retry, "dead_letter": dead, "delivered": delivered, "due": due,
+                "oldest_undelivered_seconds": int(oldest)}

@@ -22,11 +22,14 @@ from typing import Callable, Mapping
 
 import psycopg
 
+from application.finance_baselines import FINANCE_BASELINE_MISMATCH, FINANCE_BASELINE_NOT_USABLE
 from application.problem import problem
 from provisioning.authoritative_service import AuthoritativeProvisioningRequestFactory
+from provisioning.command_events import state_document
 from provisioning.command_store import CommandRecord, PlannedEntity, PostgresProvisioningCommandStore
 from provisioning.control_plane_client import AssignmentNotEstablished, ControlPlaneUnavailable
 from provisioning.cp_contract import AssignmentError, ControlPlaneAssignmentSource, CpErpAssignment, ErpMarketConfiguration
+from provisioning.finance_baseline import EFFECTIVE, baseline_digest, baseline_id_for
 from provisioning.finance_baseline_store import PostgresFinanceBaselineStore
 from provisioning.legal_entity_policy import NativePlacementPolicy
 from provisioning.operation_request import IDEMPOTENCY_KEY, ProvisioningCommand, RequestError, parse_command
@@ -49,6 +52,17 @@ class ProvisioningDependencies:
     now: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
 
 
+class _ExactBaselines:
+    """The Finance baseline versions the request referenced, already verified exactly, so the request built for each legal
+    entity uses precisely those and never whatever ERP holds now."""
+
+    def __init__(self, baselines: dict) -> None:
+        self._baselines = baselines
+
+    def effective(self, legal_entity_id, on):
+        return self._baselines.get(legal_entity_id)
+
+
 class _Fixed:
     """The assignment already read (and compared) for this legal entity, so the factory builds from exactly that."""
 
@@ -60,12 +74,7 @@ class _Fixed:
 
 
 def _state(record: CommandRecord) -> dict:
-    body = {"operation_id": record.operation_id, "tenant_id": record.tenant_id,
-            "legal_entity_ids": sorted(record.legal_entity_ids), "state": record.state, "revision": record.revision,
-            "updated_at": record.updated_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")}
-    if record.failure_code:
-        body["failure_code"] = record.failure_code
-    return body
+    return state_document(record)
 
 
 def _differences(assignment: CpErpAssignment, command: ProvisioningCommand, legal_entity_id: str) -> list[str]:
@@ -144,11 +153,32 @@ def request_provisioning(*, tenant_id, principal, body: bytes, idempotency_key, 
         return fail("conflict", "requested_countries differ from the markets of the approved plan",
                     code=PLAN_AUTHORITY_MISMATCH)
 
-    # 3. Build each legal entity's request from the assignment plus ERP-owned inputs (Finance baseline, placement, markets).
+    # 3. The Finance baselines. The request REFERS to one exact approved version per legal entity; ERP re-resolves each
+    #    against its own store and never substitutes whatever it holds now.
+    now = provisioning.now()
+    baselines = PostgresFinanceBaselineStore(connection)
+    referenced = {ref.legal_entity_id: ref for ref in command.finance_baselines}
+    if set(referenced) != set(command.legal_entity_ids):
+        return fail("conflict", "finance_baselines must reference exactly the requested legal entities, one each",
+                    code=FINANCE_BASELINE_MISMATCH)
+    exact = {}
+    for legal_entity_id in sorted(referenced):
+        ref = referenced[legal_entity_id]
+        baseline = baselines.get(legal_entity_id, ref.version)
+        if (baseline is None or baseline_id_for(legal_entity_id) != ref.baseline_id or baseline_digest(baseline) != ref.digest
+                or baseline.effective_from.isoformat() != ref.effective_from):
+            return fail("conflict", f"the Finance baseline reference for {legal_entity_id} is not what ERP holds",
+                        code=FINANCE_BASELINE_MISMATCH)
+        exact[legal_entity_id] = baseline
+    for legal_entity_id, baseline in exact.items():
+        if baselines.status(baseline, now.date()) != EFFECTIVE:
+            return fail("conflict", f"the referenced Finance baseline of {legal_entity_id} is not effective",
+                        code=FINANCE_BASELINE_NOT_USABLE)
+    finance = _ExactBaselines(exact)
+
+    # 4. Build each legal entity's request from the assignment plus ERP-owned inputs (Finance baseline, placement, markets).
     entities: list[PlannedEntity] = []
     functional_currencies: set[str] = set()
-    now = provisioning.now()
-    finance = PostgresFinanceBaselineStore(connection)
     for legal_entity_id, assignment in assignments.items():
         factory = AuthoritativeProvisioningRequestFactory(
             control_plane=_Fixed(assignment), native_placement=provisioning.native_placement,
@@ -166,7 +196,7 @@ def request_provisioning(*, tenant_id, principal, body: bytes, idempotency_key, 
         return fail("conflict", "functional_currencies differ from the Finance-approved baselines",
                     code=PLAN_AUTHORITY_MISMATCH)
 
-    # 4. Accept atomically.
+    # 5. Accept atomically.
     try:
         record = store.accept(command=command, idempotency_key=idempotency_key, principal=principal,
                               fingerprint=fingerprint, entities=entities)
@@ -178,7 +208,7 @@ def request_provisioning(*, tenant_id, principal, body: bytes, idempotency_key, 
 
 
 def get_provisioning_operation(*, tenant_id, argument, connection: psycopg.Connection, correlation_id: str,
-                               trace_id: str | None, **_) -> tuple[int, dict]:
+                               trace_id: str | None, context_authority=None, **_) -> tuple[int, dict]:
     try:
         operation_id = str(uuid.UUID(argument))
     except (ValueError, TypeError, AttributeError):
@@ -188,4 +218,11 @@ def get_provisioning_operation(*, tenant_id, argument, connection: psycopg.Conne
     record = PostgresProvisioningCommandStore(connection).get(tenant_id, operation_id)
     if record is None:
         return problem("not_found", correlation_id=correlation_id, trace_id=trace_id)
+    # The tenant alone is not enough (Shared erp/v1 1.2.0): the context must be the provisioning context bound to the plan
+    # this operation was accepted under. One bound to another provisioning or plan is the same indistinguishable rejection.
+    if context_authority is None or (
+            context_authority.tenant_provisioning_id, context_authority.plan_id, context_authority.plan_version,
+            context_authority.plan_digest) != (record.tenant_provisioning_id, record.plan_id, record.plan_version,
+                                              record.plan_digest):
+        return problem("forbidden", correlation_id=correlation_id, trace_id=trace_id, code="ERP_CONTEXT_REJECTED")
     return 200, _state(record)

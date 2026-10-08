@@ -5,7 +5,9 @@ Mapping reads use the token tenant; context-required operations use CP-validated
 
 Implemented: GET /mappings/{mapping_id}, GET /mappings, GET /order-consequences/{commerce_order_id},
 GET /inventory-availability (application.inventory_availability), POST /provisioning-operations and
-GET /provisioning-operations/{operation_id} (application.provisioning_operations).
+GET /provisioning-operations/{operation_id} (application.provisioning_operations),
+GET /legal-entities/{legal_entity_id}/effective-finance-baseline and GET /finance-baselines/{baseline_id}
+(application.finance_baselines).
 Every operation of the contract is served; ``not_implemented`` remains for an operation a later contract declares before it is built.
 See architecture/conformance.yaml (ADR-ERP-005) for what each is waiting on.
 """
@@ -18,15 +20,19 @@ from urllib.parse import parse_qs
 from application.problem import problem
 from order_to_cash.consequence_store import PostgresOrderConsequenceStore
 from application.inventory_availability import get_inventory_availability
+from application.finance_baselines import get_effective_finance_baseline, get_finance_baseline
 from application.provisioning_operations import get_provisioning_operation, request_provisioning
 from mapping import identifiers
 from mapping.model import CANONICAL_OWNERS
+from security.platform_context import RUNTIME, TENANT_PROVISIONING
 
 _RESOURCE_TYPE = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
 _RESOURCE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 _MAPPING_PATH = re.compile(r"^/mappings/([^/]+)$")
 _ORDER_CONSEQUENCE = re.compile(r"^/order-consequences/([^/]+)$")
 _PROVISIONING_OPERATION = re.compile(r"^/provisioning-operations/([^/]+)$")
+_EFFECTIVE_FINANCE_BASELINE = re.compile(r"^/legal-entities/([^/]+)/effective-finance-baseline$")
+_FINANCE_BASELINE = re.compile(r"^/finance-baselines/([^/]+)$")
 _NOT_IMPLEMENTED: tuple[re.Pattern, ...] = ()
 SCOPE_READ = "erp:read"
 # Following a provisioning operation is part of provisioning (Shared erp/v1 1.1.1): the identity that submits one never
@@ -40,6 +46,10 @@ class BoundaryRoute:
     handler: Callable[..., tuple[int, dict]]
     argument: str | None = None
     context_required: bool = False
+    # What the Control Plane context must be authority FOR (control-plane/v1 authority_purpose; Shared erp/v1 1.2.0).
+    # Provisioning acts for a tenant that is not yet ACTIVE, so both provisioning operations accept only a
+    # TENANT_PROVISIONING context bound to the approved plan; every business-data read accepts only a RUNTIME context.
+    context_purpose: str | None = None
 
 
 def match(method: str, path: str) -> BoundaryRoute | None:
@@ -52,17 +62,29 @@ def match(method: str, path: str) -> BoundaryRoute | None:
         if found:
             return BoundaryRoute(SCOPE_READ, get_mapping, found.group(1))
     if method == "POST" and path == "/provisioning-operations":
-        return BoundaryRoute(SCOPE_PROVISION, request_provisioning, context_required=True)
+        return BoundaryRoute(SCOPE_PROVISION, request_provisioning, context_required=True, context_purpose=TENANT_PROVISIONING)
     if method == "GET" and path == "/inventory-availability":
-        return BoundaryRoute(SCOPE_READ, get_inventory_availability, context_required=True)
+        return BoundaryRoute(SCOPE_READ, get_inventory_availability, context_required=True, context_purpose=RUNTIME)
     if method == "GET":
         consequence = _ORDER_CONSEQUENCE.fullmatch(path)
         if consequence:
-            return BoundaryRoute(SCOPE_READ, get_order_consequence, consequence.group(1), context_required=True)
+            return BoundaryRoute(SCOPE_READ, get_order_consequence, consequence.group(1), context_required=True, context_purpose=RUNTIME)
     if method == "GET":
         operation = _PROVISIONING_OPERATION.fullmatch(path)
         if operation:
-            return BoundaryRoute(SCOPE_PROVISION, get_provisioning_operation, operation.group(1), context_required=True)
+            return BoundaryRoute(SCOPE_PROVISION, get_provisioning_operation, operation.group(1), context_required=True,
+                                 context_purpose=TENANT_PROVISIONING)
+    # Resolving a Finance baseline reference (Shared erp/v1 1.3.0) is part of provisioning a tenant that is not yet ACTIVE: the
+    # provisioner's scope and a TENANT_PROVISIONING context, exactly as for the provisioning operations.
+    if method == "GET":
+        effective = _EFFECTIVE_FINANCE_BASELINE.fullmatch(path)
+        if effective:
+            return BoundaryRoute(SCOPE_PROVISION, get_effective_finance_baseline, effective.group(1), context_required=True,
+                                 context_purpose=TENANT_PROVISIONING)
+        exact = _FINANCE_BASELINE.fullmatch(path)
+        if exact:
+            return BoundaryRoute(SCOPE_PROVISION, get_finance_baseline, exact.group(1), context_required=True,
+                                 context_purpose=TENANT_PROVISIONING)
     if method in ("GET", "POST") and any(pattern.fullmatch(path) for pattern in _NOT_IMPLEMENTED):
         return BoundaryRoute(SCOPE_READ if method == "GET" else "erp:provision", not_implemented)
     return None

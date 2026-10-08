@@ -40,8 +40,8 @@ class FakeTenantMappings:
     def __init__(self):
         self.created = []
 
-    def create_mapping(self, tenant_id, entity_id, ad_client_id, ad_org_id):
-        self.created.append((tenant_id, entity_id, ad_client_id, ad_org_id))
+    def create_mapping(self, tenant_id, entity_id, ad_client_id, ad_org_id, engine_instance_id):
+        self.created.append((tenant_id, entity_id, ad_client_id, ad_org_id, engine_instance_id))
 
 
 @dataclass
@@ -142,11 +142,25 @@ class IdempiereProvisioningAdapterTests(unittest.TestCase):
 
         mapping_step = ProvisioningStep("mapping", StepKind.PERSIST_MAPPING, {
             "tenant_id": request.tenant_id, "legal_entity_id": request.legal_entity_id,
+            "engine_instance_id": "ei_zb_za_01",
         })
         result = adapter.apply(request, mapping_step)
 
-        self.assertEqual(tenant_mappings.created, [(request.tenant_id, request.legal_entity_id, created["id"], 0)])
-        self.assertEqual(result["tenant_mapping"], {"ad_client_id": created["id"], "ad_org_id": 0})
+        self.assertEqual(tenant_mappings.created,
+                         [(request.tenant_id, request.legal_entity_id, created["id"], 0, "ei_zb_za_01")])
+        self.assertEqual(result["tenant_mapping"],
+                         {"ad_client_id": created["id"], "ad_org_id": 0, "engine_instance_id": "ei_zb_za_01"})
+
+    def test_persist_mapping_without_an_engine_instance_fails_closed_and_writes_nothing(self):
+        client, mappings, tenant_mappings = FakeClient(), FakeMappings(), FakeTenantMappings()
+        adapter = IdempiereProvisioningAdapter(client, mappings, tenant_mappings=tenant_mappings)
+        request = Request()
+        adapter.apply(request, ProvisioningStep("client", StepKind.CREATE_CLIENT, {}))
+        for payload in ({}, {"engine_instance_id": ""}, {"engine_instance_id": "  "}, {"engine_instance_id": None}):
+            with self.subTest(payload), self.assertRaises(ValueError):
+                adapter.apply(request, ProvisioningStep("mapping", StepKind.PERSIST_MAPPING, {
+                    "tenant_id": request.tenant_id, "legal_entity_id": request.legal_entity_id, **payload}))
+        self.assertEqual(tenant_mappings.created, [])
 
     def test_persist_mapping_with_tenant_mappings_before_create_client_fails_closed(self):
         client, mappings, tenant_mappings = FakeClient(), FakeMappings(), FakeTenantMappings()

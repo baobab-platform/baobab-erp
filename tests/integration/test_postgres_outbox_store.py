@@ -130,6 +130,67 @@ class PostgresOutboxStoreTests(unittest.TestCase):
                     " VALUES (%s::uuid, 'erp.x.v1', '{}'::jsonb, now())", (str(uuid.uuid4()),))
         self.connection.rollback()
 
+    def test_a_retry_is_due_only_once_its_backoff_has_elapsed(self):
+        store = PostgresOutboxStore(self.connection)
+        event = self._event()
+        store.record_event(event)
+        self.connection.commit()
+        dispatch_pending(store, _FailingTransport(), types=(event.type,))
+        status, attempts, due_at = self._row(event.id, "status, attempts, next_attempt_at > now()")
+        self.assertEqual((status, attempts, due_at), ("retry", 1, True))
+        self.assertEqual([r.name for r in store.pending(types=(event.type,)) if r.name == event.id], [], "not due yet")
+        with self.connection.cursor() as cursor:
+            cursor.execute("UPDATE baobab.event_outbox SET next_attempt_at = now() - interval '1 second' WHERE event_id = %s::uuid", (event.id,))
+        self.connection.commit()
+        self.assertEqual([r.name for r in store.pending(types=(event.type,)) if r.name == event.id], [event.id])
+
+    def test_each_destination_drains_only_the_types_it_carries(self):
+        store = PostgresOutboxStore(self.connection)
+        provisioning = self._event(type="com.baobab-platform.erp.provisioning.changed.v1", subject="provisioning:p1")
+        payment = self._event()
+        store.record_event(provisioning)
+        store.record_event(payment)
+        self.connection.commit()
+        only = [r.name for r in store.pending(1000, types=(provisioning.type,))]
+        self.assertIn(provisioning.id, only)
+        self.assertNotIn(payment.id, only)
+        rest = [r.name for r in store.pending(1000, exclude_types=(provisioning.type,))]
+        self.assertIn(payment.id, rest)
+        self.assertNotIn(provisioning.id, rest)
+
+    def test_delivery_and_dead_lettering_are_timestamped_and_clear_the_schedule(self):
+        store = PostgresOutboxStore(self.connection)
+        delivered, dead = self._event(), self._event()
+        store.record_event(delivered)
+        store.record_event(dead)
+        self.connection.commit()
+        store.mark_delivered(delivered.id)
+        store.mark_retry(dead.id, 1, "boom", 60)
+        store.mark_dead_letter(dead.id, 2, "gave up")
+        self.assertEqual(self._row(delivered.id, "status, delivered_at IS NOT NULL, next_attempt_at"), ("delivered", True, None))
+        self.assertEqual(self._row(dead.id, "status, dead_lettered_at IS NOT NULL, next_attempt_at, last_error"),
+                         ("dead_letter", True, None, "gave up"))
+
+    def test_stats_report_the_backlog_the_dead_letters_and_the_oldest_wait(self):
+        store = PostgresOutboxStore(self.connection)
+        kind = "com.baobab-platform.erp.provisioning.changed.v1"
+        before = store.stats(types=(kind,))
+        waiting, retrying, failed, done = (self._event(type=kind, subject=f"provisioning:s{i}") for i in range(4))
+        for event in (waiting, retrying, failed, done):
+            store.record_event(event)
+        self.connection.commit()
+        with self.connection.cursor() as cursor:
+            cursor.execute("UPDATE baobab.event_outbox SET created_at = now() - interval '2 hours' WHERE event_id = %s::uuid", (waiting.id,))
+        self.connection.commit()
+        store.mark_retry(retrying.id, 1, "boom", 600)
+        store.mark_dead_letter(failed.id, 3, "gave up")
+        store.mark_delivered(done.id)
+        after = store.stats(types=(kind,))
+        self.assertEqual((after["pending"] - before["pending"], after["retry"] - before["retry"],
+                          after["dead_letter"] - before["dead_letter"], after["delivered"] - before["delivered"]), (1, 1, 1, 1))
+        self.assertEqual(after["due"] - before["due"], 1, "the retry is not due yet")
+        self.assertGreaterEqual(after["oldest_undelivered_seconds"], 7200 - 5)
+
 
 if __name__ == "__main__":
     unittest.main()
