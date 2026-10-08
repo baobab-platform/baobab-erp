@@ -611,6 +611,9 @@ adrs:
       - modules/order_to_cash/outcome_store.py
       - db/migrations/0022_document_outcome.sql
       - tests/conformance/test_accounting_outcomes.py
+      - modules/customers/partner_events.py
+      - db/migrations/0023_public_ids_for_master_data.sql
+      - tests/conformance/test_business_partner_event.py
       - tests/integration/test_document_outcome_store.py
       - modules/application/server.py
       - idempiere/extensions/org.nabhold.baobab.erp.outbox/
@@ -637,7 +640,10 @@ adrs:
       ADR-ERP-004's evidence). ERP also produces erp.invoice.changed.v1 and
       erp.payment.accounting-changed.v1 (ERP-CAP-05/08) from facts read back from the
       engine, once per observed change (docs/events.md), validated against the pinned
-      Shared schemas; implementation evidence only, with no live-provider proof.
+      Shared schemas; implementation evidence only, with no live-provider proof. erp.business-partner.changed.v1
+      is produced from customer projection execution under a stable ERP public id (migration 0023);
+      warehouse.changed, inventory.availability-changed and buyer-commercial-profile.changed are not
+      produced (docs/events.md says what each lacks).
       What's still open: buy-side procure-to-pay (Gate
       ZB-07/08) is not started; this has never run against a live iDempiere
       instance, only the fake REST server the integration test stands up (the
