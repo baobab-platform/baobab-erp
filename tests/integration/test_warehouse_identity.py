@@ -107,6 +107,29 @@ class WarehouseIdentityTests(unittest.TestCase):
         # the legacy row (no code yet) adopts the approved code when provisioning registers the same native record
         self.assertEqual(self.record(code="MAIN", native=5150), public)
 
+    def test_migration_registers_warehouses_of_operations_that_were_already_ready(self):
+        import json
+        provisioning_id = f"prov-{uuid.uuid4().hex[:10]}"
+        state = {"tenant_id": self.tenant, "legal_entity_id": self.entity, "engine_instance_id": self.instance,
+                 "markets": [{"market_id": "UG", "country_code": "UG"}, {"market_id": "ZA", "country_code": "ZA"}]}
+        with self.db.cursor() as cursor:
+            cursor.execute("INSERT INTO baobab.erp_provisioning_operation (provisioning_id, idempotency_key, desired_state, status) "
+                           "VALUES (%s,%s,%s::jsonb,'ready')", (provisioning_id, provisioning_id, json.dumps(state)))
+            for key, native in ((f"{provisioning_id}:abc123def456:warehouse:UG:KLA", 7001),
+                                (f"{provisioning_id}:abc123def456:warehouse:ZA:JNB-MAIN", 7002), (f"{provisioning_id}:abc123def456:mapping", 1)):
+                kind = "persist_mapping" if key.endswith("mapping") else "create_warehouse"
+                cursor.execute("INSERT INTO baobab.erp_provisioning_native_mapping (provisioning_id, resource_key, native_id) "
+                               "VALUES (%s,%s,%s)", (provisioning_id, f"{kind}:{key}", native))
+        sql = MIGRATION.read_text()
+        with self.db.cursor() as cursor:
+            cursor.execute(sql[sql.index("INSERT INTO baobab.erp_warehouse (tenant_id, legal_entity_id, code, name"):])
+        rows = self._rows("SELECT code, name, country, engine_instance_id, native_id, timezone FROM baobab.erp_warehouse "
+                          "WHERE tenant_id = %s ORDER BY code", (self.tenant,))
+        self.assertEqual(rows, [("JNB-MAIN", "JNB-MAIN", "ZA", self.instance, 7002, None), ("KLA", "KLA", "UG", self.instance, 7001, None)])
+        # a later provisioning pass registers the same warehouse under the same identity and, with its timezone, announces it
+        [(kla,)] = self._rows("SELECT erp_resource_id FROM baobab.erp_warehouse WHERE tenant_id = %s AND code = 'KLA'", (self.tenant,))
+        self.assertEqual(self.record(code="KLA", native=7001), kla)
+
     def _rows(self, sql, params=()):
         with self.db.cursor() as cursor:
             cursor.execute(sql, params)

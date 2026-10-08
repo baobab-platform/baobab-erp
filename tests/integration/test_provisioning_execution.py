@@ -193,6 +193,14 @@ class ProvisioningExecutionTests(_Fixture):
         self.assertEqual((resolved.legal_entity_id, resolved.native_id), (self.entity, native))
         self.assertIsNone(mappings.warehouse("tn_someoneelse", public))
 
+    def test_a_warehouse_bound_to_another_engine_than_the_active_tenant_mapping_does_not_resolve(self):
+        from inventory.mappings import PostgresInventoryMappings
+        self.run_worker()
+        [(public, *_rest)] = self.warehouses()
+        with self.connection.cursor() as cursor:  # a migration in progress: the warehouse still names the old engine instance
+            cursor.execute("UPDATE baobab.erp_warehouse SET engine_instance_id = 'ei_old_installation' WHERE erp_resource_id = %s", (public,))
+        self.assertIsNone(PostgresInventoryMappings(self.connection).warehouse(self.tenant, public))
+
     # -- an uncertain outcome is not repeated --------------------------------------------------------------------------------------
     def test_a_response_lost_after_the_engine_acted_is_adopted_not_repeated(self):
         self.engine.script = ["lose-response"]  # the AD_Client is created; this side never learns its id

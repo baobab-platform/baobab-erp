@@ -99,7 +99,11 @@ missing or unknown one is a configuration error, and nothing is defaulted or der
 before the input existed is registered but not announced, because ERP does not invent the member. `name` is what ERP wrote to the
 engine (the code), `country` is the market's and `status` is `active`.
 
-`GET /inventory-availability` resolves `warehouse_id` through `baobab.erp_warehouse`. Hand-written `entity_mapping` warehouse rows were
+`GET /inventory-availability` resolves `warehouse_id` through `baobab.erp_warehouse`, and only when the warehouse's engine instance is the
+one the legal entity's active tenant mapping names (native ids collide across installations, so a disagreement, as during an engine
+migration, answers not found rather than reading another engine). Warehouses created by the executor before identities existed are
+registered by migration 0024 from their native mapping and approved desired state (no timezone, so not announced); their operations
+are already ready and are never revisited by the executor. Hand-written `entity_mapping` warehouse rows were
 carried over with the same public id and retired there, so a warehouse never has two live identities. The earlier unwired
 `WarehouseProvisioner`, which used a different key scheme, is removed: the step flow is the one path. Still open there: the step flow
 sets no `AD_Org_ID` on the warehouse and has no per-warehouse legal-entity validation (ADR-ERP-015), and none of it has run against a
