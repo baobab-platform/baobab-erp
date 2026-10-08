@@ -185,6 +185,59 @@ COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/exte
 COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.mapping/target/org.nabhold.baobab.erp.mapping-*.jar ${IDEMPIERE_PLUGINS_DIR}/
 COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.events/target/org.nabhold.baobab.erp.events-*.jar ${IDEMPIERE_PLUGINS_DIR}/
 
+# ADR-ERP-004 section 5 emergency mitigation: remove the legacy SOAP/CXF runtime.
+#   reason:   the pinned iDempiere 13 image bundles Apache CXF 3.6.5; cxf-core
+#             carries CRITICAL CVE-2026-49875. The fixed CXF lines (4.1/4.2)
+#             are major platform upgrades and must not be jar-swapped into this
+#             Equinox runtime without a full compatibility programme.
+#   scope:    Baobab ERP does not use iDempiere's SOAP/ADInterface surface. Its
+#             native integration target is com.trekglobal.idempiere.rest.api,
+#             which is installed separately below and declares no extension
+#             dependency on the SOAP/CXF feature.
+#   safety:   before removal, scan every remaining OSGi manifest. If any bundle
+#             outside the SOAP/CXF family requires/imports CXF or the iDempiere
+#             webservices bundles, fail the image build rather than create an
+#             unresolved runtime.
+#   removal:  delete this mitigation once the pinned iDempiere distribution no
+#             longer carries the affected CXF runtime, or if Baobab deliberately
+#             adopts SOAP (which requires a separately reviewed, patched feature).
+USER root
+RUN set -eu; \
+    info="${IDEMPIERE_HOME}/configuration/org.eclipse.equinox.simpleconfigurator/bundles.info"; \
+    core="${IDEMPIERE_PLUGINS_DIR}/org.apache.cxf.cxf-core_3.6.5.jar"; \
+    [ -f "$core" ] || { echo "expected vulnerable CXF 3.6.5 core bundle; upstream changed, revisit mitigation" >&2; exit 1; }; \
+    set -- "${IDEMPIERE_PLUGINS_DIR}"/org.idempiere.webservice*.jar; \
+    [ "$#" -ge 1 ] && [ -f "$1" ] || { echo "expected iDempiere webservices bundle(s); upstream changed, revisit mitigation" >&2; exit 1; }; \
+    apt-get update && apt-get install -y --no-install-recommends unzip; \
+    offenders=""; \
+    for jar in "${IDEMPIERE_PLUGINS_DIR}"/*.jar; do \
+      base=$(basename "$jar"); \
+      case "$base" in \
+        org.apache.cxf.*|wrapped.org.apache.cxf.*|org.idempiere.webservice*) continue ;; \
+      esac; \
+      manifest=$(unzip -p "$jar" META-INF/MANIFEST.MF 2>/dev/null | tr -d '\r' | sed ':a;N;$!ba;s/\n //g' || true); \
+      if printf '%s\n' "$manifest" | grep -Eq '^(Require-Bundle|Import-Package|DynamicImport-Package):.*(org\.apache\.cxf|org\.idempiere\.webservice)'; then \
+        offenders="$offenders $base"; \
+      fi; \
+    done; \
+    [ -z "$offenders" ] || { echo "non-SOAP bundles still depend on CXF/webservices:$offenders" >&2; exit 1; }; \
+    for jar in "${IDEMPIERE_PLUGINS_DIR}"/org.apache.cxf.*.jar \
+               "${IDEMPIERE_PLUGINS_DIR}"/wrapped.org.apache.cxf.*.jar \
+               "${IDEMPIERE_PLUGINS_DIR}"/org.idempiere.webservice*.jar; do \
+      [ -f "$jar" ] && rm -f "$jar"; \
+    done; \
+    awk -F, '!( $1 ~ /^org\.apache\.cxf\./ || $1 ~ /^wrapped\.org\.apache\.cxf\./ || $1 ~ /^org\.idempiere\.webservice/ )' "$info" > /tmp/bundles.info.new; \
+    cat /tmp/bundles.info.new > "$info"; rm -f /tmp/bundles.info.new; \
+    if find "${IDEMPIERE_PLUGINS_DIR}" -maxdepth 1 -type f \( -name 'org.apache.cxf.*.jar' -o -name 'wrapped.org.apache.cxf.*.jar' -o -name 'org.idempiere.webservice*.jar' \) | grep -q .; then \
+      echo "SOAP/CXF bundle remains after mitigation" >&2; exit 1; \
+    fi; \
+    if awk -F, '$1 ~ /^org\.apache\.cxf\./ || $1 ~ /^wrapped\.org\.apache\.cxf\./ || $1 ~ /^org\.idempiere\.webservice/ {found=1} END {exit !found}' "$info"; then \
+      echo "SOAP/CXF entry remains in bundles.info" >&2; exit 1; \
+    fi; \
+    apt-get purge -y unzip && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+
+USER idempiere
+
 # Optional: install the third-party com.trekglobal.idempiere.rest.api plugin if a
 # pre-built p2 repository for it has been placed at idempiere/vendor/rest-api-p2/ --
 # see idempiere/rest-api/README.md for what belongs there and how to produce it (this

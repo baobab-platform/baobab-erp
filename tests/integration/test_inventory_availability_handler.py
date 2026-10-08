@@ -7,7 +7,6 @@ from pathlib import Path
 
 from application.inventory_availability import get_inventory_availability
 from integration.idempiere_client import IdempiereClientError
-from mapping.postgres_store import PostgresCanonicalMappingStore
 
 # CI discovers this directory with only modules/ on the path; the fake engine lives with the unit tests.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "unit"))
@@ -36,10 +35,10 @@ class InventoryAvailabilityTests(unittest.TestCase):
             cursor.execute("INSERT INTO baobab.erp_master_data_mapping (engine_instance_id, legal_entity_id, resource_kind, "
                            "canonical_id, native_id, desired_digest, source_version) VALUES (%s,%s,'product',%s,%s,'d','1')",
                            (self.engine_instance, self.entity, self.sku, PRODUCT))
-        self.warehouse_mapping = PostgresCanonicalMappingStore(self.connection).create_mapping(
-            self.tenant, self.entity, "Warehouse", str(uuid.uuid4()), "M_Warehouse", WAREHOUSE)
         with self.connection.cursor() as cursor:
-            cursor.execute("SELECT erp_resource_id FROM baobab.entity_mapping WHERE mapping_id = %s", (self.warehouse_mapping,))
+            cursor.execute("INSERT INTO baobab.erp_warehouse (tenant_id, legal_entity_id, code, engine_instance_id, native_id) "
+                           "VALUES (%s,%s,'MAIN',%s,%s) RETURNING erp_resource_id",
+                           (self.tenant, self.entity, self.engine_instance, WAREHOUSE))
             self.warehouse = cursor.fetchone()[0]
 
     def _rollback(self):

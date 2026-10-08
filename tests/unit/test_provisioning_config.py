@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 from provisioning.config import load_request
@@ -14,6 +15,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 class ProvisioningConfigTests(unittest.TestCase):
     def test_loads_json_desired_state(self):
         request = valid_request()
+        market = request.markets[0]
+        request = replace(request, markets=(replace(market, warehouse_timezones=tuple((c, "Africa/Kampala") for c in market.warehouse_codes)),))
         payload = {
             "provisioning_id": request.provisioning_id,
             "idempotency_key": request.idempotency_key,
@@ -45,6 +48,7 @@ class ProvisioningConfigTests(unittest.TestCase):
                 "currencies": list(request.markets[0].currencies),
                 "localisation_profile": request.markets[0].localisation_profile,
                 "warehouse_codes": list(request.markets[0].warehouse_codes),
+                "warehouse_timezones": {code: "Africa/Kampala" for code in request.markets[0].warehouse_codes},
             }],
         }
         with tempfile.TemporaryDirectory() as directory:
@@ -91,6 +95,7 @@ class ProvisioningConfigTests(unittest.TestCase):
                 "currencies": list(request.markets[0].currencies),
                 "localisation_profile": request.markets[0].localisation_profile,
                 "warehouse_codes": list(request.markets[0].warehouse_codes),
+                "warehouse_timezones": {code: "Africa/Kampala" for code in request.markets[0].warehouse_codes},
             }],
         }
         with tempfile.TemporaryDirectory() as directory:

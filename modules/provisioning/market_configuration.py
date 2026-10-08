@@ -17,13 +17,14 @@ from typing import Any, Mapping
 from dataclasses import dataclass
 
 from provisioning.cp_contract import ErpMarketConfiguration
+from provisioning.warehouse import WarehousePolicyError, check_warehouse_timezones
 from provisioning.legal_entity_policy import ConfiguredNativePlacementPolicy, NativePlacement
 
 _COUNTRY = re.compile(r"^[A-Z]{2}$")
 _CURRENCY = re.compile(r"^[A-Z]{3}$")
 _LEGAL_ENTITY = re.compile(r"^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*$")
 _PLACEHOLDER = "REQUIRED_"
-_MEMBERS = frozenset({"currencies", "localisation_profile", "warehouse_codes"})
+_MEMBERS = frozenset({"currencies", "localisation_profile", "warehouse_codes", "warehouse_timezones"})
 
 
 class MarketConfigurationError(ValueError):
@@ -35,6 +36,8 @@ def _placeholder(value: Any) -> bool:
         return value.startswith(_PLACEHOLDER)
     if isinstance(value, list):
         return any(_placeholder(item) for item in value)
+    if isinstance(value, Mapping):
+        return any(_placeholder(item) for item in value.values())
     return False
 
 
@@ -95,7 +98,11 @@ def parse_market_configuration(document: Any) -> dict[str, ErpMarketConfiguratio
         if not isinstance(warehouses, list) or not warehouses or len(set(warehouses)) != len(warehouses) \
                 or not all(isinstance(w, str) and w.strip() for w in warehouses):
             raise MarketConfigurationError(f"{country}: warehouse_codes must be a non-empty list of distinct codes")
-        configured[country] = ErpMarketConfiguration(tuple(currencies), profile.strip(), tuple(warehouses))
+        try:
+            zones = check_warehouse_timezones(warehouses, entry["warehouse_timezones"])
+        except WarehousePolicyError as exc:
+            raise MarketConfigurationError(f"{country}: {exc}") from None
+        configured[country] = ErpMarketConfiguration(tuple(currencies), profile.strip(), tuple(warehouses), zones)
     return configured
 
 

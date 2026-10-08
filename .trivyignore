@@ -33,9 +33,6 @@ CVE-2026-6009
 # activemq-client -- fixed 5.19.4/6.2.4
 CVE-2026-39304
 
-# cxf-core -- fixed 3.6.12/4.1.7/4.2.2
-CVE-2026-50645
-
 # neethi -- fixed 3.2.2
 CVE-2026-42402
 CVE-2026-42403

@@ -1,7 +1,7 @@
 """Resolves the public identifiers of GET /inventory-availability to native iDempiere records, through explicit mappings only.
 
-* the warehouse: the ERP-minted ``erp_`` identifier of an active ``M_Warehouse`` mapping of the token's tenant, which also
-  names the legal entity the warehouse belongs to;
+* the warehouse: the ERP-minted ``erp_`` identifier of an active warehouse of the token's tenant (``baobab.erp_warehouse``: the
+  identity provisioning registers, migration 0024), which also names the legal entity the warehouse belongs to;
 * the SKU: the Trade-owned canonical SKU id mapped to an ``M_Product`` for that legal entity's engine instance (ADR-ERP-014
   master-data mapping). The tenant's AD_Client comes from the same legal entity's active tenant mapping.
 
@@ -34,10 +34,14 @@ class PostgresInventoryMappings:
 
     def warehouse(self, tenant_id: str, erp_warehouse_id: str) -> ResolvedWarehouse | None:
         with self._connection.cursor() as cursor:
+            # The warehouse's native id belongs to one engine instance. It is only meaningful if that is the instance the legal entity is
+            # currently provisioned onto: native ids can collide across installations, so a binding that disagrees with the active tenant
+            # mapping (an engine migration in progress, a stale update) fails closed instead of reading another engine's warehouse.
             cursor.execute(
-                "SELECT legal_entity_id, native_id FROM baobab.entity_mapping "
-                "WHERE tenant_id = %s AND erp_resource_id = %s AND native_table = 'M_Warehouse' AND status = 'active' "
-                "AND legal_entity_id IS NOT NULL AND (effective_to IS NULL OR effective_to > now())",
+                "SELECT w.legal_entity_id, w.native_id FROM baobab.erp_warehouse w "
+                "JOIN baobab.tenant_mapping tm ON tm.tenant_id = w.tenant_id AND tm.entity_id = w.legal_entity_id "
+                "AND tm.status = 'active' AND tm.engine_instance_id = w.engine_instance_id "
+                "WHERE w.tenant_id = %s AND w.erp_resource_id = %s AND w.status = 'active' AND w.native_id IS NOT NULL",
                 (tenant_id, erp_warehouse_id))
             row = cursor.fetchone()
         return ResolvedWarehouse(row[0], int(row[1])) if row else None

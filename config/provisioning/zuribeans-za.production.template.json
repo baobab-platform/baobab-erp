@@ -33,7 +33,8 @@
       "participation_capabilities": ["sourcing", "procurement", "selling", "warehousing", "distribution", "importing", "exporting"],
       "currencies": ["ZAR", "USD"],
       "localisation_profile": "REQUIRED_CERTIFIED_ZA_ERP_LOCALISATION",
-      "warehouse_codes": ["REQUIRED_APPROVED_ZA_WAREHOUSE"]
+      "warehouse_codes": ["REQUIRED_APPROVED_ZA_WAREHOUSE"],
+      "warehouse_timezones": {"REQUIRED_APPROVED_ZA_WAREHOUSE": "REQUIRED_APPROVED_ZA_WAREHOUSE_IANA_TIMEZONE"}
     }
   ]
 }

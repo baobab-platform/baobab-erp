@@ -41,6 +41,7 @@ from events.envelope import EventEnvelope
 from mapping.model import MappingNotFoundError, NativeRecordRef
 from events.cloudevent import CloudEvent
 from order_to_cash.consequence import Fact, OrderConsequence
+from order_to_cash import accounting_outcomes as outcomes_rules
 from order_to_cash.consequence_events import consequence_changed_event
 from order_to_cash.model import NativeDocumentRef, OrderLine, OrderToCashError, TenantScope
 
@@ -112,6 +113,58 @@ def _now() -> datetime:
 class Recorded(Protocol):
     record: OrderConsequence
     changed: bool
+
+
+def _announce_invoice(*, scope: TenantScope, invoice_canonical_id: str, native_id: int, allocated: bool,
+                      idempiere: IdempiereClient, mappings: MappingStore, outbox: "OutboxStore",
+                      consequences: ConsequenceStore | None, outcomes: "outcomes_rules.DocumentOutcomeStore | None",
+                      correlation_id: str | None) -> None:
+    """invoice.changed for an invoice the engine reports completed, once per observed change. Nothing is announced for an invoice
+    with no order link (the event requires one) or no public id yet; those facts are never invented."""
+    if outcomes is None or consequences is None:
+        return
+    order_id = consequences.order_of_document(scope.tenant_id, "CustomerInvoice", invoice_canonical_id)
+    public_id = mappings.erp_resource_id(scope.tenant_id, "CustomerInvoice", invoice_canonical_id)
+    if order_id is None or public_id is None:
+        return
+    try:
+        facts = outcomes_rules.read_invoice(idempiere, native_id)  # type: ignore[arg-type]
+        status = outcomes_rules.invoice_status(facts, allocated=allocated)
+    except outcomes_rules.AccountingFactError:
+        return  # the engine action already ran; ERP announces only what it observed
+    now = _now()
+    step = outcomes.advance(tenant_id=scope.tenant_id, document_type="invoice", document_id=public_id, status=status,
+                            detail={"number": facts.number, "total": facts.total.contract()}, now=now)
+    if step.changed:
+        outbox.record_event(outcomes_rules.invoice_changed_event(
+            tenant_id=scope.tenant_id, legal_entity_id=scope.legal_entity_id, invoice_id=public_id, commerce_order_id=order_id,
+            facts=facts, status=status, issued_at=step.first_seen_at, revision=step.revision, now=now, correlation_id=correlation_id))
+
+
+def _announce_payment(*, scope: TenantScope, payment_canonical_id: str, native_id: int, invoice_public_id: str | None,
+                      allocation_requested: bool, idempiere: IdempiereClient, mappings: MappingStore, outbox: "OutboxStore",
+                      outcomes: "outcomes_rules.DocumentOutcomeStore | None", correlation_id: str | None) -> None:
+    if outcomes is None:
+        return
+    public_id = mappings.erp_resource_id(scope.tenant_id, "Payment", payment_canonical_id)
+    if public_id is None:
+        return
+    try:
+        facts = outcomes_rules.read_payment(idempiere, native_id)  # type: ignore[arg-type]
+        status = outcomes_rules.payment_status(facts, allocation_requested=allocation_requested)
+    except outcomes_rules.AccountingFactError:
+        return
+    now = _now()
+    detail: dict = {"amount": facts.amount.contract()}
+    if invoice_public_id is not None:
+        detail["invoice_id"] = invoice_public_id
+    step = outcomes.advance(tenant_id=scope.tenant_id, document_type="payment", document_id=payment_canonical_id, status=status,
+                            detail=detail, now=now)
+    if step.changed:
+        outbox.record_event(outcomes_rules.payment_accounting_event(
+            tenant_id=scope.tenant_id, legal_entity_id=scope.legal_entity_id, payment_capture_id=payment_canonical_id,
+            erp_payment_id=public_id, invoice_id=invoice_public_id, facts=facts, status=status, revision=step.revision, now=now,
+            correlation_id=correlation_id))
 
 
 def _announce(outbox: "OutboxStore | None", record: OrderConsequence | None, correlation_id: str | None) -> None:
@@ -200,6 +253,23 @@ def _resolve_native(
 # --- Sales Order --------------------------------------------------------
 
 
+def sales_order_fields(business_partner_native_id: int, document_currency: str, lines: tuple[OrderLine, ...],
+                       reference: str | None = None) -> dict[str, Any]:
+    """The C_Order record for a draft sales order. ``reference`` is written to POReference: it is how a later attempt finds
+    the order an earlier attempt created when that attempt died before it could record the result."""
+    fields: dict[str, Any] = {
+        "C_BPartner_ID": business_partner_native_id,
+        "CurrencyISO": document_currency,
+        "OrderLines": [
+            {"M_Product_ID": line.product_canonical_id, "QtyOrdered": line.quantity, "PriceEntered": line.unit_price}
+            for line in lines
+        ],
+    }
+    if reference is not None:
+        fields["POReference"] = reference
+    return fields
+
+
 def create_sales_order(
     *,
     scope: TenantScope,
@@ -225,14 +295,7 @@ def create_sales_order(
     integration, it is never guessed from a SKU or display name."""
     if not lines:
         raise OrderToCashError("A sales order requires at least one order line")
-    fields = {
-        "C_BPartner_ID": business_partner_native_id,
-        "CurrencyISO": document_currency,
-        "OrderLines": [
-            {"M_Product_ID": line.product_canonical_id, "QtyOrdered": line.quantity, "PriceEntered": line.unit_price}
-            for line in lines
-        ],
-    }
+    fields = sales_order_fields(business_partner_native_id, document_currency, lines)
     ref = _create_and_map(
         scope=scope,
         canonical_type="CommerceOrder",
@@ -407,6 +470,7 @@ def post_customer_invoice(
     mappings: MappingStore,
     outbox: OutboxStore,
     consequences: ConsequenceStore | None = None,
+    outcomes: "outcomes_rules.DocumentOutcomeStore | None" = None,
 ) -> None:
     """Posts the invoice: AR is created, revenue/tax accounting happens, and
     the document becomes immutable (ADR-ERP-008 SS58-62) -- corrections from
@@ -435,6 +499,9 @@ def post_customer_invoice(
                 invoice_id=mappings.erp_resource_id(scope.tenant_id, "CustomerInvoice", invoice_canonical_id))
             if recorded is not None and recorded.changed:
                 _announce(outbox, recorded.record, correlation_id)
+    _announce_invoice(scope=scope, invoice_canonical_id=invoice_canonical_id, native_id=native_id, allocated=False,
+                      idempiere=idempiere, mappings=mappings, outbox=outbox, consequences=consequences, outcomes=outcomes,
+                      correlation_id=correlation_id)
 
 
 # --- Payment ---------------------------------------------------------------
@@ -475,6 +542,7 @@ def complete_payment(
     idempiere: IdempiereClient,
     mappings: MappingStore,
     outbox: OutboxStore,
+    outcomes: "outcomes_rules.DocumentOutcomeStore | None" = None,
 ) -> None:
     native_id = _resolve_native(
         scope=scope,
@@ -492,6 +560,9 @@ def complete_payment(
             {"payment_id": payment_canonical_id, "erp_payment_native_id": native_id},
         )
     )
+    _announce_payment(scope=scope, payment_canonical_id=payment_canonical_id, native_id=native_id, invoice_public_id=None,
+                      allocation_requested=False, idempiere=idempiere, mappings=mappings, outbox=outbox, outcomes=outcomes,
+                      correlation_id=correlation_id)
 
 
 def allocate_payment(
@@ -505,6 +576,8 @@ def allocate_payment(
     idempiere: IdempiereClient,
     mappings: MappingStore,
     outbox: OutboxStore,
+    consequences: ConsequenceStore | None = None,
+    outcomes: "outcomes_rules.DocumentOutcomeStore | None" = None,
 ) -> None:
     """Matches a completed Payment against a posted Customer Invoice --
     genuinely distinct from complete_payment per ADR-ERP-016 SS67-77: a
@@ -541,3 +614,12 @@ def allocate_payment(
             },
         )
     )
+    if outcomes is None:
+        return
+    _announce_payment(scope=scope, payment_canonical_id=payment_canonical_id, native_id=payment_native_id,
+                      invoice_public_id=mappings.erp_resource_id(scope.tenant_id, "CustomerInvoice", invoice_canonical_id),
+                      allocation_requested=True, idempiere=idempiere, mappings=mappings, outbox=outbox, outcomes=outcomes,
+                      correlation_id=correlation_id)
+    _announce_invoice(scope=scope, invoice_canonical_id=invoice_canonical_id, native_id=invoice_native_id, allocated=True,
+                      idempiere=idempiere, mappings=mappings, outbox=outbox, consequences=consequences, outcomes=outcomes,
+                      correlation_id=correlation_id)

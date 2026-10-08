@@ -99,10 +99,63 @@ services:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql://${DB_USER:-adempiere}:${DB_PASS:?Set DB_PASS}@postgres:5432/${DB_NAME:-idempiere}
-      BAOBAB_EVENT_SIGNING_SECRET: ${BAOBAB_EVENT_SIGNING_SECRET:?Set BAOBAB_EVENT_SIGNING_SECRET}
-      BAOBAB_WEBHOOK_URL: ${BAOBAB_WEBHOOK_URL:?Set BAOBAB_WEBHOOK_URL}
+      # Each destination is optional, but at least one must be set. The Control Plane group is all-or-nothing; the legacy webhook is
+      # enabled by its URL (the signing secret is also the application's inbound secret and is set either way).
+      # Legacy webhook (every canonical event except provisioning.changed):
+      BAOBAB_EVENT_SIGNING_SECRET: ${BAOBAB_EVENT_SIGNING_SECRET:-}
+      BAOBAB_WEBHOOK_URL: ${BAOBAB_WEBHOOK_URL:-}
+      # Control Plane event ingress (provisioning.changed, signed delivery; the secret is standard base64 of at least 32 bytes):
+      BAOBAB_CP_EVENT_INGRESS_URL: ${BAOBAB_CP_EVENT_INGRESS_URL:-}
+      BAOBAB_CP_EVENT_KEY_ID: ${BAOBAB_CP_EVENT_KEY_ID:-}
+      BAOBAB_CP_EVENT_SECRET_B64: ${BAOBAB_CP_EVENT_SECRET_B64:-}
       BAOBAB_DISPATCH_INTERVAL_SECONDS: ${BAOBAB_DISPATCH_INTERVAL_SECONDS:-60}
     entrypoint: ["bash", "/app/scripts/dispatch_worker_loop.sh"]
+
+  baobab-inbox-worker:
+    build:
+      context: .
+      dockerfile: modules/Dockerfile
+    image: ${BAOBAB_APP_IMAGE_TAG:-baobab-app:local}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      baobab-db-migrate:
+        condition: service_completed_successfully
+    environment:
+      # A direct Postgres connection: the per-order lock is session-level, so no transaction-mode pooler in between.
+      DATABASE_URL: postgresql://${DB_USER:-adempiere}:${DB_PASS:?Set DB_PASS}@postgres:5432/${DB_NAME:-idempiere}
+      # Per-AD_Client engine credentials (the same JSON the HTTP application reads). A tenant without an entry is blocked, not failed.
+      IDEMPIERE_CLIENT_CREDENTIALS_JSON: ${IDEMPIERE_CLIENT_CREDENTIALS_JSON:-}
+      BAOBAB_INBOX_INTERVAL_SECONDS: ${BAOBAB_INBOX_INTERVAL_SECONDS:-15}
+      BAOBAB_INBOX_BATCH_LIMIT: ${BAOBAB_INBOX_BATCH_LIMIT:-50}
+      BAOBAB_INBOX_LEASE_SECONDS: ${BAOBAB_INBOX_LEASE_SECONDS:-300}
+    entrypoint: ["bash", "/app/scripts/inbox_worker_loop.sh"]
+
+  baobab-provisioning-worker:
+    build:
+      context: .
+      dockerfile: modules/Dockerfile
+    image: ${BAOBAB_APP_IMAGE_TAG:-baobab-app:local}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      baobab-db-migrate:
+        condition: service_completed_successfully
+    environment:
+      # A direct Postgres connection: an operation is claimed with a session-level advisory lock, so no transaction-mode pooler.
+      DATABASE_URL: postgresql://${DB_USER:-adempiere}:${DB_PASS:?Set DB_PASS}@postgres:5432/${DB_NAME:-idempiere}
+      # One provisioner identity per EngineInstance ({"<engine_instance_id>": {base_url, username, password, client_id, role_id,
+      # organization_id}}). Not the per-AD_Client integration credential; ADR-ERP-019 forbids a shared superuser. Without an entry
+      # for an operation's EngineInstance the operation is blocked, not failed.
+      IDEMPIERE_PROVISIONER_CREDENTIALS_JSON: ${IDEMPIERE_PROVISIONER_CREDENTIALS_JSON:-}
+      # iDempiere process ids are per installation: both or neither. Operations needing them are blocked until set.
+      IDEMPIERE_PROVISIONING_PROCESS_ACCOUNTING: ${IDEMPIERE_PROVISIONING_PROCESS_ACCOUNTING:-}
+      IDEMPIERE_PROVISIONING_PROCESS_LOCALISATION_JSON: ${IDEMPIERE_PROVISIONING_PROCESS_LOCALISATION_JSON:-}
+      BAOBAB_PROVISIONING_INTERVAL_SECONDS: ${BAOBAB_PROVISIONING_INTERVAL_SECONDS:-30}
+      BAOBAB_PROVISIONING_BATCH_LIMIT: ${BAOBAB_PROVISIONING_BATCH_LIMIT:-10}
+    entrypoint: ["bash", "/app/scripts/provisioning_worker_loop.sh"]
 
 volumes:
   postgres-data:

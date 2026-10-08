@@ -7,7 +7,7 @@
 #   partial    - some of the decision is implemented and tested; a material gap remains
 #   planned    - decided in the ADR, not yet implemented
 schema_version: "1.0"
-updated: "2026-09-18"
+updated: "2026-10-08"
 adrs:
   - id: ADR-ERP-001
     title: iDempiere as an isolated, headless, multi-tenant Baobab ERP engine
@@ -202,6 +202,13 @@ adrs:
       granted by Baobab IAM today (only erp:integrate), so these routes fail closed until the
       owner grants them.
 
+      CORRECTION 2026-10-08 (supersedes the 501 list above): all four operations are now served. Code
+      evidence, per axis. Implementation: POST/GET /provisioning-operations, GET /order-consequences/{id}
+      (#52) and GET /inventory-availability (#53) have handlers and tests in this repository. Live-provider
+      conformance: NONE of the engine-backed routes has run against a live iDempiere (inventory reads
+      unconfirmed AD column names; order execution runs against a simulated REST server). Certification:
+      not started (EA-09). Implementation is therefore not a statement about the other two.
+
       ERP-COMPAT-04: every error from the pre-contract routes (context, mapping, outbox, order-to-cash,
       inbound events, readiness) is now RFC 9457 application/problem+json with the correlation id echoed
       (a valid X-Correlation-ID is kept, otherwise one is generated) and trace_id from traceparent;
@@ -244,6 +251,11 @@ adrs:
       - tests/integration/test_postgres_outbox_store.py
       - tests/integration/test_postgres_inbox_store.py
       - tests/integration/test_http_server.py
+      - modules/inbox/execution_support.py
+      - modules/customers/payload.py
+      - modules/customers/projection_execution.py
+      - tests/unit/test_customer_projection_payload.py
+      - tests/integration/test_customer_projection_execution.py
     gap: >
       Record -> dispatch -> signed HTTP delivery -> mark-delivered, and
       receive -> verify -> deduplicate -> persist, are both proven end-to-end
@@ -269,6 +281,13 @@ adrs:
       (never delivered, counted by held_count) until an outcome projection maps them to the registered
       erp.* types with canonical payloads (order_version, revisions, totals), which also needs the
       order-consequence read model. No ERP-produced event is delivered until then.
+
+      CORRECTION 2026-10-08: of the eight registered ERP-produced types only erp.order.consequence-changed
+      and erp.provisioning.changed have producers; the other six are registry entries only. Consumed:
+      trade.order.placed is now EXECUTED by baobab-inbox-worker (#67; migration 0019, replay/crash/concurrency
+      tests, no second sales order). trade.customer.projected is executed by the same worker since ERP-CAP-06 (business partner + mapping). The statement that
+      no ERP-produced event is delivered is no longer true for those two types. Live-iDempiere status of order
+      execution: unproven.
 
       ERP-COMPAT-06/07: every Shared example event round-trips through CloudEvent, validates against the pinned
       envelope and its registered dataschema, ERP's produced-type index equals Shared's event registry, the
@@ -555,7 +574,11 @@ adrs:
     status: partial
     evidence:
       - modules/provisioning/warehouse.py
-      - modules/provisioning/warehouse_adapter.py
+      - modules/provisioning/warehouse_identity_store.py
+      - modules/provisioning/warehouse_events.py
+      - db/migrations/0024_erp_warehouse_identity.sql
+      - tests/integration/test_warehouse_identity.py
+      - tests/conformance/test_warehouse_event.py
       - modules/provisioning/zuribeans_entities.py
       - config/provisioning/zuribeans.warehouses.example.json
       - tests/unit/test_zuribeans_warehouses.py
@@ -567,15 +590,14 @@ adrs:
       this ADR's own legal-entity-isolation intent), a duplicate warehouse code,
       or a missing explicit ERP-organisation mapping (never inferred from country,
       per ADR-ERP-002 SS28/SS30 -- market and infrastructure region never
-      automatically become an AD_Org). WarehouseProvisioner creates/reuses the
-      native M_Warehouse record under a caller-supplied AD_Org_ID (mapping-driven
-      idempotency, same pattern as IdempiereProvisioningAdapter). What's still
-      open: WarehouseProvisioner is not yet wired into the planner/
-      IdempiereProvisioningAdapter step flow, which has its own CREATE_WAREHOUSE
-      handling that never sets AD_Org_ID and has no per-warehouse legal-entity/
-      market validation -- the two paths use different resource_key schemes and
-      must not both run for the same warehouse until reconciled, or they would
-      create duplicate native records. Buy-side procurement (this ADR's other
+      automatically become an AD_Org). The planner/IdempiereProvisioningAdapter
+      step flow is the one provisioning path (the earlier unwired
+      WarehouseProvisioner and its different resource_key scheme are removed),
+      and each provisioned warehouse gets a stable ERP public id and a
+      warehouse.changed announcement (migration 0024; docs/events.md). What's
+      still open: that step flow never sets AD_Org_ID and has no per-warehouse
+      legal-entity/market validation (validate_warehouses is not yet applied to
+      it), and nothing has run against a live iDempiere. Buy-side procurement (this ADR's other
       major scope) is entirely out of scope for this gate, as ADR-ERP-021 already
       records. config/provisioning/zuribeans.warehouses.example.json's
       organisation_mapping_id/legal_entity_id/market_id fields are still
@@ -588,6 +610,14 @@ adrs:
     evidence:
       - modules/order_to_cash/model.py
       - modules/order_to_cash/service.py
+      - modules/order_to_cash/accounting_outcomes.py
+      - modules/order_to_cash/outcome_store.py
+      - db/migrations/0022_document_outcome.sql
+      - tests/conformance/test_accounting_outcomes.py
+      - modules/customers/partner_events.py
+      - db/migrations/0023_public_ids_for_master_data.sql
+      - tests/conformance/test_business_partner_event.py
+      - tests/integration/test_document_outcome_store.py
       - modules/application/server.py
       - idempiere/extensions/org.nabhold.baobab.erp.outbox/
       - idempiere/extensions/org.nabhold.baobab.erp.events/
@@ -610,7 +640,15 @@ adrs:
       the `events` bundle now emits its own generic erp.*.synced.v1 facts for any
       native postCreate/postUpdate (a reconciliation safety net for mutations made
       directly in iDempiere's own UI, distinct from this primary path -- see
-      ADR-ERP-004's evidence). What's still open: buy-side procure-to-pay (Gate
+      ADR-ERP-004's evidence). ERP also produces erp.invoice.changed.v1 and
+      erp.payment.accounting-changed.v1 (ERP-CAP-05/08) from facts read back from the
+      engine, once per observed change (docs/events.md), validated against the pinned
+      Shared schemas; implementation evidence only, with no live-provider proof. erp.business-partner.changed.v1
+      is produced from customer projection execution under a stable ERP public id (migration 0023);
+      warehouse.changed, inventory.availability-changed and buyer-commercial-profile.changed are not
+      produced (docs/events.md says what each lacks); the warehouse timezone is now a required ERP
+      deployment-configuration input (modules/provisioning/market_configuration.py).
+      What's still open: buy-side procure-to-pay (Gate
       ZB-07/08) is not started; this has never run against a live iDempiere
       instance, only the fake REST server the integration test stands up (the
       same REST-plugin-install gap as ADR-ERP-005/013); and
@@ -644,7 +682,14 @@ adrs:
       - modules/provisioning/store.py
       - modules/provisioning/idempiere_adapter.py
       - modules/provisioning/native_mapping_store.py
-      - modules/provisioning/planner_patch.py
+      - modules/provisioning/native_processes.py
+      - modules/provisioning/request_state.py
+      - modules/provisioning/execution.py
+      - modules/provisioning/execution_store.py
+      - modules/application/provisioning_worker.py
+      - db/migrations/0021_provisioning_execution.sql
+      - tests/unit/test_provisioning_execution_rules.py
+      - tests/integration/test_provisioning_execution.py
       - modules/context/postgres_store.py
       - db/migrations/0007_create_erp_provisioning.sql
       - db/migrations/0008_add_control_plane_mapping_context.sql
@@ -671,10 +716,10 @@ adrs:
       baobab.erp_provisioning_native_mapping), so a retried step reuses the
       native ID a prior attempt already created instead of duplicating it.
       CONFIGURE_ACCOUNTING/CONFIGURE_LOCALISATION fail closed with no invented
-      process ID unless the plan payload already carries an approved
-      process_id (planner_patch.enrich_step_payload shows the intended
-      integration point into planner.py once real process IDs are configured
-      per deployment). PERSIST_MAPPING additionally writes the resulting
+      process ID unless the step carries an approved process_id, which the
+      executor adds from deployment configuration (native_processes.py) after
+      the plan is built, so the plan digest does not depend on the installation.
+      PERSIST_MAPPING additionally writes the resulting
       (tenant_id, legal_entity_id) -> (AD_Client_ID, AD_Org_ID) row into
       baobab.tenant_mapping (PostgresTenantMappingStore.create_mapping, via the
       adapter's optional tenant_mappings collaborator) so modules/context can
@@ -698,6 +743,26 @@ adrs:
       real deployment until those are supplied; and a live Control Plane client
       and real migration source system still don't exist.
 
+      UPDATE 2026-10-08 (ERP-CAP-04): an accepted command is now executed.
+      application/provisioning_worker.py (the baobab-provisioning-worker Compose
+      service) claims each due operation with a session advisory lock and runs it
+      through ProvisioningExecutor: the stored desired state is decoded and must
+      reproduce the digest it was accepted under (STATE_DRIFT otherwise), the
+      engine session and every process id are resolved before the first step so
+      nothing is created that cannot be finished, completed steps are skipped on
+      resume, and an engine record created just before a crash is adopted by the
+      marker its step wrote into Description rather than created again. Failure is
+      classified (retry with backoff, blocked until an operator configures a
+      credential or process id, failed with a fixed code) and projects onto the
+      command state and its provisioning.changed events. Proven against Postgres
+      and a fake engine (tests/integration/test_provisioning_execution.py), NOT a
+      live iDempiere: AD_Client creation through the REST plugin, Description as
+      the marker column, and the process ids are what ERP-CAP-03 must confirm.
+      Still open: the new AD_Client's own integration credentials
+      (IDEMPIERE_CLIENT_CREDENTIALS_JSON) are set by hand afterwards; the
+      provisioner identity is a deployment secret whose least-privilege role is
+      not yet defined; CREATE_ORGANISATION is never planned.
+
   - id: ADR-ERP-020
     title: ERP production readiness, governance and architecture conformance
     status: partial
@@ -712,6 +777,9 @@ adrs:
       - tests/golden/test_activation.py
       - tests/golden/test_zuribeans_release1.py
       - scripts/validate.sh
+      - scripts/provider_publication.py
+      - tests/conformance/test_provider_publication.py
+      - docs/operations/provider-support-publication.md
     gap: >
       Gate ZB-06 adds the machine-readable readiness gate section 9 describes:
       ActivationEvaluator.evaluate() takes a single LegalEntity's Evidence set and
@@ -749,6 +817,16 @@ adrs:
       are deliberately never replaced with mocks for release evidence. Production
       readiness for ZuriBeans itself has therefore not been demonstrated; this
       gate provides the mechanism that will evaluate it once real evidence exists.
+
+      UPDATE 2026-10-08 (ERP-CAP-07): the capability-provider declaration (.baobab/capability-provider.yaml) is now
+      checked at the pinned Shared commit on every pull request. scripts/provider_publication.py (and
+      tests/conformance/test_provider_publication.py, run by the shared-conformance job) validates the catalogue and
+      the declaration, generates canonical DRAFT EngineRegistration documents through Shared's own generator for
+      IMPLEMENTED support only (today inventory.availability.query; finance.order-consequence.process is PARTIAL and is
+      excluded), and detects drift against a reviewed registration export. It is read-only and offline: it does NOT
+      contact the Control Plane, so Control Plane registration, certification (EA-09), tenant bindings and health remain
+      unproven and are owned by the Control Plane; they need runtime evidence, not this declaration.
+
 
   - id: ADR-ERP-021
     title: ZuriBeans multi-market AD_Client topology

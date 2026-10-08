@@ -20,11 +20,27 @@ def _json_default(value):
     return str(value)
 
 
+def desired_state_json(request: ErpProvisioningRequest) -> str:
+    """The canonical serialisation of a request: what the plan digest is taken over and what is stored as the operation's
+    desired state. ``provisioning.request_state`` reads it back, so the digest can be recomputed from the stored state."""
+    document = asdict(request)
+    for market in document["markets"]:
+        if not market["warehouse_timezones"]:
+            # Omitted when empty so the state of every request accepted before the member existed serialises, and so digests, exactly
+            # as it did: its stored desired state must still reproduce the digest it was approved under.
+            del market["warehouse_timezones"]
+    return json.dumps(document, sort_keys=True, default=_json_default, separators=(",", ":"))
+
+
+def desired_state_digest(request: ErpProvisioningRequest) -> str:
+    return hashlib.sha256(desired_state_json(request).encode()).hexdigest()
+
+
 def build_plan(request: ErpProvisioningRequest) -> ProvisioningPlan:
     """Create a deterministic plan. The same desired state produces the same
     digest and step keys, which makes retries safe and reviewable."""
     require_valid_request(request)
-    serialised = json.dumps(asdict(request), sort_keys=True, default=_json_default, separators=(",", ":"))
+    serialised = desired_state_json(request)
     digest = hashlib.sha256(serialised.encode()).hexdigest()
     prefix = f"{request.provisioning_id}:{digest[:12]}"
     steps: list[ProvisioningStep] = [
@@ -55,7 +71,8 @@ def build_plan(request: ErpProvisioningRequest) -> ProvisioningPlan:
                 ProvisioningStep(
                     f"{prefix}:warehouse:{market.market_id}:{warehouse}",
                     StepKind.CREATE_WAREHOUSE,
-                    {"market_id": market.market_id, "warehouse_code": warehouse},
+                    {"market_id": market.market_id, "warehouse_code": warehouse,
+                     **({"timezone": market.timezone_of(warehouse)} if market.timezone_of(warehouse) else {})},
                 )
             )
     steps.append(

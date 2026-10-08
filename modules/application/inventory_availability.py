@@ -30,7 +30,7 @@ def get_inventory_availability(*, tenant_id, query_string: str, connection, corr
 
     parameters = parse_qs(query_string, keep_blank_values=True)
     errors = []
-    for name in sorted(set(parameters) - {"sku_id", "warehouse_id"}):
+    for name in sorted(set(parameters) - {"sku_id", "warehouse_id", "context_id"}):
         errors.append({"code": "ERP_INVALID_PARAMETER", "message": "unknown parameter", "field": name})
     for name, grammar, grammar_name in (("sku_id", _SKU_ID, "canonical resource identifier"),
                                         ("warehouse_id", _WAREHOUSE_ID, "ERP resource identifier")):

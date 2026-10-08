@@ -45,8 +45,22 @@ class BoundaryApiTests(unittest.TestCase):
         cls.private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         from application.server import Config, make_handler
 
+        cls.config = Config()
+        cls.contexts = {}
+
+        class Validator:
+            def validate(self, *, context_id, subject_token, correlation_id):
+                from security.platform_context import ContextRejected
+                from security.platform_context import ProvisioningAuthority, RUNTIME, TENANT_PROVISIONING, ValidatedContext
+                authority = cls.contexts.get(context_id)
+                if authority is None or authority[0] != subject_token:
+                    raise ContextRejected()
+                token, tenant, purpose, plan = authority
+                return ValidatedContext(tenant, purpose, ProvisioningAuthority(*plan) if plan else None)
+
+        cls.config.context_validator = Validator()
         cls.server = ThreadingHTTPServer(
-            ("127.0.0.1", 0), make_handler(Config(), key_resolver=_Key(cls.private_key.public_key()))
+            ("127.0.0.1", 0), make_handler(cls.config, key_resolver=_Key(cls.private_key.public_key()))
         )
         cls.port = cls.server.server_address[1]
         Thread(target=cls.server.serve_forever, daemon=True).start()
@@ -78,11 +92,34 @@ class BoundaryApiTests(unittest.TestCase):
         body.update(claims)
         return jwt.encode(body, self.private_key, algorithm="RS256")
 
+    def plan_for(self, method, path, data):
+        """The plan tuple of the context a caller of this provisioning operation holds: the plan a POST names, and for a GET
+        the plan the operation was accepted under (when this harness created it), else one that matches nothing."""
+        if isinstance(data, dict) and isinstance(data.get("control_plane_authority"), dict):
+            a = data["control_plane_authority"]
+            return (a.get("tenant_provisioning_id"), a.get("plan_id"), a.get("plan_version"), a.get("plan_digest"))
+        return getattr(self, "operation_plans", {}).get(path.rsplit("/", 1)[-1].split("?")[0],
+                                                       ("tp_unrelated", "plan_unrelated", 1, "sha256:" + "0" * 64))
+
     def _call(self, method, path, token="default", headers=None, data=None):
         token = self._token() if token == "default" else token
         h = dict(headers or {})
         if token:
             h["Authorization"] = f"Bearer {token}"
+        context_paths = ("/inventory-availability", "/order-consequences/", "/provisioning-operations")
+        if any(path.startswith(prefix) for prefix in context_paths):
+            context_id = str(uuid.uuid4())
+            # What a Control Plane context for this operation is authority FOR: provisioning acts before activation under
+            # the approved plan; business-data reads act for an ACTIVE tenant.
+            if path.startswith("/provisioning-operations"):
+                plan = self.plan_for(method, path, data)
+                self.contexts[context_id] = (token, self.tenant, "TENANT_PROVISIONING", plan)
+            else:
+                self.contexts[context_id] = (token, self.tenant, "RUNTIME", None)
+            if method == "GET":
+                path += ("&" if "?" in path else "?") + "context_id=" + context_id
+            elif isinstance(data, dict) and "control_plane_authority" in data:
+                data = dict(data, context_id=context_id)
         request = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", method=method, headers=h,
                                          data=None if data is None else json.dumps(data).encode())
         try:
@@ -230,6 +267,9 @@ class BoundaryApiTests(unittest.TestCase):
     def _provisioning_request(tenant):
         return {"tenant_id": tenant, "legal_entity_ids": ["ZURIBEANS-ZA"], "requested_countries": ["ZA"],
                 "functional_currencies": ["ZAR"],
+                "finance_baselines": [{"baseline_id": "fb_" + "a" * 32, "legal_entity_id": "ZURIBEANS-ZA", "version": 1,
+                                       "digest": "sha256:" + "c1" * 32, "effective_from": "2026-10-01",
+                                       "authority": {"engine_id": "baobab-erp", "system_of_record": "FINANCE_BASELINE"}}],
                 "control_plane_authority": {"tenant_provisioning_id": "tp_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
                                             "plan_id": "plan_0199a1b2c3d47e8f", "plan_version": 1,
                                             "plan_digest": "sha256:" + "b2" * 32}}
@@ -240,11 +280,25 @@ class BoundaryApiTests(unittest.TestCase):
         self.assertProblem(*self._call("POST", "/provisioning-operations", token=self._token(scope="erp:provision"),
                                        headers=key, data={"tenant_id": self.tenant}), 400, "ERP_INVALID_REQUEST")
         self.assertProblem(*self._call("POST", "/provisioning-operations", token=self._token(scope="erp:provision"),
-                                       headers=key, data=self._provisioning_request(self.other)), 403, "ERP_FORBIDDEN")
+                                       headers=key, data=self._provisioning_request(self.other)), 403, "ERP_CONTEXT_REJECTED")
         self.assertProblem(*self._call("POST", "/provisioning-operations", token=self._token(scope="erp:read"),
                                        headers=key, data={}), 403, "ERP_FORBIDDEN")
-        self.assertProblem(*self._call("GET", f"/provisioning-operations/{uuid.uuid4()}"), 404, "ERP_RESOURCE_NOT_FOUND")
-        self.assertProblem(*self._call("GET", "/provisioning-operations/op_nope"), 400, "ERP_INVALID_REQUEST")
+        # Following an operation is part of provisioning (Shared erp/v1 1.1.1): erp:provision, never erp:read.
+        provisioner = self._token(scope="erp:provision")
+        self.assertProblem(*self._call("GET", f"/provisioning-operations/{uuid.uuid4()}", token=provisioner),
+                           404, "ERP_RESOURCE_NOT_FOUND")
+        self.assertProblem(*self._call("GET", "/provisioning-operations/op_nope", token=provisioner), 400, "ERP_INVALID_REQUEST")
+        self.assertProblem(*self._call("GET", f"/provisioning-operations/{uuid.uuid4()}", token=self._token(scope="erp:read")),
+                           403, "ERP_FORBIDDEN")
+
+    def test_the_finance_baseline_reads_are_provisioning_not_business_data_reads(self):
+        # Shared erp/v1 1.3.0: resolving a Finance baseline reference is part of provisioning, so erp:provision, never erp:read.
+        reader = self._token(scope="erp:read")
+        digest = "sha256:" + "c1" * 32
+        for path in ("/legal-entities/ZURIBEANS-ZA/effective-finance-baseline",
+                     f"/finance-baselines/fb_{'a' * 32}?version=1&digest={digest}"):
+            with self.subTest(path):
+                self.assertProblem(*self._call("GET", path, token=reader), 403, "ERP_FORBIDDEN")
 
     def test_provisioning_is_unavailable_until_control_plane_is_configured(self):
         valid = self._provisioning_request(self.tenant)
@@ -260,3 +314,4 @@ class BoundaryApiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
