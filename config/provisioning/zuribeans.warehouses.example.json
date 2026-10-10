@@ -1,7 +1,10 @@
 {
+  "note": "NON-EXECUTABLE example. Physical inventory location does not prove legal presence, accounting authority or jurisdictional seller permission.",
+  "operating_organisation_id": "ZURIBEANS",
   "legal_entities": {
-    "Zuribeans_ZA": {
-      "legal_entity_id": "REPLACE_CP_ZA_LEGAL_ENTITY_ID",
+    "NABHOLD_ZA_PROPOSED": {
+      "legal_entity_id": "NABHOLD",
+      "responsibility_status": "PENDING_SCOPED_MANDATE",
       "market_id": "REPLACE_CP_ZA_MARKET_ID",
       "country_code": "ZA",
       "warehouses": [
@@ -11,18 +14,15 @@
           "organisation_mapping_id": "REPLACE_EXPLICIT_ZA_ERP_ORG_MAPPING"
         }
       ]
-    },
-    "Zuribeans_UG": {
-      "legal_entity_id": "REPLACE_CP_UG_LEGAL_ENTITY_ID",
-      "market_id": "REPLACE_CP_UG_MARKET_ID",
-      "country_code": "UG",
-      "warehouses": [
-        {
-          "code": "ZB-UG-MAIN",
-          "name": "ZuriBeans Uganda Main Warehouse",
-          "organisation_mapping_id": "REPLACE_EXPLICIT_UG_ERP_ORG_MAPPING"
-        }
-      ]
     }
-  }
+  },
+  "unresolved_markets": [
+    {
+      "country_code": "UG",
+      "operating_organisation_id": "ZURIBEANS",
+      "responsible_legal_entity_id": null,
+      "warehouse_intent": "ZB-UG-MAIN",
+      "state": "BLOCKED_UNTIL_UG_LEGAL_ACTOR_AND_WAREHOUSE_AUTHORITY_VERIFIED"
+    }
+  ]
 }
