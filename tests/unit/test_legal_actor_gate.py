@@ -113,6 +113,29 @@ class TestLegalActorFinancialPEP(unittest.TestCase):
                 OP, assessor=Assessor(decision()), provider=None,
                 execute=lambda: True, now=lambda: NOW)
 
+    def test_nabhold_is_only_a_proposed_za_actor_and_never_a_default(self):
+        # Actual first-party identifiers are used to demonstrate DENIAL, not
+        # to create a simulated verified Nabhold legal mandate or finance baseline.
+        proposed = replace(OP, expected_legal_entity_id="NABHOLD")
+        no_mandate = decision(outcome="NO_APPLICABLE_MANDATE")
+        assessor, provider, calls = Assessor(no_mandate), NativeReadiness(), []
+        with self.assertRaises(LegalActorNotAuthorised):
+            perform_governed_financial_action(
+                proposed, assessor=assessor, provider=provider,
+                execute=lambda: calls.append("posted"), now=lambda: NOW,
+            )
+        self.assertEqual((assessor.calls, provider.calls, calls), (1, 0, []))
+
+        # A ZA attribution must never leak into an unverified UG decision.
+        ug = replace(proposed, market="UG")
+        assessor, provider, calls = Assessor(no_mandate), NativeReadiness(), []
+        with self.assertRaises(LegalActorNotAuthorised):
+            perform_governed_financial_action(
+                ug, assessor=assessor, provider=provider,
+                execute=lambda: calls.append("posted"), now=lambda: NOW,
+            )
+        self.assertEqual((assessor.calls, provider.calls, calls), (1, 0, []))
+
     def test_cp_decision_is_not_itself_provider_approval(self):
         self.assertTrue(assert_current_decision(OP, decision(), now=NOW).endswith("a6d"))
 
