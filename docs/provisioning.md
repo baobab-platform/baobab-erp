@@ -19,6 +19,16 @@ REQUESTED
 straight from `REQUESTED` to `ACTIVE` without an assigned `EngineInstance` and configured
 accounting). See `tests/unit/test_provisioning_lifecycle.py`.
 
+## Proposed South African accounting actor for ZuriBeans (10 October 2026)
+
+The accepted architectural direction is **ZuriBeans as a separate operating Organisation and CP tenant; NABHOLD GROUP AFRICA (Pty) Ltd (`NABHOLD`) as the *proposed*, not yet approved, responsible ZA legal person**. An unincorporated ZuriBeans must not acquire a fabricated iDempiere legal company or ERP Finance baseline. Accounting dimensions can distinguish ZuriBeans activity *inside the authorised legal entity*, but an ERP AD_Client/AD_Org mapping, corporate parent relationship, or trading style is not itself a legal-actor mandate.
+
+The `config/provisioning/zuribeans.*.example.json` fixtures now show `NABHOLD` only as a pending ZA candidate with distinct role-specific decisions. The same fixtures explicitly block UG until a separately evidenced market-specific legal actor and provider/regulatory determination exists. Localisation records are candidates, not certified processes.
+
+**No live ERP posting or finance baseline may be created by these examples.** Before any ZA posting, an independent legal/finance authority must verify Nabhold and establish a current `OperatingLegalActorMandate` for the exact role, activity, market and dates; the ERP provider must also verify a Finance-approved baseline, native mapping, accounting period and statutory capability. `INVOICE_ISSUER`, `ACCOUNTING_ENTITY`, `CONTRACTING_PARTY` and `SELLER_OF_RECORD` are separate responsibilities; none follows from another. The existing `order_to_cash.legal_actor_gate` remains an **opt-in adapter** until wired to every material iDempiere command path and certified.
+
+Preserve historic transactions and their original identity maps. Do not rewrite previously posted legal attribution, and do not automatically use Nabhold for Uganda.
+
 ## ZuriBeans provisioning foundation
 
 `modules/provisioning` now contains the first executable desired-state provisioning
