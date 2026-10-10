@@ -128,7 +128,13 @@ class TestLegalActorFinancialPEP(unittest.TestCase):
 
         # A ZA attribution must never leak into an unverified UG decision.
         ug = replace(proposed, market="UG")
-        assessor, provider, calls = Assessor(no_mandate), NativeReadiness(), []
+        class MarketAssessor:
+            calls = 0
+            def assess(self, request):
+                self.calls += 1
+                assert request["market"] == "UG"
+                return no_mandate
+        assessor, provider, calls = MarketAssessor(), NativeReadiness(), []
         with self.assertRaises(LegalActorNotAuthorised):
             perform_governed_financial_action(
                 ug, assessor=assessor, provider=provider,
