@@ -1,15 +1,35 @@
 {
-  "note": "Examples only. Canonical IDs/payloads must come from authoritative Baobab sources; do not seed invented production masters.",
+  "note": "NON-EXECUTABLE architectural example only. ZuriBeans is the operating Organisation, not a separately incorporated company. No finance baseline, legal-actor mandate, provider permission or ERP posting is approved by this file.",
+  "operating_organisation_id": "ZURIBEANS",
+  "operating_market_intents": [
+    "ZA",
+    "UG"
+  ],
   "legal_entities": {
-    "Zuribeans_ZA": {
-      "legal_entity_id": "REPLACE_CP_ZA_LEGAL_ENTITY_ID",
-      "engine_instance_id": "REPLACE_CP_ERP_ENGINE_INSTANCE_ID"
-    },
-    "Zuribeans_UG": {
-      "legal_entity_id": "REPLACE_CP_UG_LEGAL_ENTITY_ID",
-      "engine_instance_id": "REPLACE_CP_ERP_ENGINE_INSTANCE_ID"
+    "NABHOLD_ZA_PROPOSED": {
+      "legal_entity_id": "NABHOLD",
+      "market": "ZA",
+      "engine_instance_id": "REPLACE_CP_APPROVED_ERP_ENGINE_INSTANCE_ID",
+      "operating_organisation_id": "ZURIBEANS",
+      "mandate_status": "PENDING_INDEPENDENT_REVIEW",
+      "required_roles": [
+        "ACCOUNTING_ENTITY",
+        "INVOICE_ISSUER",
+        "CONTRACTING_PARTY",
+        "SELLER_OF_RECORD"
+      ],
+      "role_rule": "Each role needs independent activity-, market- and time-scoped approval; listing a candidate never grants it."
     }
   },
+  "unresolved_legal_actor_markets": [
+    {
+      "market": "UG",
+      "operating_organisation_id": "ZURIBEANS",
+      "state": "NO_VERIFIED_MARKET_SPECIFIC_ACTOR",
+      "legal_entity_id": null,
+      "erp_provisioning": "BLOCKED"
+    }
+  ],
   "required_kinds": [
     "uom",
     "currency",
