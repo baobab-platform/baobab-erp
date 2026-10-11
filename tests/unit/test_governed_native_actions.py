@@ -60,7 +60,7 @@ class Documentary:
             "organisation_id": "org-fixture",
             "blocked": self.blocked,
             "authority_granted": False,
-            "policy_reference": "ADR-BCP-026/negative-only",
+            "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
             "evaluated_at": NOW.isoformat(),
             "expires_at": (NOW+timedelta(seconds=1)).isoformat(),
         }
