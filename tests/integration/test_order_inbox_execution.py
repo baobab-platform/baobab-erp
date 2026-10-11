@@ -249,6 +249,19 @@ class _Base(unittest.TestCase):
 
 
 class ExecutionTests(_Base):
+    def test_protected_inbox_requires_governed_cp_operation_before_native_creation(self):
+        self.seed()
+        wire = self.placed()
+        self.assertEqual(self.deliver(wire), 200)
+        with mock.patch.dict(os.environ, {
+            "BAOBAB_DEPLOYMENT_ENV": "staging",
+            "BAOBAB_REQUIRE_LEGAL_ACTOR_GATE": "true",
+        }):
+            report = self.work()
+        self.assertEqual(report["codes"], {"LEGAL_ACTOR_PENDING": 1})
+        self.assertEqual(self.engine_orders(), [])
+        self.assertEqual(self.row(wire["id"])["status"], "blocked")
+
     def test_an_accepted_order_event_becomes_a_sales_order_a_consequence_and_a_published_event(self):
         self.seed()
         wire = self.placed()
