@@ -32,6 +32,7 @@ _ACTION_ROLE = {
     "create_payment": "ACCOUNTING_ENTITY",
     "complete_payment": "ACCOUNTING_ENTITY",
     "allocate_payment": "ACCOUNTING_ENTITY",
+    "project_business_partner": "ACCOUNTING_ENTITY",
 }
 
 
