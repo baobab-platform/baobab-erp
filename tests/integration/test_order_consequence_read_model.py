@@ -24,6 +24,13 @@ from test_order_to_cash_service import PROCESS_IDS, FakeIdempiereClient  # noqa:
 
 class OrderConsequenceTests(unittest.TestCase):
     def setUp(self):
+        # Synthetic repository history fixture; never a live ERP runtime.
+        gate = patch.dict("os.environ", {
+            "BAOBAB_DEPLOYMENT_ENV": "test",
+            "BAOBAB_REQUIRE_LEGAL_ACTOR_GATE": "false",
+        })
+        gate.start()
+        self.addCleanup(gate.stop)
         self.connection = connect()
         self.addCleanup(self._rollback)
         self.tenant = f"tn_{uuid.uuid4().hex[:16]}"
