@@ -53,7 +53,7 @@ class OrderConsequenceTests(unittest.TestCase):
         if fn is service.post_customer_invoice:
             # Explicitly synthetic native read-model fixture, not a protected
             # command path. Real HTTP callers must use CP-governed posting.
-            with patch.dict("os.environ", {"BAOBAB_DEPLOYMENT_ENV": "test"}):
+            with patch.dict("os.environ", {"BAOBAB_DEPLOYMENT_ENV": "test", "BAOBAB_REQUIRE_LEGAL_ACTOR_GATE": "false"}):
                 return fn(scope=self.scope, idempiere=self.idempiere, mappings=self.mappings, consequences=self.store, **kw)
         return fn(scope=self.scope, idempiere=self.idempiere, mappings=self.mappings, consequences=self.store, **kw)
 
