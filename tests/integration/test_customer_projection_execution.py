@@ -125,6 +125,89 @@ class CustomerProjectionTests(_Base):
     def partner_records(self):
         return self.partners.tables("C_BPartner")
 
+    # LA-05D7: a projected customer is a native partner mutation, not
+    # merely a Trade event. An inbox signature alone is never a legal actor
+    # mandate, an iDempiere provider approval or a documentary release.
+    def test_protected_customer_inbox_denies_native_partner_without_cp_authority(self):
+        self.seed_tenant()
+        wire = self.projected()
+        self.assertEqual(self.deliver(wire), 200)
+        with unittest.mock.patch.dict("os.environ", {
+            "BAOBAB_DEPLOYMENT_ENV":"staging",
+            "BAOBAB_REQUIRE_LEGAL_ACTOR_GATE":"true",
+        }):
+            report = self.work()
+        self.assertEqual(report["codes"], {"LEGAL_ACTOR_PENDING":1})
+        self.assertEqual(self.partner_records(), {})
+        self.assertEqual(self.row(wire["id"])["status"], "blocked")
+
+    def test_protected_customer_projection_requires_distinct_scoped_accounting_actor(self):
+        from datetime import datetime, timedelta, timezone
+        from customers.projection_execution import CustomerNativeAuthority
+        from order_to_cash.native_action_gate import NativeActionPolicy
+        from order_to_cash.legal_actor_gate import LegalActorOperation
+
+        self.seed_tenant()
+        wire = self.projected()
+        self.assertEqual(self.deliver(wire),200)
+        time_now = datetime.now(timezone.utc)
+        policy = NativeActionPolicy(
+            action="project_business_partner",activity="MASTER_DATA_CUSTOMER",
+            capability="synthetic.test-only.customer.projection",
+            authority_reference="synthetic/provider-census",
+        )
+        operation = LegalActorOperation(
+            context_id="ctx-synthetic-customer-projection",
+            tenant_id=self.tenant,operating_organisation_id="org-synthetic-customer",
+            expected_legal_entity_id=self.entity,role="ACCOUNTING_ENTITY",
+            activity=policy.activity,market="ZA",capability=policy.capability,
+            operation_reference=self.customer,
+        )
+        calls={"cp":0,"documentary":0,"provider":0}
+        class CP:
+            def assess(self, req):
+                calls["cp"]+=1
+                return {
+                    "context_id":req["context_id"],
+                    "operation_reference":req["operation_reference"],
+                    "provider_permissions_granted":False,
+                    "legal_actor_resolution":{
+                        "outcome":"AUTHORIZED",
+                        "responsible_legal_entity_id":operation.expected_legal_entity_id,
+                        "mandate_id":"mandate-synthetic-customer-only",
+                        "evidence_references":["synthetic/not-real-legal-record"],
+                        "evaluated_at":time_now.isoformat(),
+                        "valid_until":(time_now+timedelta(seconds=12)).isoformat(),
+                    },
+                }
+        class Doc:
+            def assess(self, req):
+                calls["documentary"]+=1
+                return {
+                    **req,"organisation_id":operation.operating_organisation_id,
+                    "blocked":False,"authority_granted":False,
+                    "policy_reference":"ADR-BCP-026/PEO-02T:negative-only",
+                    "evaluated_at":time_now.isoformat(),
+                    "expires_at":(time_now+timedelta(seconds=2)).isoformat(),
+                }
+        class Native:
+            def ensure_legal_actor_usable(self,op,mandate):
+                calls["provider"]+=1
+                if mandate!="mandate-synthetic-customer-only":
+                    raise AssertionError("wrong independent master data legal actor")
+        authority=CustomerNativeAuthority(
+            policy=policy,operation=operation,assessor=CP(),
+            provider=Native(),documentary=Doc(),
+        )
+        with unittest.mock.patch.dict("os.environ", {
+            "BAOBAB_DEPLOYMENT_ENV":"staging",
+            "BAOBAB_REQUIRE_LEGAL_ACTOR_GATE":"true",
+        }):
+            result=self.work(customer_authority_for=lambda claim:authority)
+        self.assertEqual(result["codes"], {"CREATED":1})
+        self.assertEqual(len(self.partner_records()),1)
+        self.assertEqual(calls,{"cp":2,"documentary":2,"provider":1})
+
     # -- the path ----------------------------------------------------------------------------------------------------------------
     def test_an_accepted_customer_event_becomes_a_business_partner_and_the_mapping_orders_use(self):
         self.seed_tenant()
