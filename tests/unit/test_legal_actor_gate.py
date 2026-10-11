@@ -71,7 +71,33 @@ class TestLegalActorFinancialPEP(unittest.TestCase):
                 now=lambda: NOW,
             )
             self.assertEqual(out, "idempiere-posted")
-        self.assertEqual((assessor.calls, provider.calls, len(calls)), (2, 2, 2))
+        self.assertEqual((assessor.calls, provider.calls, len(calls)), (4, 2, 2))
+
+    def test_revoked_or_changed_mandate_during_provider_readiness_denies(self):
+        now = NOW
+        for change in (
+            {"outcome": "REVOKED_OR_EXPIRED"},
+            {"mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a7d"},
+        ):
+            with self.subTest(change=change):
+                class SwitchingAssessor:
+                    calls = 0
+                    def assess(self, request):
+                        self.calls += 1
+                        result = decision()
+                        if self.calls == 2:
+                            result["legal_actor_resolution"] = {
+                                **result["legal_actor_resolution"], **change,
+                            }
+                        return result
+                assessor = SwitchingAssessor()
+                provider, native = NativeReadiness(), []
+                with self.assertRaises(LegalActorNotAuthorised):
+                    perform_governed_financial_action(
+                        OP, assessor=assessor, provider=provider,
+                        execute=lambda: native.append("posted"), now=lambda: now,
+                    )
+                self.assertEqual((assessor.calls, provider.calls, native), (2, 1, []))
 
     def test_denials_prevent_native_erp_mutation(self):
         cases = [
