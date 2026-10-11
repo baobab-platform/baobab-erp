@@ -210,10 +210,11 @@ class _Base(unittest.TestCase):
         with urllib.request.urlopen(request) as response:
             return response.status
 
-    def work(self, connection=None, worker="w1", limit=20, lease=300):
+    def work(self, connection=None, worker="w1", limit=20, lease=300, authority_for=None):
         from application.inbox_worker import run_once
 
-        return run_once(connection or self.db, self.engine_for, worker_id=worker, limit=limit, lease_seconds=lease)
+        return run_once(connection or self.db, self.engine_for, worker_id=worker,
+                        limit=limit, lease_seconds=lease, authority_for=authority_for)
 
     def row(self, event_id):
         with self.db.cursor() as cursor:
@@ -261,6 +262,72 @@ class ExecutionTests(_Base):
         self.assertEqual(report["codes"], {"LEGAL_ACTOR_PENDING": 1})
         self.assertEqual(self.engine_orders(), [])
         self.assertEqual(self.row(wire["id"])["status"], "blocked")
+
+    def test_approved_per_claim_cp_and_documentary_lease_allows_only_exact_order(self):
+        from order_to_cash.inbox_execution import InboxNativeAuthority
+        from order_to_cash.native_action_gate import NativeActionPolicy
+        from order_to_cash.legal_actor_gate import LegalActorOperation
+
+        self.seed()
+        wire = self.placed()
+        self.assertEqual(self.deliver(wire), 200)
+        now = datetime.now(timezone.utc)
+        cap = "synthetic.test-only.erp.order.create"
+        activity = "B2B_TRADE_ORDER"
+        policy = NativeActionPolicy(
+            action="create_sales_order", capability=cap, activity=activity,
+            authority_reference="synthetic/independent-provider-authority",
+        )
+        op = LegalActorOperation(
+            context_id="ctx-synthetic-reviewed-by-cp", tenant_id=self.tenant,
+            operating_organisation_id="org-synthetic-operated",
+            expected_legal_entity_id=self.entity,
+            role="CONTRACTING_PARTY", activity=activity, market="ZA",
+            capability=cap, operation_reference=self.order,
+        )
+        calls = {"cp":0, "documentary":0, "provider":0}
+        class CPAssessor:
+            def assess(_, request):
+                calls["cp"] += 1
+                return {
+                    "context_id": request["context_id"],
+                    "operation_reference": request["operation_reference"],
+                    "provider_permissions_granted": False,
+                    "legal_actor_resolution": {
+                        "outcome":"AUTHORIZED",
+                        "mandate_id":"mandate-synthetic-external-reviewed",
+                        "responsible_legal_entity_id":self.entity,
+                        "evidence_references":["synthetic/not-real-source"],
+                        "evaluated_at":now.isoformat(),
+                        "valid_until":(now+timedelta(seconds=10)).isoformat(),
+                    },
+                }
+        class Documentary:
+            def assess(_, request):
+                calls["documentary"] += 1
+                return {
+                    **request, "organisation_id":op.operating_organisation_id,
+                    "blocked":False,"authority_granted":False,
+                    "policy_reference":"ADR-BCP-026/PEO-02T:negative-only",
+                    "evaluated_at":now.isoformat(),
+                    "expires_at":(now+timedelta(seconds=1)).isoformat(),
+                }
+        class Native:
+            def ensure_legal_actor_usable(_, operation, mandate_id):
+                calls["provider"] += 1
+                self.assertEqual(mandate_id,"mandate-synthetic-external-reviewed")
+        authorised = InboxNativeAuthority(
+            policy=policy, operation=op, assessor=CPAssessor(),
+            provider=Native(), documentary=Documentary(),
+        )
+        with mock.patch.dict(os.environ, {
+            "BAOBAB_DEPLOYMENT_ENV":"staging",
+            "BAOBAB_REQUIRE_LEGAL_ACTOR_GATE":"true",
+        }):
+            outcome = self.work(authority_for=lambda claim: authorised)
+        self.assertEqual(outcome["codes"], {"EXECUTED":1})
+        self.assertEqual(len(self.engine_orders()), 1)
+        self.assertEqual(calls, {"cp":2,"documentary":2,"provider":1})
 
     def test_an_accepted_order_event_becomes_a_sales_order_a_consequence_and_a_published_event(self):
         self.seed()
