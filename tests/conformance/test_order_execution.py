@@ -46,6 +46,15 @@ class _Capture:
 
 class OrderExecutionConformanceTests(unittest.TestCase):
     def setUp(self):
+        # A synthetic stand-in engine exercises Shared schemas, never the
+        # protected IAM/CP/native iDempiere production executor.
+        from unittest.mock import patch
+        gate=patch.dict(os.environ,{
+            "BAOBAB_DEPLOYMENT_ENV":"test",
+            "BAOBAB_REQUIRE_LEGAL_ACTOR_GATE":"false",
+        })
+        gate.start()
+        self.addCleanup(gate.stop)
         self.db = psycopg.connect(os.environ["DATABASE_URL"])
         self.tag = uuid.uuid4().hex[:10]
         wire = shared.read_json("erp/v1/examples/commerce-order-placed.json")
