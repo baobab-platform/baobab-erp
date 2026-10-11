@@ -2,6 +2,7 @@
 boundary read serves it, tenant-scoped. Nothing commits; every test rolls back."""
 import sys
 import unittest
+from unittest.mock import patch
 import uuid
 from pathlib import Path
 
@@ -49,6 +50,11 @@ class OrderConsequenceTests(unittest.TestCase):
             mappings=self.mappings, consequences=self.store, **kw)
 
     def step(self, fn, **kw):
+        if fn is service.post_customer_invoice:
+            # Explicitly synthetic native read-model fixture, not a protected
+            # command path. Real HTTP callers must use CP-governed posting.
+            with patch.dict("os.environ", {"BAOBAB_DEPLOYMENT_ENV": "test"}):
+                return fn(scope=self.scope, idempiere=self.idempiere, mappings=self.mappings, consequences=self.store, **kw)
         return fn(scope=self.scope, idempiere=self.idempiere, mappings=self.mappings, consequences=self.store, **kw)
 
     def test_the_whole_sequence_moves_the_read_model_and_the_read_serves_it(self):
