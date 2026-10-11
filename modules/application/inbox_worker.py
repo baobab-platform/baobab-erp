@@ -33,7 +33,7 @@ import psycopg
 from inbox.postgres_queue import Claim, PostgresInboxQueue
 from integration.idempiere_client import RestIdempiereClient
 from order_to_cash.execution_policy import ALL_ORGANIZATIONS_AD_ORG_ID, ORDER_PLACED
-from customers.projection_execution import CUSTOMER_PROJECTED, run_claim as run_customer_claim
+from customers.projection_execution import CUSTOMER_PROJECTED, CustomerNativeAuthority, run_claim as run_customer_claim
 from order_to_cash.inbox_execution import EngineOrgMismatch, InboxNativeAuthority, run_claim
 
 
@@ -52,7 +52,8 @@ def _engine_factory(credentials: dict):
 
 
 def run_once(connection: psycopg.Connection, engine_for, *, worker_id: str, limit: int = 50, lease_seconds: int = 300,
-             authority_for: Callable[[Claim], InboxNativeAuthority | None] | None = None) -> dict:
+             authority_for: Callable[[Claim], InboxNativeAuthority | None] | None = None,
+             customer_authority_for: Callable[[Claim], CustomerNativeAuthority | None] | None = None) -> dict:
     """One pass: up to ``limit`` rows per event type, customers first. ``pass`` and ``codes`` count outcomes across both types; the
     backlog is reported per type so an alert can watch each."""
     queue = PostgresInboxQueue(connection)
@@ -76,7 +77,17 @@ def run_once(connection: psycopg.Connection, engine_for, *, worker_id: str, limi
                         authority = None
                 outcome = run_claim(claim, connection, queue, engine_for, authority=authority)
             else:
-                outcome = run_customer_claim(claim, connection, queue, engine_for)
+                # Customer partner creation/update is also a legal-actor
+                # sensitive native ERP mutation. Its authority must be
+                # reviewed independently of the Trade order's permit.
+                customer_authority = None
+                if customer_authority_for is not None:
+                    try:
+                        customer_authority = customer_authority_for(claim)
+                    except Exception:
+                        customer_authority = None
+                outcome = run_customer_claim(claim, connection, queue, engine_for,
+                                             authority=customer_authority)
             done[outcome.status] = done.get(outcome.status, 0) + 1
             codes[outcome.code] = codes.get(outcome.code, 0) + 1
     return {"event": "inbox.execute", "worker": worker_id, "pass": done, "codes": codes,
