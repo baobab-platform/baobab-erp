@@ -158,7 +158,7 @@ class ShipmentInvoicePaymentFlowTests(unittest.TestCase):
         # Historical native-unit fixture only. In an actual staging or
         # production runtime this direct call is denied and only the
         # approved CP-governed wrapper may enter the iDempiere command.
-        with patch.dict("os.environ", {"BAOBAB_DEPLOYMENT_ENV": "test"}):
+        with patch.dict("os.environ", {"BAOBAB_DEPLOYMENT_ENV": "test", "BAOBAB_REQUIRE_LEGAL_ACTOR_GATE": "false"}):
             service.post_customer_invoice(
                 scope=SCOPE, invoice_canonical_id=invoice_ref.canonical_id, correlation_id="corr-9",
                 process_ids=PROCESS_IDS, idempiere=self.idempiere, mappings=self.mappings, outbox=self.outbox,
