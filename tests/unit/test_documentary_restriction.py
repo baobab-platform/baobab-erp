@@ -53,7 +53,7 @@ class Response:
 
 class TestERPDocumentaryNegativeVeto(unittest.TestCase):
     def test_exact_current_clear_scope_is_only_nonblocking_not_permission(self):
-        self.assertIsNone(assert_documentary_scope_unblocked(OP, clear(), now=NOW))
+        assert_documentary_scope_unblocked(OP, clear(), now=NOW)
         for altered in (
             {"blocked": True}, {"blocked": "false"}, {"authority_granted": True},
             {"organisation_id": "wrong-org"}, {"context_id": "wrong-context"},
@@ -62,6 +62,8 @@ class TestERPDocumentaryNegativeVeto(unittest.TestCase):
             {"expires_at": (NOW - timedelta(seconds=1)).isoformat()},
             {"expires_at": (NOW + timedelta(seconds=30)).isoformat()},
             {"evaluated_at": (NOW - timedelta(seconds=30)).isoformat()},
+            {"evaluated_at": (NOW + timedelta(seconds=1)).isoformat(),
+             "expires_at": (NOW + timedelta(milliseconds=500)).isoformat()},
         ):
             with self.subTest(altered=altered):
                 with self.assertRaises(LegalActorNotAuthorised):
@@ -90,6 +92,14 @@ class TestERPDocumentaryNegativeVeto(unittest.TestCase):
         with self.assertRaises(ValueError):
             HttpControlPlaneDocumentaryRestrictionAssessor(
                 "http://untrusted.example", lambda: "token", lambda: "correlation",
+            )
+
+    def test_unauthorised_redirects_cannot_forward_erp_workload_token(self):
+        from order_to_cash.documentary_restriction import _RejectRedirect
+
+        with self.assertRaises(ValueError):
+            _RejectRedirect().redirect_request(
+                None, None, 302, "found", {}, "https://external.example/steal-token",
             )
 
     def test_duplicate_json_keys_are_not_authoritative(self):
