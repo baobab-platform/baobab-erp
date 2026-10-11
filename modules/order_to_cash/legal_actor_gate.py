@@ -103,16 +103,25 @@ def perform_governed_financial_action(
     operation.validate()
     if assessor is None or provider is None or execute is None:
         raise LegalActorNotAuthorised("CP assessment and ERP provider readiness required")
-    decision = assessor.assess({
+    request = {
         "context_id": operation.context_id,
         "role": operation.role,
         "activity": operation.activity,
         "market": operation.market,
         "capability": operation.capability,
         "operation_reference": operation.operation_reference,
-    })
+    }
+    decision = assessor.assess(request)
     if not isinstance(decision, dict):
         raise LegalActorNotAuthorised("CP legal actor assessment unavailable")
     mandate = assert_current_decision(operation, decision, now=now())
     provider.ensure_legal_actor_usable(operation, mandate)
+    # A mandate may be revoked or reassigned during iDempiere/provider checks.
+    # One current assessment at the final point of use is mandatory, even
+    # when native invoice posting is an idempotent replay.
+    current = assessor.assess(request)
+    if not isinstance(current, dict):
+        raise LegalActorNotAuthorised("current CP legal actor authority unavailable")
+    if assert_current_decision(operation, current, now=now()) != mandate:
+        raise LegalActorNotAuthorised("legal actor mandate changed during readiness")
     return execute()

@@ -57,10 +57,36 @@ class Provider:
             raise LegalActorNotAuthorised("native finance role not ready")
 
 
-def invoke(*, operation=OPERATION, assessor=None, provider=None):
+class Documentary:
+    def __init__(self, *, blocked=False, failure=False, change_on_second=False):
+        self.blocked, self.failure, self.change_on_second = blocked, failure, change_on_second
+        self.calls = 0
+
+    def assess(self, request):
+        self.calls += 1
+        if self.failure:
+            raise OSError("synthetic CP outage")
+        assert request == {
+            "context_id": OPERATION.context_id, "capability": OPERATION.capability,
+            "market": OPERATION.market, "operation_reference": OPERATION.operation_reference,
+        }
+        blocked = self.blocked or (self.change_on_second and self.calls == 2)
+        return {
+            **request,
+            "organisation_id": OPERATION.operating_organisation_id,
+            "blocked": blocked, "authority_granted": False,
+            "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+            "evaluated_at": NOW.isoformat(),
+            "expires_at": (NOW + timedelta(seconds=1)).isoformat(),
+        }
+
+
+def invoke(*, operation=OPERATION, assessor=None, provider=None, documentary=...):
+    if documentary is ...:
+        documentary = Documentary()
     return post_customer_invoice_governed(
         operation=operation, assessor=assessor or Assessor(decision()),
-        provider=provider or Provider(), scope=SCOPE,
+        provider=provider or Provider(), documentary=documentary, scope=SCOPE,
         invoice_canonical_id=OPERATION.operation_reference,
         correlation_id="synthetic-correlation-id",
         process_ids=ProcessIds(1,2,3,4,5),
@@ -75,7 +101,33 @@ class TestGovernedInvoicePosting(unittest.TestCase):
             invoke(assessor=assessor, provider=provider)
             invoke(assessor=assessor, provider=provider)
             self.assertEqual(native.call_count, 2)
-            self.assertEqual((assessor.calls, provider.calls), (2,2))
+            self.assertEqual((assessor.calls, provider.calls), (4,2))
+
+    def test_missing_or_held_documentary_authority_denies_before_native_mutation(self):
+        for documentary in (None, Documentary(blocked=True), Documentary(failure=True)):
+            with self.subTest(documentary=documentary):
+                with patch("order_to_cash.governed_service.post_customer_invoice") as native:
+                    with self.assertRaises(LegalActorNotAuthorised):
+                        invoke(documentary=documentary)
+                    native.assert_not_called()
+
+    def test_documentary_hold_imposed_during_provider_readiness_denies(self):
+        documentary = Documentary(change_on_second=True)
+        provider = Provider()
+        with patch("order_to_cash.governed_service.post_customer_invoice") as native:
+            with self.assertRaises(LegalActorNotAuthorised):
+                invoke(documentary=documentary, provider=provider)
+            native.assert_not_called()
+            self.assertEqual(documentary.calls, 2)
+            self.assertEqual(provider.calls, 1)
+
+    def test_documentary_is_rechecked_before_each_native_invoice_posting(self):
+        documentary = Documentary()
+        with patch("order_to_cash.governed_service.post_customer_invoice") as native:
+            invoke(documentary=documentary)
+            invoke(documentary=documentary)
+            self.assertEqual(documentary.calls, 4)
+            self.assertEqual(native.call_count, 2)
 
     def test_mismatched_tenant_role_actor_capability_or_reference_blocks_native(self):
         cases = [
