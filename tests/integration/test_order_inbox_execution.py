@@ -210,11 +210,12 @@ class _Base(unittest.TestCase):
         with urllib.request.urlopen(request) as response:
             return response.status
 
-    def work(self, connection=None, worker="w1", limit=20, lease=300, authority_for=None):
+    def work(self, connection=None, worker="w1", limit=20, lease=300, authority_for=None, customer_authority_for=None):
         from application.inbox_worker import run_once
 
         return run_once(connection or self.db, self.engine_for, worker_id=worker,
-                        limit=limit, lease_seconds=lease, authority_for=authority_for)
+                        limit=limit, lease_seconds=lease, authority_for=authority_for,
+                        customer_authority_for=customer_authority_for)
 
     def row(self, event_id):
         with self.db.cursor() as cursor:
