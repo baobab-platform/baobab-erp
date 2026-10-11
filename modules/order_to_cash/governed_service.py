@@ -20,7 +20,7 @@ from order_to_cash.legal_actor_gate import (
 from order_to_cash.model import TenantScope
 from order_to_cash.service import (
     ConsequenceStore, IdempiereClient, MappingStore,
-    OutboxStore, ProcessIds, post_customer_invoice,
+    OutboxStore, ProcessIds, post_customer_invoice, _authorised_invoice_post,
 )
 from order_to_cash import accounting_outcomes as outcomes_rules
 
@@ -67,20 +67,27 @@ def post_customer_invoice_governed(
         raise LegalActorNotAuthorised("invoice posting legal actor context mismatch")
     if documentary is None or provider is None:
         raise LegalActorNotAuthorised("independent documentary and provider readiness required")
+    # The private native command may execute only within THIS precise scope,
+    # after CP has been rechecked at point of use. No externally supplied
+    # boolean, role, tenant DEFAULT or request metadata sets this permit.
+    def guarded_native_post() -> None:
+        with _authorised_invoice_post(scope, invoice_canonical_id):
+            post_customer_invoice(
+                scope=scope,
+                invoice_canonical_id=invoice_canonical_id,
+                correlation_id=correlation_id,
+                process_ids=process_ids,
+                idempiere=idempiere,
+                mappings=mappings,
+                outbox=outbox,
+                consequences=consequences,
+                outcomes=outcomes,
+            )
+
     return perform_governed_financial_action(
         operation,
         assessor=assessor,
         provider=_DocumentaryAndNativeReadiness(provider, documentary, now),
         now=now,
-        execute=lambda: post_customer_invoice(
-            scope=scope,
-            invoice_canonical_id=invoice_canonical_id,
-            correlation_id=correlation_id,
-            process_ids=process_ids,
-            idempiere=idempiere,
-            mappings=mappings,
-            outbox=outbox,
-            consequences=consequences,
-            outcomes=outcomes,
-        ),
+        execute=guarded_native_post,
     )
