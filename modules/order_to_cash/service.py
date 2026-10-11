@@ -71,6 +71,33 @@ _invoice_post_execution: ContextVar[tuple[str, str, str] | None] = ContextVar(
     "baobab_erp_invoice_post_execution", default=None,
 )
 
+# LA-05D5: the remaining native order/shipment/payment write entry points
+# require a separate one-operation CP decision in protected runtimes. This
+# execution marker is created only by the governed wrapper after exact
+# role/activity/capability and independent documentary/provider checks.
+_native_action_execution: ContextVar[tuple[str, str, str, str] | None] = ContextVar(
+    "baobab_erp_native_action_execution", default=None,
+)
+
+@contextmanager
+def _authorised_native_action(scope: TenantScope, action: str, reference: str) -> Iterator[None]:
+    marker = (scope.tenant_id, scope.legal_entity_id, action, reference)
+    token = _native_action_execution.set(marker)
+    try:
+        yield
+    finally:
+        _native_action_execution.reset(token)
+
+def _deny_legacy_native_action(scope: TenantScope, action: str, reference: str) -> None:
+    if _protected_finance_runtime() and _native_action_execution.get() != (
+        scope.tenant_id, scope.legal_entity_id, action, reference
+    ):
+        raise OrderToCashError(
+            "native order-to-cash action denied: exact CP legal actor, "
+            "documentary and iDempiere readiness approval required"
+        )
+
+
 
 def _protected_finance_runtime() -> bool:
     """Fail closed on the known staging/production deployment environments."""
@@ -328,6 +355,7 @@ def create_sales_order(
     outbox: "OutboxStore | None" = None,
     correlation_id: str | None = None,
 ) -> NativeDocumentRef:
+    _deny_legacy_native_action(scope, "create_sales_order", commerce_order_canonical_id)
     """Creates a draft C_Order. Drafted, not yet accepted -- creation alone is
     not one of ADR-ERP-016 SS22's six distinct facts, so no event is emitted
     here; complete_sales_order emits erp.sales-order.accepted.v1 once the
@@ -371,6 +399,7 @@ def complete_sales_order(
     outbox: OutboxStore,
     consequences: ConsequenceStore | None = None,
 ) -> None:
+    _deny_legacy_native_action(scope, "complete_sales_order", commerce_order_canonical_id)
     native_id = _resolve_native(
         scope=scope,
         canonical_type="CommerceOrder",
@@ -406,6 +435,7 @@ def create_shipment(
     mappings: MappingStore,
     consequences: ConsequenceStore | None = None,
 ) -> NativeDocumentRef:
+    _deny_legacy_native_action(scope, "create_shipment", shipment_canonical_id)
     order_native_id = _resolve_native(
         scope=scope,
         canonical_type="CommerceOrder",
@@ -440,6 +470,7 @@ def complete_shipment(
     outbox: OutboxStore,
     consequences: ConsequenceStore | None = None,
 ) -> None:
+    _deny_legacy_native_action(scope, "complete_shipment", shipment_canonical_id)
     native_id = _resolve_native(
         scope=scope,
         canonical_type="GoodsShipment",
@@ -476,6 +507,7 @@ def create_customer_invoice(
     mappings: MappingStore,
     consequences: ConsequenceStore | None = None,
 ) -> NativeDocumentRef:
+    _deny_legacy_native_action(scope, "create_customer_invoice", commerce_order_canonical_id)
     """Mints a new canonical id for the invoice rather than accepting one from
     the caller: per the erp_system_of_record contract (nabhold/shared,
     referenced in contracts.lock.yaml), ERP is the sole canonical owner of
@@ -566,6 +598,7 @@ def create_payment(
     idempiere: IdempiereClient,
     mappings: MappingStore,
 ) -> NativeDocumentRef:
+    _deny_legacy_native_action(scope, "create_payment", payment_canonical_id)
     """Records the ERP-side accounting fact for a payment already captured by
     Medusa/a payment provider (ADR-ERP-016 SS67-77: capture and accounting are
     kept as separate entities on purpose -- this function is never the thing
@@ -593,6 +626,7 @@ def complete_payment(
     outbox: OutboxStore,
     outcomes: "outcomes_rules.DocumentOutcomeStore | None" = None,
 ) -> None:
+    _deny_legacy_native_action(scope, "complete_payment", payment_canonical_id)
     native_id = _resolve_native(
         scope=scope,
         canonical_type="Payment",
@@ -628,6 +662,7 @@ def allocate_payment(
     consequences: ConsequenceStore | None = None,
     outcomes: "outcomes_rules.DocumentOutcomeStore | None" = None,
 ) -> None:
+    _deny_legacy_native_action(scope, "allocate_payment", payment_canonical_id + ':' + invoice_canonical_id)
     """Matches a completed Payment against a posted Customer Invoice --
     genuinely distinct from complete_payment per ADR-ERP-016 SS67-77: a
     payment can be completed (money accounted for) before it is known which
