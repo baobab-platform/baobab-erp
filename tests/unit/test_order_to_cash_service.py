@@ -59,6 +59,14 @@ class FakeOutboxStore:
 
 class SalesOrderTests(unittest.TestCase):
     def setUp(self):
+        # Synthetic legacy mapping/consequence fixture only; this never
+        # changes the protected default in a deployed ERP runtime.
+        gate = patch.dict("os.environ", {
+            "BAOBAB_DEPLOYMENT_ENV": "test",
+            "BAOBAB_REQUIRE_LEGAL_ACTOR_GATE": "false",
+        })
+        gate.start()
+        self.addCleanup(gate.stop)
         self.idempiere = FakeIdempiereClient()
         self.mappings = FakeMappingStore()
         self.outbox = FakeOutboxStore()
@@ -120,6 +128,14 @@ class SalesOrderTests(unittest.TestCase):
 
 class ShipmentInvoicePaymentFlowTests(unittest.TestCase):
     def setUp(self):
+        # Synthetic legacy mapping/consequence fixture only; this never
+        # changes the protected default in a deployed ERP runtime.
+        gate = patch.dict("os.environ", {
+            "BAOBAB_DEPLOYMENT_ENV": "test",
+            "BAOBAB_REQUIRE_LEGAL_ACTOR_GATE": "false",
+        })
+        gate.start()
+        self.addCleanup(gate.stop)
         self.idempiere = FakeIdempiereClient()
         self.mappings = FakeMappingStore()
         self.outbox = FakeOutboxStore()
