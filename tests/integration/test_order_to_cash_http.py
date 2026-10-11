@@ -118,7 +118,9 @@ class OrderToCashHttpIntegrationTests(unittest.TestCase):
         # fake workload issuer. This is a disposable TEST, not certification
         # that the protected legacy HTTP financial route is authorised.
         cls._prior_finance_env = os.environ.get("BAOBAB_DEPLOYMENT_ENV")
+        cls._prior_finance_enforcement = os.environ.get("BAOBAB_REQUIRE_LEGAL_ACTOR_GATE")
         os.environ["BAOBAB_DEPLOYMENT_ENV"] = "test"
+        os.environ["BAOBAB_REQUIRE_LEGAL_ACTOR_GATE"] = "false"
         database_url = require_database_url()  # skips the whole class if unset
         os.environ["DATABASE_URL"] = database_url
         os.environ["BAOBAB_EVENT_SIGNING_SECRET"] = SECRET
@@ -176,6 +178,10 @@ class OrderToCashHttpIntegrationTests(unittest.TestCase):
             os.environ.pop("BAOBAB_DEPLOYMENT_ENV", None)
         else:
             os.environ["BAOBAB_DEPLOYMENT_ENV"] = cls._prior_finance_env
+        if cls._prior_finance_enforcement is None:
+            os.environ.pop("BAOBAB_REQUIRE_LEGAL_ACTOR_GATE", None)
+        else:
+            os.environ["BAOBAB_REQUIRE_LEGAL_ACTOR_GATE"] = cls._prior_finance_enforcement
         cls.server.shutdown()
         cls.server.server_close()
         cls.fake_idempiere.shutdown()
