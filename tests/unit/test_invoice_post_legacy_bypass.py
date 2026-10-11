@@ -34,6 +34,11 @@ class TestLegacyInvoicePostingIsolation(unittest.TestCase):
                 mappings.find_native.assert_not_called()
                 outbox.record.assert_not_called()
 
+    def test_unconfigured_environment_is_protected_by_default(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(OrderToCashError):
+                _deny_legacy_invoice_post(SCOPE, "invoice-synthetic-123")
+
     def test_explicit_legal_actor_requirement_closes_legacy_route_even_in_dev(self):
         with patch.dict(os.environ, {
             "BAOBAB_DEPLOYMENT_ENV": "development",
