@@ -19,6 +19,7 @@ against a fake engine, not a live iDempiere; ``POReference`` as the lookup key i
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable, Protocol
 
@@ -31,15 +32,35 @@ from integration.idempiere_client import Eq, IdempiereApiError, IdempiereClientE
 from order_to_cash.consequence_events import consequence_changed_event
 from order_to_cash.consequence_store import PostgresOrderConsequenceStore
 from order_to_cash.execution_policy import CONTENTION_DELAY_SECONDS, CUSTOMER_KIND, PRODUCT_KIND, Outcome, erp_order_id
-from order_to_cash.model import OrderLine
+from order_to_cash.documentary_restriction import DocumentaryRestrictionAssessor
+from order_to_cash.legal_actor_gate import (
+    LegalActorAssessor, LegalActorNotAuthorised, LegalActorOperation, LegalActorProviderReadiness,
+)
+from order_to_cash.native_action_gate import NativeActionPolicy, perform_governed_native_action
+from order_to_cash.model import OrderToCashError, TenantScope, OrderLine
 from order_to_cash.placed_order import PayloadError, PlacedOrder, parse_placed_order
-from order_to_cash.service import sales_order_fields
+from order_to_cash.service import _deny_legacy_native_action, _protected_finance_runtime, sales_order_fields
 from outbox.postgres_store import PostgresOutboxStore
 
 
 _Stop = Stop
 PostgresOrderMasterData = PostgresMasterData
-__all__ = ["EngineOrgMismatch", "Target", "run_claim"]  # EngineOrgMismatch: the worker and the tests import it from here
+__all__ = ["EngineOrgMismatch", "Target", "run_claim"]
+
+@dataclass(frozen=True, slots=True)
+class InboxNativeAuthority:
+    """Trusted operator-owned CP and ERP authority, NEVER from an event payload.
+
+    No default value exists in staging/production; a missing policy blocks
+    the inbox before any native engine lookup, creation or adoption.
+    """
+    policy: NativeActionPolicy
+    operation: LegalActorOperation
+    assessor: LegalActorAssessor
+    provider: LegalActorProviderReadiness
+    documentary: DocumentaryRestrictionAssessor
+
+  # EngineOrgMismatch: the worker and the tests import it from here
 
 
 class IdempiereOrders(Protocol):
@@ -51,7 +72,8 @@ class IdempiereOrders(Protocol):
 
 
 def _execute(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQueue,
-             engine_for: Callable[[int, int], IdempiereOrders | None], now: Callable[[], datetime]) -> Outcome:
+             engine_for: Callable[[int, int], IdempiereOrders | None], now: Callable[[], datetime],
+             authority: InboxNativeAuthority | None) -> Outcome:
     try:
         order = parse_placed_order(claim.data)
     except PayloadError as exc:
@@ -89,7 +111,34 @@ def _execute(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQ
         if customer is None:
             raise _blocked("CUSTOMER_UNMAPPED", "the order's customer has no master-data mapping")
 
-        native_id, adopted = _find_or_create(engine, order, customer, lines)
+        scope = TenantScope(
+            tenant_id=claim.tenant_id, legal_entity_id=order.legal_entity_id,
+            ad_client_id=target.ad_client_id, ad_org_id=target.ad_org_id,
+        )
+        if _protected_finance_runtime():
+            if authority is None:
+                raise _blocked("LEGAL_ACTOR_PENDING", "current CP legal actor and ERP provider checks required")
+            try:
+                native_id, adopted = perform_governed_native_action(
+                    policy=authority.policy,
+                    operation=authority.operation,
+                    scope=scope,
+                    resource_reference=order.commerce_order_id,
+                    assessor=authority.assessor,
+                    provider=authority.provider,
+                    documentary=authority.documentary,
+                    execute=lambda: _find_or_create(
+                        engine, order, customer, lines, scope=scope,
+                    ),
+                    now=now,
+                )
+            except (LegalActorNotAuthorised, OrderToCashError):
+                raise _blocked(
+                    "LEGAL_ACTOR_DENIED",
+                    "current CP legal actor, documentary or native provider authority denied",
+                ) from None
+        else:
+            native_id, adopted = _find_or_create(engine, order, customer, lines, scope=scope)
 
         # one transaction: consequence record, order link, announcing event, inbox outcome
         try:
@@ -150,9 +199,13 @@ def _verify_units(engine: IdempiereOrders, order: PlacedOrder, lines: tuple[Orde
         raise _dead("UNIT_MISMATCH", "line(s) in a unit other than the product's own: " + ", ".join(wrong[:10]))
 
 
-def _find_or_create(engine: IdempiereOrders, order: PlacedOrder, customer: int, lines: tuple[OrderLine, ...]
-                    ) -> tuple[int, bool]:
+def _find_or_create(engine: IdempiereOrders, order: PlacedOrder, customer: int, lines: tuple[OrderLine, ...],
+                    *, scope: TenantScope | None = None) -> tuple[int, bool]:
     """The engine order for this Trade order: the one an earlier attempt already created, or a new one."""
+    if _protected_finance_runtime():
+        if scope is None:
+            raise OrderToCashError("native order lookup/creation requires a governed operation")
+        _deny_legacy_native_action(scope, "create_sales_order", order.commerce_order_id)
     try:
         existing = engine.query("C_Order", [Eq("POReference", order.commerce_order_id)], ["C_Order_ID"])
         if len(existing) > 1:
@@ -171,7 +224,9 @@ def _find_or_create(engine: IdempiereOrders, order: PlacedOrder, customer: int, 
 
 
 def run_claim(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQueue,
-              engine_for: Callable[[int, int], IdempiereOrders | None], *, now: Callable[[], datetime] = _now) -> Outcome:
+              engine_for: Callable[[int, int], IdempiereOrders | None], *,
+              now: Callable[[], datetime] = _now,
+              authority: InboxNativeAuthority | None = None) -> Outcome:
     """Executes one claimed row and settles it (see ``inbox.execution_support.settle``)."""
-    return settle(claim, connection, queue, lambda: _execute(claim, connection, queue, engine_for, now),
+    return settle(claim, connection, queue, lambda: _execute(claim, connection, queue, engine_for, now, authority),
                   settled_in_attempt=frozenset({"EXECUTED", "ADOPTED_NATIVE_ORDER"}), now=now)
