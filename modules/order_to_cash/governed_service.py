@@ -9,6 +9,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Callable
 
+from order_to_cash.documentary_restriction import (
+    DocumentaryRestrictionAssessor, require_documentary_scope_unblocked,
+)
+
 from order_to_cash.legal_actor_gate import (
     LegalActorAssessor, LegalActorNotAuthorised, LegalActorOperation,
     LegalActorProviderReadiness, perform_governed_financial_action,
@@ -21,11 +25,26 @@ from order_to_cash.service import (
 from order_to_cash import accounting_outcomes as outcomes_rules
 
 
+class _DocumentaryAndNativeReadiness:
+    """Reassess remediation before and after provider checks, prior to posting."""
+
+    def __init__(self, native: LegalActorProviderReadiness,
+                 documentary: DocumentaryRestrictionAssessor,
+                 now: Callable[[], datetime]) -> None:
+        self.native, self.documentary, self.now = native, documentary, now
+
+    def ensure_legal_actor_usable(self, operation: LegalActorOperation, mandate_id: str) -> None:
+        require_documentary_scope_unblocked(operation, self.documentary, now=self.now())
+        self.native.ensure_legal_actor_usable(operation, mandate_id)
+        require_documentary_scope_unblocked(operation, self.documentary, now=self.now())
+
+
 def post_customer_invoice_governed(
     *,
     operation: LegalActorOperation,
     assessor: LegalActorAssessor,
     provider: LegalActorProviderReadiness,
+    documentary: DocumentaryRestrictionAssessor | None,
     scope: TenantScope,
     invoice_canonical_id: str,
     correlation_id: str,
@@ -46,10 +65,12 @@ def post_customer_invoice_governed(
         or operation.tenant_id != scope.tenant_id
         or operation.expected_legal_entity_id != scope.legal_entity_id):
         raise LegalActorNotAuthorised("invoice posting legal actor context mismatch")
+    if documentary is None or provider is None:
+        raise LegalActorNotAuthorised("independent documentary and provider readiness required")
     return perform_governed_financial_action(
         operation,
         assessor=assessor,
-        provider=provider,
+        provider=_DocumentaryAndNativeReadiness(provider, documentary, now),
         now=now,
         execute=lambda: post_customer_invoice(
             scope=scope,
