@@ -296,7 +296,7 @@ class ExecutionTests(_Base):
                     "legal_actor_resolution": {
                         "outcome":"AUTHORIZED",
                         "mandate_id":"mandate-synthetic-external-reviewed",
-                        "responsible_legal_entity_id":self.entity,
+                        "responsible_legal_entity_id":op.expected_legal_entity_id,
                         "evidence_references":["synthetic/not-real-source"],
                         "evaluated_at":now.isoformat(),
                         "valid_until":(now+timedelta(seconds=10)).isoformat(),
