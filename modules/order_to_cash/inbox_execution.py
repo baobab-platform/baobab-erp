@@ -25,6 +25,7 @@ from typing import Callable, Protocol
 
 import psycopg
 
+from provisioning.control_plane_client import ControlPlaneUnavailable
 from inbox.execution_support import (AdvisoryLock, EngineOrgMismatch, PostgresMasterData, Stop, Target, blocked as _blocked,
                                      dead as _dead, settle, utc_now as _now)
 from inbox.postgres_queue import Claim, PostgresInboxQueue
@@ -132,7 +133,7 @@ def _execute(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQ
                     ),
                     now=now,
                 )
-            except (LegalActorNotAuthorised, OrderToCashError):
+            except (LegalActorNotAuthorised, OrderToCashError, ControlPlaneUnavailable):
                 raise _blocked(
                     "LEGAL_ACTOR_DENIED",
                     "current CP legal actor, documentary or native provider authority denied",
