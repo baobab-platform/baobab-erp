@@ -1,4 +1,5 @@
 """LA-05D3 real ERP invoice-post boundary only calls iDempiere when governed."""
+import os
 import unittest
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -7,7 +8,7 @@ from unittest.mock import patch
 from order_to_cash.governed_service import post_customer_invoice_governed
 from order_to_cash.legal_actor_gate import LegalActorNotAuthorised, LegalActorOperation
 from order_to_cash.model import TenantScope
-from order_to_cash.service import ProcessIds
+from order_to_cash.service import ProcessIds, _deny_legacy_invoice_post
 
 NOW = datetime(2026, 10, 9, 14, 0, tzinfo=timezone.utc)
 SCOPE = TenantScope("tn-operating", "LE-SYNTHETIC-ISSUER", 12, 0)
@@ -155,6 +156,20 @@ class TestGovernedInvoicePosting(unittest.TestCase):
             with self.assertRaises(LegalActorNotAuthorised):
                 invoke(provider=Provider(False))
             native.assert_not_called()
+
+    def test_protected_staging_governed_path_grants_only_transient_exact_native_permit(self):
+        with patch.dict(os.environ, {"BAOBAB_DEPLOYMENT_ENV": "staging"}):
+            def check_native(**kwargs):
+                _deny_legacy_invoice_post(kwargs["scope"], kwargs["invoice_canonical_id"])
+            with patch(
+                "order_to_cash.governed_service.post_customer_invoice",
+                side_effect=check_native,
+            ) as native:
+                invoke()
+                native.assert_called_once()
+            with self.assertRaises(Exception):
+                _deny_legacy_invoice_post(SCOPE, OPERATION.operation_reference)
+
 
 
 if __name__ == "__main__":
