@@ -23,6 +23,7 @@ as the marker column, the default ``C_BP_Group`` lookup and the ``IsCustomer`` /
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable, Protocol
 
@@ -34,6 +35,13 @@ from inbox.execution_support import (AdvisoryLock, EngineOrgMismatch, PostgresMa
                                      utc_now)
 from inbox.postgres_queue import Claim, PostgresInboxQueue
 from order_to_cash.outcome_store import PostgresDocumentOutcomeStore
+from order_to_cash.documentary_restriction import DocumentaryRestrictionAssessor
+from order_to_cash.legal_actor_gate import (
+    LegalActorOperation, LegalActorAssessor, LegalActorProviderReadiness, LegalActorNotAuthorised,
+)
+from order_to_cash.native_action_gate import NativeActionPolicy, perform_governed_native_action
+from order_to_cash.model import TenantScope, OrderToCashError
+from order_to_cash.service import _protected_finance_runtime
 from outbox.postgres_store import PostgresOutboxStore
 from integration.idempiere_client import Eq, IdempiereApiError
 from order_to_cash.execution_policy import CONTENTION_DELAY_SECONDS, CUSTOMER_KIND, Outcome
@@ -42,6 +50,16 @@ from provisioning.master_data_mapping import PostgresMasterDataMappingStore
 CUSTOMER_PROJECTED = "com.baobab-platform.trade.customer.projected.v1"
 SETTLED_IN_ATTEMPT = frozenset({"CREATED", "ADOPTED_NATIVE_PARTNER", "UPDATED"})
 TABLE = "C_BPartner"
+
+@dataclass(frozen=True, slots=True)
+class CustomerNativeAuthority:
+    """Trusted per-claim native partner projection policy, never event data."""
+    policy: NativeActionPolicy
+    operation: LegalActorOperation
+    assessor: LegalActorAssessor
+    provider: LegalActorProviderReadiness
+    documentary: DocumentaryRestrictionAssessor
+
 
 
 class IdempierePartners(Protocol):
@@ -102,7 +120,8 @@ def _announce_partner(connection: psycopg.Connection, claim: Claim, customer: Cu
 
 
 def _execute(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQueue,
-             engine_for: Callable[[int, int], IdempierePartners | None]) -> Outcome:
+             engine_for: Callable[[int, int], IdempierePartners | None],
+             authority: CustomerNativeAuthority | None) -> Outcome:
     try:
         customer = parse_customer_projected(claim.data)
     except PayloadError as exc:
@@ -141,27 +160,47 @@ def _execute(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQ
         if engine is None:
             raise blocked("ENGINE_UNCONFIGURED", "no engine credentials for the tenant's AD_Client")
 
-        with engine_errors():
-            if mapped is not None:
-                try:
-                    engine.get_record(TABLE, native_id)
-                except IdempiereApiError as exc:
-                    if exc.status == 404:  # mapped, but gone from the engine: retrying cannot bring it back
-                        raise dead("NATIVE_PARTNER_MISSING", "the mapped engine partner no longer exists") from None
-                    raise
-                engine.update_record(TABLE, native_id, _update_fields(customer))
-                code = "UPDATED"
-            else:
+        scope = TenantScope(
+            tenant_id=claim.tenant_id, legal_entity_id=customer.legal_entity_id,
+            ad_client_id=target.ad_client_id, ad_org_id=target.ad_org_id,
+        )
+        def mutate_partner() -> tuple[int, str]:
+            # Both newly created and previously mapped partner updates are
+            # protected. No direct field PATCH can bypass the current actor.
+            with engine_errors():
+                if mapped is not None:
+                    try:
+                        engine.get_record(TABLE, native_id)
+                    except IdempiereApiError as exc:
+                        if exc.status == 404:
+                            raise dead("NATIVE_PARTNER_MISSING", "the mapped engine partner no longer exists") from None
+                        raise
+                    engine.update_record(TABLE, native_id, _update_fields(customer))
+                    return native_id, "UPDATED"
                 text = marker(claim.tenant_id, customer)
                 adopted = _find_marked(engine, text)
                 if adopted is not None:
-                    native_id, code = adopted, "ADOPTED_NATIVE_PARTNER"
-                    engine.update_record(TABLE, native_id, _update_fields(customer))  # bring it to this version
-                else:
-                    native_id = engine.create_record(TABLE, {
-                        **_update_fields(customer), "Value": customer.customer_id, "IsCustomer": True,
-                        "C_BP_Group_ID": _default_group(engine), "Description": text})
-                    code = "CREATED"
+                    engine.update_record(TABLE, adopted, _update_fields(customer))
+                    return adopted, "ADOPTED_NATIVE_PARTNER"
+                created = engine.create_record(TABLE, {
+                    **_update_fields(customer), "Value": customer.customer_id, "IsCustomer": True,
+                    "C_BP_Group_ID": _default_group(engine), "Description": text})
+                return created, "CREATED"
+
+        if _protected_finance_runtime():
+            if authority is None:
+                raise blocked("LEGAL_ACTOR_PENDING", "current CP legal actor and master-data provider checks required")
+            try:
+                native_id, code = perform_governed_native_action(
+                    policy=authority.policy, operation=authority.operation, scope=scope,
+                    resource_reference=customer.customer_id,
+                    assessor=authority.assessor, provider=authority.provider,
+                    documentary=authority.documentary, execute=mutate_partner,
+                )
+            except (LegalActorNotAuthorised, OrderToCashError):
+                raise blocked("LEGAL_ACTOR_DENIED", "CP or native master-data authority denied") from None
+        else:
+            native_id, code = mutate_partner()
 
         # one transaction: the mapping order execution resolves the customer through, and the inbox outcome
         try:
@@ -179,7 +218,9 @@ def _execute(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQ
 
 
 def run_claim(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQueue,
-              engine_for: Callable[[int, int], IdempierePartners | None], *, now: Callable[[], datetime] = utc_now) -> Outcome:
+              engine_for: Callable[[int, int], IdempierePartners | None], *,
+              now: Callable[[], datetime] = utc_now,
+              authority: CustomerNativeAuthority | None = None) -> Outcome:
     """Executes one claimed row and settles it (see ``inbox.execution_support.settle``)."""
-    return settle(claim, connection, queue, lambda: _execute(claim, connection, queue, engine_for),
+    return settle(claim, connection, queue, lambda: _execute(claim, connection, queue, engine_for, authority),
                   settled_in_attempt=SETTLED_IN_ATTEMPT, now=now)
