@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -118,9 +119,15 @@ class ServiceHookTests(unittest.TestCase):
         invoice = service.create_customer_invoice(scope=SCOPE, commerce_order_canonical_id=ORDER,
                                                   idempiere=self.idempiere, mappings=self.mappings,
                                                   consequences=self.consequences)
-        service.post_customer_invoice(scope=SCOPE, invoice_canonical_id=invoice.canonical_id, correlation_id="c",
-                                      process_ids=PROCESS_IDS, idempiere=self.idempiere, mappings=self.mappings,
-                                      outbox=self.outbox, consequences=self.consequences)
+        # Native consequence history is synthetic only; the protected ERP
+        # HTTP/native route requires a fresh governed legal-actor decision.
+        with patch.dict("os.environ", {
+            "BAOBAB_DEPLOYMENT_ENV": "test",
+            "BAOBAB_REQUIRE_LEGAL_ACTOR_GATE": "false",
+        }):
+            service.post_customer_invoice(scope=SCOPE, invoice_canonical_id=invoice.canonical_id, correlation_id="c",
+                                          process_ids=PROCESS_IDS, idempiere=self.idempiere, mappings=self.mappings,
+                                          outbox=self.outbox, consequences=self.consequences)
         facts = [c for c in self.consequences.calls if c[0] == "fact"]
         self.assertEqual([f[1] for f in facts], [Fact.ORDER_COMPLETED, Fact.SHIPMENT_COMPLETED, Fact.INVOICE_POSTED])
         self.assertEqual(facts[2][2], "erp_customerinvoice", "the public erp_ id, never the native id")

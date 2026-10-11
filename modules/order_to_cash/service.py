@@ -33,9 +33,12 @@ architecture/conformance.yaml against ADR-ERP-005).
 """
 
 import uuid
+import os
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Protocol
+from typing import Any, Iterator, Protocol
 
 from events.envelope import EventEnvelope
 from mapping.model import MappingNotFoundError, NativeRecordRef
@@ -59,6 +62,47 @@ _EVENT_PAYMENT_ALLOCATED = "erp.payment.allocated.v1"
 _TABLE_ORDER = "C_Order"
 _TABLE_SHIPMENT = "M_InOut"
 _TABLE_INVOICE = "C_Invoice"
+
+# LA-05D4: a governed in-process execution capability is created only by
+# governed_service AFTER the final CP legal actor / provider / documentary
+# decision. ContextVar avoids leaking authorisation across concurrent tasks.
+# This is a defence against legacy command-path bypass, NOT an IAM credential.
+_invoice_post_execution: ContextVar[tuple[str, str, str] | None] = ContextVar(
+    "baobab_erp_invoice_post_execution", default=None,
+)
+
+
+def _protected_finance_runtime() -> bool:
+    """Fail closed on the known staging/production deployment environments."""
+    # Missing or misspelled deployment environment is PROTECTED by default.
+    # A legacy native posting may be exercised only in an explicitly marked
+    # local development/test process; staging/prod never accepts a bypass.
+    return (
+        os.environ.get("BAOBAB_DEPLOYMENT_ENV", "").lower() not in {"development", "test"}
+        or os.environ.get("BAOBAB_REQUIRE_LEGAL_ACTOR_GATE", "").lower() == "true"
+    )
+
+
+@contextmanager
+def _authorised_invoice_post(scope: TenantScope, invoice_id: str) -> Iterator[None]:
+    """Private native-call bridge; never expose to a REST handler or payload."""
+    marker = (scope.tenant_id, scope.legal_entity_id, invoice_id)
+    token = _invoice_post_execution.set(marker)
+    try:
+        yield
+    finally:
+        _invoice_post_execution.reset(token)
+
+
+def _deny_legacy_invoice_post(scope: TenantScope, invoice_id: str) -> None:
+    if _protected_finance_runtime() and _invoice_post_execution.get() != (
+        scope.tenant_id, scope.legal_entity_id, invoice_id,
+    ):
+        raise OrderToCashError(
+            "native invoice posting denied: current scoped CP legal actor, "
+            "documentary and ERP provider assessment required"
+        )
+
 _TABLE_PAYMENT = "C_Payment"
 
 
@@ -474,7 +518,12 @@ def post_customer_invoice(
 ) -> None:
     """Posts the invoice: AR is created, revenue/tax accounting happens, and
     the document becomes immutable (ADR-ERP-008 SS58-62) -- corrections from
-    here on are a credit/debit note, never a further edit of this document."""
+    here on are a credit/debit note, never a further edit of this document.
+
+    LA-05D4: in staging/production, direct legacy calls fail closed unless
+    the guarded, operation-bound scope was established AFTER fresh CP checks.
+    """
+    _deny_legacy_invoice_post(scope, invoice_canonical_id)
     native_id = _resolve_native(
         scope=scope,
         canonical_type="CustomerInvoice",

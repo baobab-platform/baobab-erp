@@ -3,6 +3,8 @@
 The events are produced by ERP's own service functions from facts read back from a fake engine, then validated against the envelope and
 the payload schema each names. Each change is announced once; what the engine does not report is never invented."""
 import unittest
+from unittest.mock import patch
+from unittest.mock import patch
 import uuid
 from datetime import datetime
 
@@ -85,6 +87,13 @@ SCOPE = TenantScope(tenant_id=TENANT, legal_entity_id="ZURIBEANS", ad_client_id=
 
 class AccountingOutcomeTests(unittest.TestCase):
     def setUp(self):
+        # Synthetic conformance fixture; never a protected financial command.
+        synthetic = patch.dict("os.environ", {
+            "BAOBAB_DEPLOYMENT_ENV": "test",
+            "BAOBAB_REQUIRE_LEGAL_ACTOR_GATE": "false",
+        })
+        synthetic.start()
+        self.addCleanup(synthetic.stop)
         self.engine, self.outbox, self.outcomes = Engine(), Outbox(), Outcomes()
 
     def post(self):
