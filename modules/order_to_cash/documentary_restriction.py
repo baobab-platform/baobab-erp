@@ -76,6 +76,7 @@ def assert_documentary_scope_unblocked(
         evaluated > utc_now + timedelta(seconds=1)
         or utc_now - evaluated > _MAX_AGE
         or expires <= utc_now
+        or expires <= evaluated
         or expires - evaluated > _MAX_LEASE
     ):
         raise LegalActorNotAuthorised("documentary scope lease expired or overlong")
@@ -109,6 +110,13 @@ def _unique_json(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return result
 
 
+class _RejectRedirect(urllib.request.HTTPRedirectHandler):
+    """Never forward a workload bearer credential to a redirect target."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise ValueError("redirected authenticated CP evidence is forbidden")
+
+
 class HttpControlPlaneDocumentaryRestrictionAssessor:
     """Private workload-authenticated PEO-02T request; no applicant claims."""
 
@@ -131,7 +139,7 @@ class HttpControlPlaneDocumentaryRestrictionAssessor:
         self._token = token_provider
         self._correlation = correlation_provider
         self._timeout = timeout
-        self._open = (opener or urllib.request.build_opener()).open
+        self._open = (opener or urllib.request.build_opener(_RejectRedirect())).open
 
     def assess(self, request: Mapping[str, str]) -> Mapping[str, object]:
         if (
