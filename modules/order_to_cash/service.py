@@ -74,8 +74,11 @@ _invoice_post_execution: ContextVar[tuple[str, str, str] | None] = ContextVar(
 
 def _protected_finance_runtime() -> bool:
     """Fail closed on the known staging/production deployment environments."""
+    # Missing or misspelled deployment environment is PROTECTED by default.
+    # A legacy native posting may be exercised only in an explicitly marked
+    # local development/test process; staging/prod never accepts a bypass.
     return (
-        os.environ.get("BAOBAB_DEPLOYMENT_ENV", "").lower() in {"staging", "production"}
+        os.environ.get("BAOBAB_DEPLOYMENT_ENV", "").lower() not in {"development", "test"}
         or os.environ.get("BAOBAB_REQUIRE_LEGAL_ACTOR_GATE", "").lower() == "true"
     )
 
