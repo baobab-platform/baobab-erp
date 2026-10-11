@@ -41,6 +41,7 @@ from order_to_cash.legal_actor_gate import (
 )
 from order_to_cash.native_action_gate import NativeActionPolicy, perform_governed_native_action
 from order_to_cash.model import TenantScope, OrderToCashError
+from provisioning.control_plane_client import ControlPlaneUnavailable
 from order_to_cash.service import _protected_finance_runtime
 from outbox.postgres_store import PostgresOutboxStore
 from integration.idempiere_client import Eq, IdempiereApiError
@@ -197,7 +198,7 @@ def _execute(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQ
                     assessor=authority.assessor, provider=authority.provider,
                     documentary=authority.documentary, execute=mutate_partner,
                 )
-            except (LegalActorNotAuthorised, OrderToCashError):
+            except (LegalActorNotAuthorised, OrderToCashError, ControlPlaneUnavailable):
                 raise blocked("LEGAL_ACTOR_DENIED", "CP or native master-data authority denied") from None
         else:
             native_id, code = mutate_partner()
