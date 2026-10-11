@@ -117,6 +117,14 @@ class _Base(unittest.TestCase):
             server.server_close()
 
     def setUp(self):
+        # Synthetic engine and PostgreSQL-only test; protected runtimes have
+        # no default access to this legacy inbox-to-native creation path.
+        gate = mock.patch.dict(os.environ, {
+            "BAOBAB_DEPLOYMENT_ENV": "test",
+            "BAOBAB_REQUIRE_LEGAL_ACTOR_GATE": "false",
+        })
+        gate.start()
+        self.addCleanup(gate.stop)
         _reset_engine()
         self.tag = uuid.uuid4().hex[:12]
         self.tenant = f"tn_{self.tag}"
