@@ -287,7 +287,7 @@ class ExecutionTests(_Base):
         )
         calls = {"cp":0, "documentary":0, "provider":0}
         class CPAssessor:
-            def assess(_, request):
+            def assess(self, request):
                 calls["cp"] += 1
                 return {
                     "context_id": request["context_id"],
@@ -303,7 +303,7 @@ class ExecutionTests(_Base):
                     },
                 }
         class Documentary:
-            def assess(_, request):
+            def assess(self, request):
                 calls["documentary"] += 1
                 return {
                     **request, "organisation_id":op.operating_organisation_id,
@@ -312,10 +312,11 @@ class ExecutionTests(_Base):
                     "evaluated_at":now.isoformat(),
                     "expires_at":(now+timedelta(seconds=1)).isoformat(),
                 }
+        testcase = self
         class Native:
-            def ensure_legal_actor_usable(_, operation, mandate_id):
+            def ensure_legal_actor_usable(self, operation, mandate_id):
                 calls["provider"] += 1
-                self.assertEqual(mandate_id,"mandate-synthetic-external-reviewed")
+                testcase.assertEqual(mandate_id,"mandate-synthetic-external-reviewed")
         authorised = InboxNativeAuthority(
             policy=policy, operation=op, assessor=CPAssessor(),
             provider=Native(), documentary=Documentary(),
