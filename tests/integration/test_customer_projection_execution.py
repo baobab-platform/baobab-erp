@@ -141,6 +141,21 @@ class CustomerProjectionTests(_Base):
         self.assertEqual(self.partner_records(), {})
         self.assertEqual(self.row(wire["id"])["status"], "blocked")
 
+    def test_protected_customer_update_blocks_old_master_data_mutation(self):
+        self.seed_tenant()
+        self.deliver(self.projected(version=1,name="Synthetic Baseline Importer"))
+        self.assertEqual(self.work()["codes"], {"CREATED":1})
+        self.deliver(self.projected(version=2,name="Synthetic New Name"))
+        previous=dict(next(iter(self.partner_records().values())))
+        with unittest.mock.patch.dict("os.environ", {
+            "BAOBAB_DEPLOYMENT_ENV":"staging",
+            "BAOBAB_REQUIRE_LEGAL_ACTOR_GATE":"true",
+        }):
+            report=self.work()
+        self.assertEqual(report["codes"], {"LEGAL_ACTOR_PENDING":1})
+        self.assertEqual(next(iter(self.partner_records().values())), previous)
+        self.assertEqual(self.mapping()[2], "1")
+
     def test_protected_customer_projection_requires_distinct_scoped_accounting_actor(self):
         from datetime import datetime, timedelta, timezone
         from customers.projection_execution import CustomerNativeAuthority
