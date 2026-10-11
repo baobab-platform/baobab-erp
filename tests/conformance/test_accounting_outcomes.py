@@ -3,6 +3,7 @@
 The events are produced by ERP's own service functions from facts read back from a fake engine, then validated against the envelope and
 the payload schema each names. Each change is announced once; what the engine does not report is never invented."""
 import unittest
+from unittest.mock import patch
 import uuid
 from datetime import datetime
 
