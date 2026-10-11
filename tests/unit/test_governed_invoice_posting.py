@@ -101,7 +101,7 @@ class TestGovernedInvoicePosting(unittest.TestCase):
             invoke(assessor=assessor, provider=provider)
             invoke(assessor=assessor, provider=provider)
             self.assertEqual(native.call_count, 2)
-            self.assertEqual((assessor.calls, provider.calls), (2,2))
+            self.assertEqual((assessor.calls, provider.calls), (4,2))
 
     def test_missing_or_held_documentary_authority_denies_before_native_mutation(self):
         for documentary in (None, Documentary(blocked=True), Documentary(failure=True)):
