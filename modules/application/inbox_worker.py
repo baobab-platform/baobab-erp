@@ -58,7 +58,7 @@ def run_once(connection: psycopg.Connection, engine_for, *, worker_id: str, limi
     queue = PostgresInboxQueue(connection)
     done: dict[str, int] = {}
     codes: dict[str, int] = {}
-    for event_type, run in ((CUSTOMER_PROJECTED, run_customer_claim), (ORDER_PLACED, run_claim)):
+    for event_type in (CUSTOMER_PROJECTED, ORDER_PLACED):
         for _ in range(limit):
             claim = queue.claim(event_type=event_type, worker_id=worker_id, lease_seconds=lease_seconds)
             if claim is None:
@@ -74,9 +74,9 @@ def run_once(connection: psycopg.Connection, engine_for, *, worker_id: str, limi
                         authority = authority_for(claim)
                     except Exception:
                         authority = None
-                outcome = run(claim, connection, queue, engine_for, authority=authority)
+                outcome = run_claim(claim, connection, queue, engine_for, authority=authority)
             else:
-                outcome = run(claim, connection, queue, engine_for)
+                outcome = run_customer_claim(claim, connection, queue, engine_for)
             done[outcome.status] = done.get(outcome.status, 0) + 1
             codes[outcome.code] = codes.get(outcome.code, 0) + 1
     return {"event": "inbox.execute", "worker": worker_id, "pass": done, "codes": codes,
