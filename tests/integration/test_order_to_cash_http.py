@@ -14,6 +14,7 @@ import os
 import random
 import time
 import unittest
+from unittest import mock
 import urllib.error
 import urllib.request
 import uuid
@@ -113,6 +114,11 @@ class OrderToCashHttpIntegrationTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        # The historical positive pipeline uses a fake local iDempiere and
+        # fake workload issuer. This is a disposable TEST, not certification
+        # that the protected legacy HTTP financial route is authorised.
+        cls._prior_finance_env = os.environ.get("BAOBAB_DEPLOYMENT_ENV")
+        os.environ["BAOBAB_DEPLOYMENT_ENV"] = "test"
         database_url = require_database_url()  # skips the whole class if unset
         os.environ["DATABASE_URL"] = database_url
         os.environ["BAOBAB_EVENT_SIGNING_SECRET"] = SECRET
@@ -166,6 +172,10 @@ class OrderToCashHttpIntegrationTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        if cls._prior_finance_env is None:
+            os.environ.pop("BAOBAB_DEPLOYMENT_ENV", None)
+        else:
+            os.environ["BAOBAB_DEPLOYMENT_ENV"] = cls._prior_finance_env
         cls.server.shutdown()
         cls.server.server_close()
         cls.fake_idempiere.shutdown()
@@ -322,6 +332,16 @@ class OrderToCashHttpIntegrationTests(unittest.TestCase):
         # configured native process (never a direct field patch).
         executed_process_ids = {process_id for process_id, _ in _FakeIdempiereHandler._processes_executed}
         self.assertTrue({"9001", "9002", "9003", "9004", "9005"} <= executed_process_ids)
+
+    def test_protected_http_post_invoice_does_not_bypass_cp_governance(self):
+        tenant_id, entity_id = self._register_tenant()
+        with mock.patch.dict(os.environ, {"BAOBAB_DEPLOYMENT_ENV": "staging"}):
+            status, body = self._post("/customer-invoices/post", {
+                "tenant_id": tenant_id, "entity_id": entity_id,
+                "invoice_canonical_id": str(uuid.uuid4()), "correlation_id": "corr-denied",
+            })
+        self.assertNotEqual(status, 200, body)
+        self.assertEqual(self._outbox_rows(tenant_id), [])
 
     def test_create_sales_order_missing_fields_is_400(self):
         status, _ = self._post("/sales-orders", {"tenant_id": "x", "entity_id": "y"})
