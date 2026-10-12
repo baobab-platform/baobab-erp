@@ -15,6 +15,7 @@ from integration.idempiere_client import (
 )
 from integration.native_finance_guard import (
     NativeFinancialMutationDenied, require_native_financial_authority,
+    authorised_native_financial_request,
 )
 from order_to_cash.model import TenantScope
 from order_to_cash.service import _authorised_invoice_post, _authorised_native_action
@@ -42,7 +43,10 @@ _CREDS = IdempiereCredentials(
 
 class NativeRestFinanceGuardTest(unittest.TestCase):
     def check(self, method, path, data=None, creds=_CREDS):
-        return require_native_financial_authority(method, path, data, creds)
+        # Simulate the legitimate O2C service's exact request permit, then
+        # verify the independent action / company / process checks still deny.
+        with authorised_native_financial_request(method, path, data or {}):
+            return require_native_financial_authority(method, path, data, creds)
 
     def test_unapproved_native_creates_and_processes_fail_before_transport(self):
         with patch.dict(os.environ, _ENV):
@@ -142,6 +146,27 @@ class NativeRestFinanceGuardTest(unittest.TestCase):
                         self.check("POST", "/processes/3004", params)
             with self.assertRaises(NativeFinancialMutationDenied):
                 self.check("POST", "/processes/3004", {"C_Payment_ID": 42, "DocAction": "CO"})
+
+    def test_permit_is_exact_and_consumed_before_http_transport(self):
+        body = {"POReference": "order-test-only"}
+        with patch.dict(os.environ, _ENV), _authorised_native_action(_SCOPE, "create_sales_order", "order-test-only"):
+            client = RestIdempiereClient(_CREDS)
+            with patch.object(client, "_send", return_value={"id": 12}) as send:
+                with authorised_native_financial_request("POST", "/models/C_Order", body):
+                    client._raw_request("POST", "/models/C_Order", body, "synthetic-token")
+                    with self.assertRaises(NativeFinancialMutationDenied):
+                        client._raw_request("POST", "/models/C_Order", body, "synthetic-token")
+                self.assertEqual(send.call_count, 1)
+                with authorised_native_financial_request("POST", "/models/C_Order", body):
+                    with self.assertRaises(NativeFinancialMutationDenied):
+                        client._raw_request(
+                            "POST", "/models/C_Order",
+                            {"POReference": "a-different-order"}, "synthetic-token",
+                        )
+                self.assertEqual(send.call_count, 1)
+            # A valid action marker without the O2C exact-body permit is denied.
+            with self.assertRaises(NativeFinancialMutationDenied):
+                require_native_financial_authority("POST", "/models/C_Order", body, _CREDS)
 
     def test_development_bypass_is_only_explicit_local_mode(self):
         with patch.dict(os.environ, {"BAOBAB_DEPLOYMENT_ENV": "development",
