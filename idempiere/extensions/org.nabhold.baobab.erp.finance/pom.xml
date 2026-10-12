@@ -13,6 +13,7 @@
   <dependencies>
     <dependency><groupId>org.osgi</groupId><artifactId>org.osgi.core</artifactId></dependency>
     <dependency><groupId>org.osgi</groupId><artifactId>org.osgi.util.tracker</artifactId></dependency>
+    <dependency><groupId>org.nabhold.baobab.erp</groupId><artifactId>org.nabhold.baobab.erp.integration</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId></dependency>
   </dependencies>
   <build><plugins>
@@ -23,7 +24,8 @@ Bundle-SymbolicName: org.nabhold.baobab.erp.finance
 Bundle-Activator: org.nabhold.baobab.erp.finance.FinanceActivator
 Bundle-Vendor: Nabhold Group Africa
 Export-Package: org.nabhold.baobab.erp.finance
-DynamicImport-Package: org.compiere.model
+Import-Package: org.nabhold.baobab.erp.integration;version="[0.1,1)",*
+DynamicImport-Package: org.compiere.model,org.compiere.util
 ]]></bnd></configuration>
     </plugin>
     <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-jar-plugin</artifactId></plugin>
