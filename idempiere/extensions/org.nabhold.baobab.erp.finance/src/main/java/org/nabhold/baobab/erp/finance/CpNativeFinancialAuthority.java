@@ -84,7 +84,7 @@ public final class CpNativeFinancialAuthority implements NativeFinancialAuthorit
         StringBuilder s = new StringBuilder("{");
         for (Map.Entry<String,String> entry : values.entrySet()) {
             if (s.length() > 1) s.append(',');
-            s.append('"').append(escape(entry.getKey())).append("":"")
+            s.append('"').append(escape(entry.getKey())).append("\\":\\"")
              .append(escape(entry.getValue())).append('"');
         }
         return s.append('}').toString();
@@ -100,14 +100,8 @@ public final class CpNativeFinancialAuthority implements NativeFinancialAuthorit
         try {
             Instant value = Instant.parse(s);
             return !value.isBefore(now.minusSeconds(maxAgeSeconds))
-                    && value.isAfter(now.minusSeconds(1))
-                    || (!valueIsAfterFuture(value, now, maxFutureSeconds)
-                        && !value.isBefore(now.minusSeconds(maxAgeSeconds)));
+                    && !value.isAfter(now.plusSeconds(maxFutureSeconds));
         } catch (RuntimeException invalid) { return false; }
-    }
-
-    private static boolean valueIsAfterFuture(Instant value, Instant now, long seconds) {
-        return value.isAfter(now.plusSeconds(seconds));
     }
 
     @SuppressWarnings("unchecked")
