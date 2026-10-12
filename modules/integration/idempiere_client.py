@@ -218,7 +218,7 @@ class RestIdempiereClient:
     ) -> dict[str, Any]:
         # Lower-level callers and token-refresh retries cannot bypass the gate.
         from integration.native_finance_guard import require_native_financial_authority
-        require_native_financial_authority(method, path, body, self._credentials)
+        require_native_financial_authority(method, path, body, self._credentials, consume=True)
         request = urllib.request.Request(
             f"{self._credentials.base_url}{path}",
             data=json.dumps(body).encode() if body is not None else None,
