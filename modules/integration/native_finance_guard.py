@@ -116,6 +116,10 @@ def require_native_financial_authority(
         action = _CREATION_ACTIONS.get(table)
         if not action or not _company_bound(native, credentials) or native[2] != action:
             _denied()
+        # A governed native order may not be redirected to a different
+        # Trade order under the same short-lived legal-actor permit.
+        if table == "C_ORDER" and data.get("POReference") != native[3]:
+            _denied()
         # Never set posted/completed state in a model creation payload.
         # Financial status transitions use the governed native processes.
         if any(str(key).upper() in {"DOCSTATUS", "DOCACTION", "POSTED", "PROCESSED"}
