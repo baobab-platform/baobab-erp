@@ -367,7 +367,8 @@ def create_sales_order(
     integration, it is never guessed from a SKU or display name."""
     if not lines:
         raise OrderToCashError("A sales order requires at least one order line")
-    fields = sales_order_fields(business_partner_native_id, document_currency, lines)
+    fields = sales_order_fields(business_partner_native_id, document_currency, lines,
+                                reference=commerce_order_canonical_id)
     ref = _create_and_map(
         scope=scope,
         canonical_type="CommerceOrder",
