@@ -116,6 +116,11 @@ def require_native_financial_authority(
         action = _CREATION_ACTIONS.get(table)
         if not action or not _company_bound(native, credentials) or native[2] != action:
             _denied()
+        # Never set posted/completed state in a model creation payload.
+        # Financial status transitions use the governed native processes.
+        if any(str(key).upper() in {"DOCSTATUS", "DOCACTION", "POSTED", "PROCESSED"}
+               for key in data):
+            _denied()
         # Native REST credentials are not permission to override company scope.
         for field, expected in (("AD_Client_ID", credentials.client_id),
                                 ("AD_Org_ID", credentials.organization_id)):
