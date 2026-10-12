@@ -85,10 +85,12 @@ class NativeRestFinanceGuardTest(unittest.TestCase):
     def test_native_created_document_requires_exact_action_and_company(self):
         with patch.dict(os.environ, _ENV), _authorised_native_action(_SCOPE, "create_sales_order", "order-test-only"):
             self.check("POST", "/models/C_Order", {"POReference": "order-test-only"})
-            self.check("POST", "/models/C_Order", {"AD_Client_ID": 11, "AD_Org_ID": 7})
+            self.check("POST", "/models/C_Order", {"POReference": "order-test-only", "AD_Client_ID": 11, "AD_Org_ID": 7})
             for path, payload in (
                 ("/models/C_Invoice", {}),
                 ("/models/M_InOut", {}),
+                ("/models/C_Order", {}),
+                ("/models/C_Order", {"POReference": "a-different-order"}),
                 ("/models/C_Order", {"AD_Client_ID": 99}),
                 ("/models/C_Order", {"AD_Org_ID": 999}),
                 ("/models/C_Order?expand=1", {}),
