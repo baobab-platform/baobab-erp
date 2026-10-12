@@ -157,6 +157,11 @@ class NativeRestFinanceGuardTest(unittest.TestCase):
                     with self.assertRaises(NativeFinancialMutationDenied):
                         client._raw_request("POST", "/models/C_Order", body, "synthetic-token")
                 self.assertEqual(send.call_count, 1)
+                # Re-minting an exact request permit inside the SAME governed
+                # operation cannot turn one approval into a second posting.
+                with authorised_native_financial_request("POST", "/models/C_Order", body):
+                    with self.assertRaises(NativeFinancialMutationDenied):
+                        client._raw_request("POST", "/models/C_Order", body, "synthetic-token")
                 with authorised_native_financial_request("POST", "/models/C_Order", body):
                     with self.assertRaises(NativeFinancialMutationDenied):
                         client._raw_request(
