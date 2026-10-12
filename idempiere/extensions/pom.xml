@@ -33,6 +33,7 @@
     <module>org.nabhold.baobab.erp.mapping</module>
     <module>org.nabhold.baobab.erp.outbox</module>
     <module>org.nabhold.baobab.erp.events</module>
+    <module>org.nabhold.baobab.erp.finance</module>
   </modules>
 
   <dependencyManagement>
