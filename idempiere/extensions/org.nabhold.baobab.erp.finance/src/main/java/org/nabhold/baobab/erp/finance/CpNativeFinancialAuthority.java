@@ -84,7 +84,7 @@ public final class CpNativeFinancialAuthority implements NativeFinancialAuthorit
         StringBuilder s = new StringBuilder("{");
         for (Map.Entry<String,String> entry : values.entrySet()) {
             if (s.length() > 1) s.append(',');
-            s.append('"').append(escape(entry.getKey())).append("\\":\\"")
+            s.append('"').append(escape(entry.getKey())).append("\":\"")
              .append(escape(entry.getValue())).append('"');
         }
         return s.append('}').toString();
