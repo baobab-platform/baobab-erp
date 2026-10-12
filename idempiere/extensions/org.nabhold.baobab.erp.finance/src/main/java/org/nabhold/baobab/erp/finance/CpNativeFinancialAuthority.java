@@ -168,8 +168,10 @@ public final class CpNativeFinancialAuthority implements NativeFinancialAuthorit
         }
         String mandate = boundString(actor, "mandate_id");
         UUID.fromString(mandate);
+        Instant evaluatedAt = Instant.parse(boundString(actor, "evaluated_at"));
         Instant until = Instant.parse(boundString(actor, "valid_until"));
-        if (!until.isAfter(Instant.now()) || until.isAfter(Instant.now().plusSeconds(32))) {
+        if (!until.isAfter(Instant.now()) || !until.isAfter(evaluatedAt)
+                || until.isAfter(evaluatedAt.plusSeconds(31))) {
             throw new IllegalStateException("CP legal authority expired or too wide");
         }
         return new LegalProof(mandate, (String) evidences.get(0));
@@ -193,7 +195,8 @@ public final class CpNativeFinancialAuthority implements NativeFinancialAuthorit
         }
         Instant from = Instant.parse(boundString(r, "evaluated_at"));
         Instant until = Instant.parse(boundString(r, "expires_at"));
-        if (!until.isAfter(Instant.now()) || until.isAfter(from.plusSeconds(2))) {
+        if (!until.isAfter(Instant.now()) || !until.isAfter(from)
+                || until.isAfter(from.plusSeconds(2))) {
             throw new IllegalStateException("CP documentary decision expired");
         }
     }
@@ -209,7 +212,7 @@ public final class CpNativeFinancialAuthority implements NativeFinancialAuthorit
             NativeFinancialContextSource.NativeLease lease =
                     contexts.currentLease(table, client, org, nativeId, action, trx);
             if (lease == null || lease.tenantId() == null || lease.tenantId().isBlank()
-                    || lease.organisationId() == null || lease.contextId() == null
+                    || lease.organisationId() == null
                     || lease.expectedLegalEntityId() == null || lease.market() == null
                     || lease.role() == null || lease.activity() == null || lease.capability() == null) {
                 return false;
