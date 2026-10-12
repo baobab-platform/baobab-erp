@@ -29,6 +29,18 @@ class NativeFinancialMutationDenied(IdempiereClientError):
 _native_request: ContextVar[tuple[str, str, str] | None] = ContextVar(
     "baobab_erp_native_request", default=None
 )
+_native_action_spent: ContextVar[bool] = ContextVar("baobab_erp_native_action_spent", default=True)
+
+
+@contextmanager
+def fresh_native_financial_operation() -> Iterator[None]:
+    """One permitted native financial mutation per governed execution scope."""
+    token = _native_action_spent.set(False)
+    try:
+        yield
+    finally:
+        _native_action_spent.reset(token)
+
 
 
 def _request_digest(body: Mapping[str, object] | None) -> str:
@@ -55,10 +67,13 @@ def _require_exact_request(
     expected = _native_request.get()
     if expected is None or expected != (method.upper(), path, _request_digest(body)):
         _denied()
+    if _native_action_spent.get():
+        _denied()
     if consume:
         # Even on a provider 401, never automatically retry irreversible writes
         # with the same permit. A fresh governed operation is required.
         _native_request.set(None)
+        _native_action_spent.set(True)
 
 
 # Native finance data can neither be created by a blind REST request nor
