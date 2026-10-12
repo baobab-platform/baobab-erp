@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from dataclasses import replace
 from unittest.mock import patch
 
 from integration.idempiere_client import (
@@ -88,9 +89,7 @@ class NativeRestFinanceGuardTest(unittest.TestCase):
             ):
                 with self.subTest(path=path, payload=payload), self.assertRaises(NativeFinancialMutationDenied):
                     self.check("POST", path, payload)
-            wrong_org = IdempiereCredentials(**{
-                **_CREDS.__dict__, "organization_id": 10,
-            })
+            wrong_org = replace(_CREDS, organization_id=10)
             with self.assertRaises(NativeFinancialMutationDenied):
                 self.check("POST", "/models/C_Order", {}, wrong_org)
 
