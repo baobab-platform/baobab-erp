@@ -10,7 +10,7 @@ import java.util.Map;
  * OSGi bundle. Numbers are returned as {@link Long} or {@link Double} depending on
  * whether a decimal point/exponent is present.
  */
-final class MinimalJson {
+public final class MinimalJson {
 
     private final String text;
     private int position;
@@ -86,7 +86,7 @@ final class MinimalJson {
         builder.append('"');
     }
 
-    static Map<String, Object> parseObject(String text) {
+    public static Map<String, Object> parseObject(String text) {
         MinimalJson parser = new MinimalJson(text);
         parser.skipWhitespace();
         Map<String, Object> result = parser.readObject();
@@ -112,6 +112,9 @@ final class MinimalJson {
             expect(':');
             skipWhitespace();
             Object value = readValue();
+            if (result.containsKey(key)) {
+                throw new IllegalArgumentException("Duplicate JSON property");
+            }
             result.put(key, value);
             skipWhitespace();
             char next = peek();
@@ -130,6 +133,12 @@ final class MinimalJson {
 
     private Object readValue() {
         char c = peek();
+        if (c == '{') {
+            return readObject();
+        }
+        if (c == '[') {
+            return readArray();
+        }
         if (c == '"') {
             return readString();
         }
@@ -149,6 +158,27 @@ final class MinimalJson {
             return null;
         }
         throw new IllegalArgumentException("Unexpected value at position " + position + " in: " + text);
+    }
+
+    private java.util.List<Object> readArray() {
+        expect('[');
+        java.util.List<Object> result = new java.util.ArrayList<>();
+        skipWhitespace();
+        if (!atEnd() && peek() == ']') {
+            position++;
+            return result;
+        }
+        while (true) {
+            skipWhitespace();
+            result.add(readValue());
+            skipWhitespace();
+            char next = peek();
+            if (next == ']') {
+                position++;
+                return result;
+            }
+            expect(',');
+        }
     }
 
     private String readString() {
