@@ -6,6 +6,8 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.osgi.framework.BundleActivator;
@@ -25,6 +27,8 @@ import org.osgi.util.tracker.ServiceTracker;
  */
 public final class FinanceActivator implements BundleActivator {
     private static final Logger LOG = System.getLogger(FinanceActivator.class.getName());
+    private static final Path HEALTH_MARKER = Path.of(
+            "/opt/idempiere/.baobab/native-finance-veto-active");
     private ServiceTracker<NativeFinancialAuthority, NativeFinancialAuthority> authorities;
     private final List<Registration> registrations = new ArrayList<>();
     private Object nativeEngine;
@@ -53,6 +57,10 @@ public final class FinanceActivator implements BundleActivator {
                     register(engineClass, table, true);
                 }
             }
+            // A JAR and Equinox bundles.info entry are NOT enough for readiness.
+            // Report ACTIVE only after every synchronous listener registration
+            // succeeded. The image healthcheck verifies this JVM's PID.
+            Files.writeString(HEALTH_MARKER, Long.toString(ProcessHandle.current().pid()));
             LOG.log(Level.INFO, "Baobab synchronous native finance veto registered for {0} tables",
                     NativeFinancePolicy.protectedTables().size());
         } catch (Exception | LinkageError unavailable) {
@@ -154,6 +162,11 @@ public final class FinanceActivator implements BundleActivator {
 
     @Override
     public void stop(BundleContext context) {
+        try {
+            Files.deleteIfExists(HEALTH_MARKER);
+        } catch (java.io.IOException unavailable) {
+            LOG.log(Level.WARNING, "Could not remove native finance activation marker");
+        }
         if (nativeEngine != null && validatorClass != null && callback != null) {
             for (Registration r : registrations) {
                 try {
