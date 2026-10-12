@@ -67,7 +67,7 @@ _TABLE_INVOICE = "C_Invoice"
 # governed_service AFTER the final CP legal actor / provider / documentary
 # decision. ContextVar avoids leaking authorisation across concurrent tasks.
 # This is a defence against legacy command-path bypass, NOT an IAM credential.
-_invoice_post_execution: ContextVar[tuple[str, str, str] | None] = ContextVar(
+_invoice_post_execution: ContextVar[tuple[str, str, str, int, int] | None] = ContextVar(
     "baobab_erp_invoice_post_execution", default=None,
 )
 
@@ -75,13 +75,13 @@ _invoice_post_execution: ContextVar[tuple[str, str, str] | None] = ContextVar(
 # require a separate one-operation CP decision in protected runtimes. This
 # execution marker is created only by the governed wrapper after exact
 # role/activity/capability and independent documentary/provider checks.
-_native_action_execution: ContextVar[tuple[str, str, str, str] | None] = ContextVar(
+_native_action_execution: ContextVar[tuple[str, str, str, str, int, int] | None] = ContextVar(
     "baobab_erp_native_action_execution", default=None,
 )
 
 @contextmanager
 def _authorised_native_action(scope: TenantScope, action: str, reference: str) -> Iterator[None]:
-    marker = (scope.tenant_id, scope.legal_entity_id, action, reference)
+    marker = (scope.tenant_id, scope.legal_entity_id, action, reference, scope.ad_client_id, scope.ad_org_id)
     token = _native_action_execution.set(marker)
     try:
         yield
@@ -89,7 +89,7 @@ def _authorised_native_action(scope: TenantScope, action: str, reference: str) -
         _native_action_execution.reset(token)
 
 def _deny_legacy_native_action(scope: TenantScope, action: str, reference: str) -> None:
-    if _protected_finance_runtime() and _native_action_execution.get() != (
+    if _protected_finance_runtime() and (_native_action_execution.get() or ())[:4] != (
         scope.tenant_id, scope.legal_entity_id, action, reference
     ):
         raise OrderToCashError(
@@ -113,7 +113,7 @@ def _protected_finance_runtime() -> bool:
 @contextmanager
 def _authorised_invoice_post(scope: TenantScope, invoice_id: str) -> Iterator[None]:
     """Private native-call bridge; never expose to a REST handler or payload."""
-    marker = (scope.tenant_id, scope.legal_entity_id, invoice_id)
+    marker = (scope.tenant_id, scope.legal_entity_id, invoice_id, scope.ad_client_id, scope.ad_org_id)
     token = _invoice_post_execution.set(marker)
     try:
         yield
@@ -122,7 +122,7 @@ def _authorised_invoice_post(scope: TenantScope, invoice_id: str) -> Iterator[No
 
 
 def _deny_legacy_invoice_post(scope: TenantScope, invoice_id: str) -> None:
-    if _protected_finance_runtime() and _invoice_post_execution.get() != (
+    if _protected_finance_runtime() and (_invoice_post_execution.get() or ())[:3] != (
         scope.tenant_id, scope.legal_entity_id, invoice_id,
     ):
         raise OrderToCashError(
