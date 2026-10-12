@@ -184,6 +184,22 @@ COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/exte
 COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.context/target/org.nabhold.baobab.erp.context-*.jar ${IDEMPIERE_PLUGINS_DIR}/
 COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.mapping/target/org.nabhold.baobab.erp.mapping-*.jar ${IDEMPIERE_PLUGINS_DIR}/
 COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.events/target/org.nabhold.baobab.erp.events-*.jar ${IDEMPIERE_PLUGINS_DIR}/
+COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.finance/target/org.nabhold.baobab.erp.finance-*.jar ${IDEMPIERE_PLUGINS_DIR}/
+# The active JVM bundle creates a per-process marker only after all native
+# synchronous financial veto callbacks were registered.
+RUN install -d -m 0750 -o idempiere -g idempiere "${IDEMPIERE_HOME}/.baobab"
+
+
+# Copying an OSGi bundle into plugins/ is insufficient: register it explicitly.
+RUN set -eu; \
+    info="${IDEMPIERE_HOME}/configuration/org.eclipse.equinox.simpleconfigurator/bundles.info"; \
+    set -- "${IDEMPIERE_PLUGINS_DIR}"/org.nabhold.baobab.erp.finance-*.jar; \
+    [ "$#" = 1 ] && [ -f "$1" ] || { echo "missing native finance veto bundle" >&2; exit 1; }; \
+    jar=$(basename "$1"); \
+    [ "$(grep -c '^org.nabhold.baobab.erp.finance,' "$info" || true)" = 0 ] || { echo "duplicate native finance veto entry" >&2; exit 1; }; \
+    echo "org.nabhold.baobab.erp.finance,0.1.0,plugins/$jar,4,true" >> "$info"; \
+    grep -Fq "org.nabhold.baobab.erp.finance,0.1.0,plugins/$jar,4,true" "$info"
+
 
 # ADR-ERP-004 section 5 emergency mitigation: remove the legacy SOAP/CXF runtime.
 #   reason:   the pinned iDempiere 13 image bundles Apache CXF 3.6.5; cxf-core
@@ -263,4 +279,7 @@ RUN if [ -f /tmp/rest-api-p2/content.xml ] || [ -f /tmp/rest-api-p2/content.jar 
 # curl client that compose.yaml's healthcheck already uses for this image
 # (only 8443 is published), with -k for the image's self-signed certificate.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=3m --retries=3 \
-  CMD curl -kfsS https://127.0.0.1:8443/webui/index.zul >/dev/null || exit 1
+  CMD marker="${IDEMPIERE_HOME}/.baobab/native-finance-veto-active"; \
+      [ -r "$marker" ] && pid="$(cat "$marker")" && \
+      [ -n "$pid" ] && [ -d "/proc/$pid" ] && \
+      curl -kfsS https://127.0.0.1:8443/webui/index.zul >/dev/null || exit 1
