@@ -99,7 +99,7 @@ public final class FinanceActivator implements BundleActivator {
                     String trxName = (String) po.getClass().getMethod("get_TrxName").invoke(po);
                     String verdict = NativeFinancePolicy.requireBeforeMutation(
                             table, client, org, nativeId,
-                            document ? "document:" + constantName(timing) : "model:" + constantName(timing),
+                            document ? "document:" + constantName(timing, document) : "model:" + constantName(timing, document),
                             trxName,
                             NativeFinancePolicy.protectedRuntime(
                                 System.getProperty("baobab.erp.native.environment")),
@@ -113,12 +113,11 @@ public final class FinanceActivator implements BundleActivator {
         };
     }
 
-    private String constantName(int value) {
-        // Resolve action descriptions for auditability without guessing numeric constants.
+    private String constantName(int value, boolean document) {
+        // Model and document timings reuse integer values: never conflate them.
+        String prefix = document ? "TIMING_BEFORE_" : "TYPE_BEFORE_";
         for (var field : validatorClass.getFields()) {
-            if ((field.getName().startsWith("TYPE_BEFORE_")
-                    || field.getName().startsWith("TIMING_BEFORE_"))
-                    && field.getType() == int.class) {
+            if (field.getName().startsWith(prefix) && field.getType() == int.class) {
                 try {
                     if (field.getInt(null) == value) {
                         return field.getName();
@@ -132,19 +131,24 @@ public final class FinanceActivator implements BundleActivator {
     }
 
     private boolean isBeforeTiming(boolean document, int timing) {
+        String before = document ? "TIMING_BEFORE_" : "TYPE_BEFORE_";
+        String after = document ? "TIMING_AFTER_" : "TYPE_AFTER_";
         for (var field : validatorClass.getFields()) {
-            String prefix = document ? "TIMING_BEFORE_" : "TYPE_BEFORE_";
-            if (field.getName().startsWith(prefix) && field.getType() == int.class) {
-                try {
-                    if (field.getInt(null) == timing) {
-                        return true;
-                    }
-                } catch (IllegalAccessException ignored) {
-                    // a missing public native constant cannot grant authority
+            if (field.getType() != int.class
+                    || !(field.getName().startsWith(before) || field.getName().startsWith(after))) {
+                continue;
+            }
+            try {
+                if (field.getInt(null) == timing) {
+                    // Known AFTER notifications are irreversible observations,
+                    // not an opportunity to veto an already accepted transaction.
+                    return field.getName().startsWith(before);
                 }
+            } catch (IllegalAccessException ignored) {
+                // unknown/unreadable native timing is denied below
             }
         }
-        // Unknown timing must never silently permit an irreversible operation.
+        // An unrecognised before-compatible timing must not grant authority.
         return true;
     }
 
