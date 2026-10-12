@@ -12,6 +12,7 @@ server-side PEP has been installed and certified.
 from __future__ import annotations
 
 from collections.abc import Mapping
+import os
 from urllib.parse import urlsplit
 
 from integration.idempiere_client import IdempiereClientError, IdempiereCredentials
@@ -36,6 +37,13 @@ _CREATION_ACTIONS = {
     "M_INOUT": "create_shipment",
     "C_INVOICE": "create_customer_invoice",
     "C_PAYMENT": "create_payment",
+}
+_PROCESS_ID_ENV = {
+    "complete_sales_order": "IDEMPIERE_PROCESS_COMPLETE_SALES_ORDER",
+    "complete_shipment": "IDEMPIERE_PROCESS_COMPLETE_SHIPMENT",
+    "post_customer_invoice": "IDEMPIERE_PROCESS_POST_CUSTOMER_INVOICE",
+    "complete_payment": "IDEMPIERE_PROCESS_COMPLETE_PAYMENT",
+    "allocate_payment": "IDEMPIERE_PROCESS_ALLOCATE_PAYMENT",
 }
 _COMPLETE_ACTIONS = {
     "C_Order_ID": "complete_sales_order",
@@ -108,6 +116,11 @@ def require_native_financial_authority(
         action = _CREATION_ACTIONS.get(table)
         if not action or not _company_bound(native, credentials) or native[2] != action:
             _denied()
+        # Native REST credentials are not permission to override company scope.
+        for field, expected in (("AD_Client_ID", credentials.client_id),
+                                ("AD_Org_ID", credentials.organization_id)):
+            if field in data and (isinstance(data[field], bool) or data[field] != expected):
+                _denied()
         return
 
     # Process IDs are installation-specific and are NOT a safe way to tell
@@ -127,6 +140,11 @@ def require_native_financial_authority(
         if data.get("DocAction") != "CO":
             _denied()
     else:
+        _denied()
+    configured_process_id = os.environ.get(_PROCESS_ID_ENV[action], "")
+    if (not configured_process_id.isdigit()
+            or int(configured_process_id) <= 0
+            or int(configured_process_id) != int(parts[1])):
         _denied()
     if action == "post_customer_invoice":
         if not _company_bound(invoice, credentials):
