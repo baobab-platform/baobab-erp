@@ -83,8 +83,10 @@ _native_action_execution: ContextVar[tuple[str, str, str, str, int, int] | None]
 def _authorised_native_action(scope: TenantScope, action: str, reference: str) -> Iterator[None]:
     marker = (scope.tenant_id, scope.legal_entity_id, action, reference, scope.ad_client_id, scope.ad_org_id)
     token = _native_action_execution.set(marker)
+    from integration.native_finance_guard import fresh_native_financial_operation
     try:
-        yield
+        with fresh_native_financial_operation():
+            yield
     finally:
         _native_action_execution.reset(token)
 
@@ -115,8 +117,10 @@ def _authorised_invoice_post(scope: TenantScope, invoice_id: str) -> Iterator[No
     """Private native-call bridge; never expose to a REST handler or payload."""
     marker = (scope.tenant_id, scope.legal_entity_id, invoice_id, scope.ad_client_id, scope.ad_org_id)
     token = _invoice_post_execution.set(marker)
+    from integration.native_finance_guard import fresh_native_financial_operation
     try:
-        yield
+        with fresh_native_financial_operation():
+            yield
     finally:
         _invoice_post_execution.reset(token)
 
