@@ -22,6 +22,7 @@
 Bundle-SymbolicName: org.nabhold.baobab.erp.finance
 Bundle-Activator: org.nabhold.baobab.erp.finance.FinanceActivator
 Bundle-Vendor: Nabhold Group Africa
+Export-Package: org.nabhold.baobab.erp.finance
 DynamicImport-Package: org.compiere.model
 ]]></bnd></configuration>
     </plugin>
