@@ -214,8 +214,13 @@ def _find_or_create(engine: IdempiereOrders, order: PlacedOrder, customer: int, 
         if existing:
             return int(existing[0]["id"] if "id" in existing[0] else existing[0]["C_Order_ID"]), True
         _verify_units(engine, order, lines)
-        return engine.create_record(
-            "C_Order", sales_order_fields(customer, order.currency, lines, reference=order.commerce_order_id)), False
+        # The inbox is a native iDempiere writer in its own right; it must
+        # not bypass the exact-operation REST egress PEP used by direct O2C.
+        from integration.native_finance_guard import authorised_native_financial_request
+        fields = sales_order_fields(customer, order.currency, lines, reference=order.commerce_order_id)
+        with authorised_native_financial_request("POST", "/models/C_Order", fields):
+            native_id = engine.create_record("C_Order", fields)
+        return native_id, False
     except IdempiereApiError as exc:
         if exc.status in (400, 422):
             raise _dead("ENGINE_REJECTED", f"HTTP {exc.status}") from None
