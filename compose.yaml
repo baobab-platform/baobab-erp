@@ -30,6 +30,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      baobab-db-migrate:
+        condition: service_completed_successfully
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -40,7 +42,7 @@ services:
     ports:
       - "${IDEMPIERE_HTTPS_PORT:-8443}:8443"
     healthcheck:
-      test: ["CMD-SHELL", "curl -kfsS https://127.0.0.1:8443/webui/ >/dev/null"]
+      test: ["CMD-SHELL", "marker=/opt/idempiere/.baobab/native-finance-veto-active; test -r \"$$marker\" && pid=$$(cat \"$$marker\") && test -d \"/proc/$$pid\" && curl -kfsS https://127.0.0.1:8443/webui/ >/dev/null"]
       interval: 15s
       timeout: 5s
       retries: 20

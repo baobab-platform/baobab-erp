@@ -181,6 +181,18 @@ RUN set -eu; \
     if ls "${IDEMPIERE_PLUGINS_DIR}"/org.idempiere.hazelcast.service_*.jar >/dev/null 2>&1; then echo "hazelcast bundle still present" >&2; exit 1; fi
 
 COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.integration/target/org.nabhold.baobab.erp.integration-*.jar ${IDEMPIERE_PLUGINS_DIR}/
+# Finance, mapping and context require this independent OSGi library to
+# resolve. A copied JAR alone is not installed by Equinox simpleconfigurator.
+RUN set -eu; \
+    info="${IDEMPIERE_HOME}/configuration/org.eclipse.equinox.simpleconfigurator/bundles.info"; \
+    set -- "${IDEMPIERE_PLUGINS_DIR}"/org.nabhold.baobab.erp.integration-*.jar; \
+    [ "$#" = 1 ] && [ -f "$1" ] || { echo "integration bundle not staged" >&2; exit 1; }; \
+    jar=$(basename "$1"); \
+    if ! grep -q '^org.nabhold.baobab.erp.integration,' "$info"; then \
+      echo "org.nabhold.baobab.erp.integration,0.1.0,plugins/$jar,3,true" >> "$info"; \
+    fi; \
+    grep -Fq "org.nabhold.baobab.erp.integration,0.1.0,plugins/$jar,3,true" "$info"
+
 COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.context/target/org.nabhold.baobab.erp.context-*.jar ${IDEMPIERE_PLUGINS_DIR}/
 COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.mapping/target/org.nabhold.baobab.erp.mapping-*.jar ${IDEMPIERE_PLUGINS_DIR}/
 COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.events/target/org.nabhold.baobab.erp.events-*.jar ${IDEMPIERE_PLUGINS_DIR}/

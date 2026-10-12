@@ -12,6 +12,9 @@ import java.util.ArrayList;
 import java.util.List;
 import org.osgi.framework.BundleActivator;
 import org.osgi.framework.BundleContext;
+import org.osgi.framework.ServiceRegistration;
+import org.nabhold.baobab.erp.integration.WorkloadTokenProvider;
+import java.net.URI;
 import org.osgi.util.tracker.ServiceTracker;
 
 /**
@@ -30,6 +33,9 @@ public final class FinanceActivator implements BundleActivator {
     private static final Path HEALTH_MARKER = Path.of(
             "/opt/idempiere/.baobab/native-finance-veto-active");
     private ServiceTracker<NativeFinancialAuthority, NativeFinancialAuthority> authorities;
+    private ServiceTracker<NativeFinancialContextSource, NativeFinancialContextSource> runtimeContexts;
+    private ServiceTracker<NativeFinanceReadiness, NativeFinanceReadiness> financeReadiness;
+    private ServiceRegistration<NativeFinancialAuthority> cpAdapterRegistration;
     private final List<Registration> registrations = new ArrayList<>();
     private Object nativeEngine;
     private Class<?> validatorClass;
@@ -41,7 +47,12 @@ public final class FinanceActivator implements BundleActivator {
     public void start(BundleContext context) throws Exception {
         authorities = new ServiceTracker<>(context, NativeFinancialAuthority.class, null);
         authorities.open();
+        runtimeContexts = new ServiceTracker<>(context, NativeFinancialContextSource.class, null);
+        runtimeContexts.open();
+        financeReadiness = new ServiceTracker<>(context, NativeFinanceReadiness.class, null);
+        financeReadiness.open();
         try {
+            registerCpAuthority(context);
             ClassLoader loader = FinanceActivator.class.getClassLoader();
             Class<?> engineClass = Class.forName("org.compiere.model.ModelValidationEngine", true, loader);
             validatorClass = Class.forName("org.compiere.model.ModelValidator", true, loader);
@@ -67,6 +78,39 @@ public final class FinanceActivator implements BundleActivator {
             stop(context);
             throw new IllegalStateException("BAOBAB_NATIVE_FINANCE_VETO_NOT_ACTIVE", unavailable);
         }
+    }
+
+    private void registerCpAuthority(BundleContext context) {
+        String cp = System.getProperty("baobab.cp.native.base.url");
+        String tokenUrl = System.getProperty("baobab.iam.token.url");
+        String client = System.getProperty("baobab.iam.native.client.id", "baobab-erp-workload");
+        String secret = System.getProperty("baobab.iam.native.client.secret");
+        // Absence is not a fallback: the native veto then has NO permit
+        // provider and refuses every protected financial operation.
+        if (cp == null || tokenUrl == null || secret == null || secret.isBlank()) {
+            return;
+        }
+        URI authUrl = URI.create(tokenUrl);
+        boolean loopbackTest = "test".equals(System.getProperty("baobab.erp.native.environment"))
+                && ("127.0.0.1".equals(authUrl.getHost()) || "localhost".equals(authUrl.getHost()));
+        if (!"https".equals(authUrl.getScheme()) && !(
+                loopbackTest && "http".equals(authUrl.getScheme()))) {
+            throw new IllegalArgumentException("native IAM workload token endpoint must be HTTPS");
+        }
+        WorkloadTokenProvider token = new WorkloadTokenProvider(
+                tokenUrl, client, secret,
+                "context:resolve legal-actor:assess documentary:restriction-assess");
+        CpNativeFinancialAuthority service = new CpNativeFinancialAuthority(
+                cp, () -> {
+                    try {
+                        return token.getAccessToken();
+                    } catch (Exception unavailable) {
+                        throw new IllegalStateException("IAM workload authentication unavailable");
+                    }
+                }, loopbackTest, runtimeContexts, financeReadiness,
+                new NativeFinanceAttribution(
+                        NativeFinanceAttribution.NATIVE_TRANSACTION_CONNECTION));
+        cpAdapterRegistration = context.registerService(NativeFinancialAuthority.class, service, null);
     }
 
     private static boolean isDocument(String table) {
@@ -184,6 +228,18 @@ public final class FinanceActivator implements BundleActivator {
         if (authorities != null) {
             authorities.close();
             authorities = null;
+        }
+        if (cpAdapterRegistration != null) {
+            cpAdapterRegistration.unregister();
+            cpAdapterRegistration = null;
+        }
+        if (runtimeContexts != null) {
+            runtimeContexts.close();
+            runtimeContexts = null;
+        }
+        if (financeReadiness != null) {
+            financeReadiness.close();
+            financeReadiness = null;
         }
     }
 }
