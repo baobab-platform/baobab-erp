@@ -12,13 +12,53 @@ server-side PEP has been installed and certified.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
+import hashlib
+import json
 import os
+from typing import Any, Iterator
 from urllib.parse import urlsplit
 
 from integration.idempiere_client import IdempiereClientError, IdempiereCredentials
 
 class NativeFinancialMutationDenied(IdempiereClientError):
     """Missing or mismatched authority for a native financial mutation."""
+
+
+_native_request: ContextVar[tuple[str, str, str] | None] = ContextVar(
+    "baobab_erp_native_request", default=None
+)
+
+
+def _request_digest(body: Mapping[str, object] | None) -> str:
+    payload = json.dumps(body, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+@contextmanager
+def authorised_native_financial_request(
+    method: str, path: str, body: Mapping[str, Any],
+) -> Iterator[None]:
+    """Authorize one exact O2C service-bound native write, never a broad action."""
+    token = _native_request.set((method.upper(), path, _request_digest(body)))
+    try:
+        yield
+    finally:
+        _native_request.reset(token)
+
+
+def _require_exact_request(
+    method: str, path: str, body: Mapping[str, object] | None, *,
+    consume: bool,
+) -> None:
+    expected = _native_request.get()
+    if expected is None or expected != (method.upper(), path, _request_digest(body)):
+        _denied()
+    if consume:
+        # Even on a provider 401, never automatically retry irreversible writes
+        # with the same permit. A fresh governed operation is required.
+        _native_request.set(None)
 
 
 # Native finance data can neither be created by a blind REST request nor
@@ -78,6 +118,7 @@ def _valid_record_id(value: object) -> bool:
 def require_native_financial_authority(
     method: str, path: str, body: Mapping[str, object] | None,
     credentials: IdempiereCredentials,
+    *, consume: bool = False,
 ) -> None:
     """Require the real governed action marker and exact native company.
 
@@ -132,6 +173,7 @@ def require_native_financial_authority(
                                 ("AD_Org_ID", credentials.organization_id)):
             if field in data and (isinstance(data[field], bool) or data[field] != expected):
                 _denied()
+        _require_exact_request(method, path, data, consume=consume)
         return
 
     # Process IDs are installation-specific and are NOT a safe way to tell
@@ -168,3 +210,4 @@ def require_native_financial_authority(
             _denied()
     elif not _company_bound(native, credentials) or native[2] != action:
         _denied()
+    _require_exact_request(method, path, data, consume=consume)
