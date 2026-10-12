@@ -9,7 +9,7 @@
 # this directory.
 ARG IDEMPIERE_IMAGE=idempiereofficial/idempiere:13-release
 
-FROM maven:3-eclipse-temurin-26 AS extensions-builder
+FROM maven:3-eclipse-temurin-27 AS extensions-builder
 WORKDIR /build
 COPY idempiere/extensions/ idempiere/extensions/
 RUN mvn -q -B -f idempiere/extensions package -DskipTests
