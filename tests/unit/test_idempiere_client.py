@@ -5,7 +5,9 @@ internals, so a wrong path/header/body shape actually fails the test.
 """
 
 import json
+import os
 import unittest
+from unittest.mock import patch
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
 
@@ -153,6 +155,14 @@ class _FakeIdempiereHandler(BaseHTTPRequestHandler):
 
 class RestIdempiereClientTests(unittest.TestCase):
     def setUp(self):
+        # Legacy REST shape tests run only against a synthetic local engine.
+        # They never assert regulated posting authority in protected runtimes.
+        local_only = patch.dict(os.environ, {
+            "BAOBAB_DEPLOYMENT_ENV": "test",
+            "BAOBAB_REQUIRE_LEGAL_ACTOR_GATE": "false",
+        })
+        local_only.start()
+        self.addCleanup(local_only.stop)
         self.state = _State()
         _FakeIdempiereHandler.state = self.state
         self.server = HTTPServer(("127.0.0.1", 0), _FakeIdempiereHandler)
