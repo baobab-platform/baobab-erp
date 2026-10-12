@@ -186,96 +186,15 @@ COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/exte
 COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.events/target/org.nabhold.baobab.erp.events-*.jar ${IDEMPIERE_PLUGINS_DIR}/
 COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.finance/target/org.nabhold.baobab.erp.finance-*.jar ${IDEMPIERE_PLUGINS_DIR}/
 
-# Explicitly register the synchronous JVM protection bundle with Equinox.
-# Copying a JAR to plugins/ alone does NOT activate an OSGi bundle.
+# Copying an OSGi bundle into plugins/ is insufficient: register it explicitly.
 RUN set -eu; \
     info="${IDEMPIERE_HOME}/configuration/org.eclipse.equinox.simpleconfigurator/bundles.info"; \
-    jar=$(find "${IDEMPIERE_PLUGINS_DIR}" -maxdepth 1 -name 'org.nabhold.baobab.erp.finance-*.jar' -print); \
-    [ "$(printf '%s\\n' "$jar" | grep -c .)" = 1 ] || { echo "Missing native finance veto bundle" >&2; exit 1; }; \
-    [ "$(grep -c '^org.nabhold.baobab.erp.finance,' "$info" || true)" = 0 ] || { echo "duplicate finance bundle" >&2; exit 1; }; \
-    printf 'org.nabhold.baobab.erp.finance,0.1.0,plugins/%s,4,true\\n' "$(basename "$jar")" >> "$info"; \
-    grep -q '^org.nabhold.baobab.erp.finance,0.1.0,plugins/.*4,true
-
-# ADR-ERP-004 section 5 emergency mitigation: remove the legacy SOAP/CXF runtime.
-#   reason:   the pinned iDempiere 13 image bundles Apache CXF 3.6.5; cxf-core
-#             carries CRITICAL CVE-2026-49875. The fixed CXF lines (4.1/4.2)
-#             are major platform upgrades and must not be jar-swapped into this
-#             Equinox runtime without a full compatibility programme.
-#   scope:    Baobab ERP does not use iDempiere's SOAP/ADInterface surface. Its
-#             native integration target is com.trekglobal.idempiere.rest.api,
-#             which is installed separately below and declares no extension
-#             dependency on the SOAP/CXF feature.
-#   safety:   before removal, scan every remaining OSGi manifest. If any bundle
-#             outside the SOAP/CXF family requires/imports CXF or the iDempiere
-#             webservices bundles, fail the image build rather than create an
-#             unresolved runtime.
-#   removal:  delete this mitigation once the pinned iDempiere distribution no
-#             longer carries the affected CXF runtime, or if Baobab deliberately
-#             adopts SOAP (which requires a separately reviewed, patched feature).
-USER root
-RUN set -eu; \
-    info="${IDEMPIERE_HOME}/configuration/org.eclipse.equinox.simpleconfigurator/bundles.info"; \
-    core="${IDEMPIERE_PLUGINS_DIR}/org.apache.cxf.cxf-core_3.6.5.jar"; \
-    [ -f "$core" ] || { echo "expected vulnerable CXF 3.6.5 core bundle; upstream changed, revisit mitigation" >&2; exit 1; }; \
-    set -- "${IDEMPIERE_PLUGINS_DIR}"/org.idempiere.webservice*.jar; \
-    [ "$#" -ge 1 ] && [ -f "$1" ] || { echo "expected iDempiere webservices bundle(s); upstream changed, revisit mitigation" >&2; exit 1; }; \
-    apt-get update && apt-get install -y --no-install-recommends unzip; \
-    offenders=""; \
-    for jar in "${IDEMPIERE_PLUGINS_DIR}"/*.jar; do \
-      base=$(basename "$jar"); \
-      case "$base" in \
-        org.apache.cxf.*|wrapped.org.apache.cxf.*|org.idempiere.webservice*) continue ;; \
-      esac; \
-      manifest=$(unzip -p "$jar" META-INF/MANIFEST.MF 2>/dev/null | tr -d '\r' | sed ':a;N;$!ba;s/\n //g' || true); \
-      if printf '%s\n' "$manifest" | grep -Eq '^(Require-Bundle|Import-Package|DynamicImport-Package):.*(org\.apache\.cxf|org\.idempiere\.webservice)'; then \
-        offenders="$offenders $base"; \
-      fi; \
-    done; \
-    [ -z "$offenders" ] || { echo "non-SOAP bundles still depend on CXF/webservices:$offenders" >&2; exit 1; }; \
-    for jar in "${IDEMPIERE_PLUGINS_DIR}"/org.apache.cxf.*.jar \
-               "${IDEMPIERE_PLUGINS_DIR}"/wrapped.org.apache.cxf.*.jar \
-               "${IDEMPIERE_PLUGINS_DIR}"/org.idempiere.webservice*.jar; do \
-      [ -f "$jar" ] && rm -f "$jar"; \
-    done; \
-    awk -F, '!( $1 ~ /^org\.apache\.cxf\./ || $1 ~ /^wrapped\.org\.apache\.cxf\./ || $1 ~ /^org\.idempiere\.webservice/ )' "$info" > /tmp/bundles.info.new; \
-    cat /tmp/bundles.info.new > "$info"; rm -f /tmp/bundles.info.new; \
-    if find "${IDEMPIERE_PLUGINS_DIR}" -maxdepth 1 -type f \( -name 'org.apache.cxf.*.jar' -o -name 'wrapped.org.apache.cxf.*.jar' -o -name 'org.idempiere.webservice*.jar' \) | grep -q .; then \
-      echo "SOAP/CXF bundle remains after mitigation" >&2; exit 1; \
-    fi; \
-    if awk -F, '$1 ~ /^org\.apache\.cxf\./ || $1 ~ /^wrapped\.org\.apache\.cxf\./ || $1 ~ /^org\.idempiere\.webservice/ {found=1} END {exit !found}' "$info"; then \
-      echo "SOAP/CXF entry remains in bundles.info" >&2; exit 1; \
-    fi; \
-    apt-get purge -y unzip && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
-
-USER idempiere
-
-# Optional: install the third-party com.trekglobal.idempiere.rest.api plugin if a
-# pre-built p2 repository for it has been placed at idempiere/vendor/rest-api-p2/ --
-# see idempiere/rest-api/README.md for what belongs there and how to produce it (this
-# repository does not build it: doing so needs network access to either a p2 mirror or
-# a full source build of iDempiere core that this build environment does not have, per
-# architecture/conformance.yaml against ADR-ERP-005/ADR-ERP-013). The install itself
-# uses iDempiere's own, already-shipped update-prd.sh -- confirmed present in the
-# pinned image, not assumed -- so it needs no extra network access of its own. Empty by
-# default (its tracked, checked-in state), in which case this step is a clean no-op.
-USER idempiere
-COPY --chown=idempiere:idempiere idempiere/vendor/rest-api-p2/ /tmp/rest-api-p2/
-RUN if [ -f /tmp/rest-api-p2/content.xml ] || [ -f /tmp/rest-api-p2/content.jar ]; then \
-        echo "Installing com.trekglobal.idempiere.rest.api from /tmp/rest-api-p2" && \
-        "${IDEMPIERE_HOME}/update-prd.sh" /tmp/rest-api-p2 com.trekglobal.idempiere.rest.api; \
-    else \
-        echo "No pre-built REST API p2 repository at idempiere/vendor/rest-api-p2/; skipping install (see idempiere/rest-api/README.md)"; \
-    fi && \
-    rm -rf /tmp/rest-api-p2
-
-# Readiness of the ZK web UI. iDempiere bootstraps OSGi and its database
-# connections slowly (and runs setup on first start), so allow a 3-minute
-# start period before failures count. Probes the same HTTPS listener and
-# curl client that compose.yaml's healthcheck already uses for this image
-# (only 8443 is published), with -k for the image's self-signed certificate.
-HEALTHCHECK --interval=30s --timeout=10s --start-period=3m --retries=3 \
-  CMD curl -kfsS https://127.0.0.1:8443/webui/index.zul >/dev/null || exit 1
- "$info"
+    set -- "${IDEMPIERE_PLUGINS_DIR}"/org.nabhold.baobab.erp.finance-*.jar; \
+    [ "$#" = 1 ] && [ -f "$1" ] || { echo "missing native finance veto bundle" >&2; exit 1; }; \
+    jar=$(basename "$1"); \
+    [ "$(grep -c '^org.nabhold.baobab.erp.finance,' "$info" || true)" = 0 ] || { echo "duplicate native finance veto entry" >&2; exit 1; }; \
+    printf 'org.nabhold.baobab.erp.finance,0.1.0,plugins/%s,4,true\\n' "$jar" >> "$info"; \
+    grep -Fq "org.nabhold.baobab.erp.finance,0.1.0,plugins/$jar,4,true" "$info"
 
 
 # ADR-ERP-004 section 5 emergency mitigation: remove the legacy SOAP/CXF runtime.
