@@ -67,7 +67,7 @@ _TABLE_INVOICE = "C_Invoice"
 # governed_service AFTER the final CP legal actor / provider / documentary
 # decision. ContextVar avoids leaking authorisation across concurrent tasks.
 # This is a defence against legacy command-path bypass, NOT an IAM credential.
-_invoice_post_execution: ContextVar[tuple[str, str, str] | None] = ContextVar(
+_invoice_post_execution: ContextVar[tuple[str, str, str, int, int] | None] = ContextVar(
     "baobab_erp_invoice_post_execution", default=None,
 )
 
@@ -75,21 +75,23 @@ _invoice_post_execution: ContextVar[tuple[str, str, str] | None] = ContextVar(
 # require a separate one-operation CP decision in protected runtimes. This
 # execution marker is created only by the governed wrapper after exact
 # role/activity/capability and independent documentary/provider checks.
-_native_action_execution: ContextVar[tuple[str, str, str, str] | None] = ContextVar(
+_native_action_execution: ContextVar[tuple[str, str, str, str, int, int] | None] = ContextVar(
     "baobab_erp_native_action_execution", default=None,
 )
 
 @contextmanager
 def _authorised_native_action(scope: TenantScope, action: str, reference: str) -> Iterator[None]:
-    marker = (scope.tenant_id, scope.legal_entity_id, action, reference)
+    marker = (scope.tenant_id, scope.legal_entity_id, action, reference, scope.ad_client_id, scope.ad_org_id)
     token = _native_action_execution.set(marker)
+    from integration.native_finance_guard import fresh_native_financial_operation
     try:
-        yield
+        with fresh_native_financial_operation():
+            yield
     finally:
         _native_action_execution.reset(token)
 
 def _deny_legacy_native_action(scope: TenantScope, action: str, reference: str) -> None:
-    if _protected_finance_runtime() and _native_action_execution.get() != (
+    if _protected_finance_runtime() and (_native_action_execution.get() or ())[:4] != (
         scope.tenant_id, scope.legal_entity_id, action, reference
     ):
         raise OrderToCashError(
@@ -113,16 +115,18 @@ def _protected_finance_runtime() -> bool:
 @contextmanager
 def _authorised_invoice_post(scope: TenantScope, invoice_id: str) -> Iterator[None]:
     """Private native-call bridge; never expose to a REST handler or payload."""
-    marker = (scope.tenant_id, scope.legal_entity_id, invoice_id)
+    marker = (scope.tenant_id, scope.legal_entity_id, invoice_id, scope.ad_client_id, scope.ad_org_id)
     token = _invoice_post_execution.set(marker)
+    from integration.native_finance_guard import fresh_native_financial_operation
     try:
-        yield
+        with fresh_native_financial_operation():
+            yield
     finally:
         _invoice_post_execution.reset(token)
 
 
 def _deny_legacy_invoice_post(scope: TenantScope, invoice_id: str) -> None:
-    if _protected_finance_runtime() and _invoice_post_execution.get() != (
+    if _protected_finance_runtime() and (_invoice_post_execution.get() or ())[:3] != (
         scope.tenant_id, scope.legal_entity_id, invoice_id,
     ):
         raise OrderToCashError(
@@ -297,11 +301,22 @@ def _create_and_map(
     idempiere: IdempiereClient,
     mappings: MappingStore,
 ) -> NativeDocumentRef:
-    native_id = idempiere.create_record(native_table, fields)
+    from integration.native_finance_guard import authorised_native_financial_request
+    with authorised_native_financial_request("POST", f"/models/{native_table}", fields):
+        native_id = idempiere.create_record(native_table, fields)
     mappings.create_mapping(
         scope.tenant_id, scope.legal_entity_id, canonical_type, canonical_id, native_table, native_id
     )
     return NativeDocumentRef(canonical_id=canonical_id, table=native_table, native_id=native_id)
+
+
+def _execute_governed_process(
+    idempiere: IdempiereClient, process_id: int, parameters: dict[str, Any],
+) -> dict[str, Any]:
+    """Bind the exact native document IDs and process payload immediately at execution."""
+    from integration.native_finance_guard import authorised_native_financial_request
+    with authorised_native_financial_request("POST", f"/processes/{process_id}", parameters):
+        return idempiere.execute_process(process_id, parameters)
 
 
 def _resolve_native(
@@ -367,7 +382,8 @@ def create_sales_order(
     integration, it is never guessed from a SKU or display name."""
     if not lines:
         raise OrderToCashError("A sales order requires at least one order line")
-    fields = sales_order_fields(business_partner_native_id, document_currency, lines)
+    fields = sales_order_fields(business_partner_native_id, document_currency, lines,
+                                reference=commerce_order_canonical_id)
     ref = _create_and_map(
         scope=scope,
         canonical_type="CommerceOrder",
@@ -407,7 +423,7 @@ def complete_sales_order(
         expected_table=_TABLE_ORDER,
         mappings=mappings,
     )
-    idempiere.execute_process(process_ids.complete_sales_order, {"C_Order_ID": native_id, "DocAction": "CO"})
+    _execute_governed_process(idempiere, process_ids.complete_sales_order, {"C_Order_ID": native_id, "DocAction": "CO"})
     outbox.record(
         _envelope(
             _EVENT_SALES_ORDER_ACCEPTED,
@@ -478,7 +494,7 @@ def complete_shipment(
         expected_table=_TABLE_SHIPMENT,
         mappings=mappings,
     )
-    idempiere.execute_process(process_ids.complete_shipment, {"M_InOut_ID": native_id, "DocAction": "CO"})
+    _execute_governed_process(idempiere, process_ids.complete_shipment, {"M_InOut_ID": native_id, "DocAction": "CO"})
     outbox.record(
         _envelope(
             _EVENT_SHIPMENT_COMPLETED,
@@ -563,7 +579,7 @@ def post_customer_invoice(
         expected_table=_TABLE_INVOICE,
         mappings=mappings,
     )
-    idempiere.execute_process(process_ids.post_customer_invoice, {"C_Invoice_ID": native_id, "DocAction": "CO"})
+    _execute_governed_process(idempiere, process_ids.post_customer_invoice, {"C_Invoice_ID": native_id, "DocAction": "CO"})
     outbox.record(
         _envelope(
             _EVENT_INVOICE_POSTED,
@@ -634,7 +650,7 @@ def complete_payment(
         expected_table=_TABLE_PAYMENT,
         mappings=mappings,
     )
-    idempiere.execute_process(process_ids.complete_payment, {"C_Payment_ID": native_id, "DocAction": "CO"})
+    _execute_governed_process(idempiere, process_ids.complete_payment, {"C_Payment_ID": native_id, "DocAction": "CO"})
     outbox.record(
         _envelope(
             _EVENT_PAYMENT_COMPLETED,
@@ -682,7 +698,7 @@ def allocate_payment(
         expected_table=_TABLE_INVOICE,
         mappings=mappings,
     )
-    idempiere.execute_process(
+    _execute_governed_process(idempiere, 
         process_ids.allocate_payment,
         {"C_Payment_ID": payment_native_id, "C_Invoice_ID": invoice_native_id, "Amount": amount},
     )
