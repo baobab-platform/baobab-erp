@@ -107,7 +107,9 @@ def require_native_financial_authority(
             _denied()
         table = parts[1].upper()
         if table not in _FINANCE_TABLES:
-            return
+            # Financial classifications are not exhaustive; an unlisted model
+            # may still be accounting/bank/issuer sensitive. No implicit allow.
+            _denied()
         # Edits/deletes to financial facts are never a normal REST operation.
         # Nor may a caller create GL, allocation, tax or finance-baseline rows
         # through this consumer; those require separate governed workflows.
