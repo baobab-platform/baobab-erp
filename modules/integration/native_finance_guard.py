@@ -151,6 +151,12 @@ def require_native_financial_authority(
             or int(configured_process_id) <= 0
             or int(configured_process_id) != int(parts[1])):
         _denied()
+    required_keys = (
+        {"C_Payment_ID", "C_Invoice_ID", "Amount"} if action == "allocate_payment"
+        else {present[0], "DocAction"}
+    )
+    if set(data) != required_keys:
+        _denied()
     if action == "post_customer_invoice":
         if not _company_bound(invoice, credentials):
             _denied()
