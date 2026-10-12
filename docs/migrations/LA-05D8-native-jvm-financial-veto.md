@@ -15,10 +15,10 @@ The only possible positive permit comes from `NativeFinancialAuthority`, a serve
 An OSGi bundle **installed** in an image is not by itself proof it is **ACTIVE** at iDempiere startup, nor that it observes every entry point or accounting engine path. Before protected acceptance:
 
 1. Supply a real independently governed `NativeFinancialAuthority` provider bound to CP/IAM and ERP finance readiness, with security-reviewed service-provider identity.
-2. Make deployment/startup health fail if this bundle is not ACTIVE or native listener registration has failed. The current bundle throws on activation failures, but the Equinox host may continue serving other bundles.
+2. The image now checks the active JVM PID marker, written only after listener registration, before reporting container health. Protected acceptance must still verify that its orchestration refuses traffic to unhealthy containers, exercises *actual* native callbacks, and prevents direct database bypass. A copied JAR or Docker health result alone does not prove all transaction entry points are covered.
 3. Confirm native iDempiere 13 direct UI, REST, batch/import, scheduled jobs, reversals and posting `Fact_Acct` against real engine and database, including alternative table/procedure bypasses.
 4. Persist immutable verified legal/accounting attribution through native transactions and canonical finance outbox; this PR does **not** implement attribution columns or a certified posting allow decision.
 5. Restrict direct database and iDempiere system/admin credentials separately. Model validation hooks are not database triggers and cannot veto direct SQL writes.
 6. Verify the exact iDempiere 13 plugin runtime, startup levels, P2 REST bundle presence and genuine installed build. No AWS, merchant/provider or legal registration claims are made.
 
-**Verdict:** Native JVM **veto implementation** now exists, but live positive authorization, startup enforcement, attribution, covered-bypass proof and protected production acceptance remain blocked.
+**Verdict:** Native JVM **veto implementation and container health registration check** now exist, but live positive authorization, trusted runtime activation proof, attribution, covered-bypass proof and protected production acceptance remain blocked.
