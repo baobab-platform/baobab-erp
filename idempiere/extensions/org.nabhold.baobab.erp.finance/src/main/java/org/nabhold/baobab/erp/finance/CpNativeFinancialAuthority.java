@@ -119,7 +119,36 @@ public final class CpNativeFinancialAuthority implements NativeFinancialAuthorit
         return s;
     }
 
-    private String legalMandate(NativeFinancialContextSource.NativeLease lease, String operation) throws Exception {
+    private NativeFinancialContextSource.NativeLease issueCurrentCpContext(
+            NativeFinancialContextSource.NativeLease nativeScope) throws Exception {
+        // The native source supplies the independently resolved operating
+        // Organisation and market, NOT a grant or a reusable Context ID.
+        // CP mints the Context for the SAME IAM workload that redeems it.
+        Map<String,Object> response = current("/v1/platform-context/resolve", Map.of(
+                "tenant_id", nativeScope.tenantId(),
+                "organisation_id", nativeScope.organisationId(),
+                "country_code", nativeScope.market()));
+        if (!nativeScope.tenantId().equals(response.get("tenant_id"))
+                || !nativeScope.organisationId().equals(response.get("organisation_id"))
+                || !nativeScope.market().equals(response.get("country_code"))
+                || !recent(response.get("resolved_at"), Instant.now(), 5, 1)) {
+            throw new IllegalStateException("CP could not mint exact runtime operating Context");
+        }
+        String context = boundString(response, "context_id");
+        UUID.fromString(context);
+        Instant expiry = Instant.parse(boundString(response, "expires_at"));
+        if (!expiry.isAfter(Instant.now()) || expiry.isAfter(Instant.now().plusSeconds(600))) {
+            throw new IllegalStateException("bounded active CP runtime context is required");
+        }
+        return new NativeFinancialContextSource.NativeLease(
+                nativeScope.tenantId(), context, nativeScope.organisationId(),
+                nativeScope.expectedLegalEntityId(), nativeScope.market(),
+                nativeScope.role(), nativeScope.activity(), nativeScope.capability());
+    }
+
+    private record LegalProof(String mandateId, String evidenceReference) {}
+
+    private LegalProof legalMandate(NativeFinancialContextSource.NativeLease lease, String operation) throws Exception {
         Map<String,Object> response = current("/internal/legal-actor/v1/assess", Map.of(
                 "context_id", lease.contextId(), "role", lease.role(),
                 "activity", lease.activity(), "market", lease.market(),
@@ -143,7 +172,7 @@ public final class CpNativeFinancialAuthority implements NativeFinancialAuthorit
         if (!until.isAfter(Instant.now()) || until.isAfter(Instant.now().plusSeconds(32))) {
             throw new IllegalStateException("CP legal authority expired or too wide");
         }
-        return mandate;
+        return new LegalProof(mandate, (String) evidences.get(0));
     }
 
     private void documentaryClear(NativeFinancialContextSource.NativeLease lease, String operation)
@@ -190,20 +219,21 @@ public final class CpNativeFinancialAuthority implements NativeFinancialAuthorit
             String operation = table + ":" + client + ":" + org + ":" + nativeId
                     + ":" + action + ":" + trx;
             if (operation.length() > 256) return false;
-            String mandate = legalMandate(lease, operation);
+            lease = issueCurrentCpContext(lease);
+            LegalProof proof = legalMandate(lease, operation);
             documentaryClear(lease, operation);
             if (!finance.currentCompanyFinanceReady(
                     table, client, org, nativeId, action, trx, lease.expectedLegalEntityId())) {
                 return false;
             }
             // Refresh CP twice just before immutable same-transaction audit.
-            String refreshed = legalMandate(lease, operation);
-            if (!mandate.equals(refreshed)) return false;
+            LegalProof refreshed = legalMandate(lease, operation);
+            if (!proof.equals(refreshed)) return false;
             documentaryClear(lease, operation);
             // Until this succeeds in native Trx, even an authorized actor
             // CANNOT enter the financial mutation path.
             attribution.append(table, client, org, nativeId, action, trx,
-                    lease, mandate, "cp/legal-actor/mandate/" + mandate);
+                    lease, proof.mandateId(), proof.evidenceReference());
             return true;
         } catch (Exception invalid) {
             // Never leak mandates, financial source data or IAM tokens in logs.
