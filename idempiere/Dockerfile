@@ -193,7 +193,7 @@ RUN set -eu; \
     [ "$#" = 1 ] && [ -f "$1" ] || { echo "missing native finance veto bundle" >&2; exit 1; }; \
     jar=$(basename "$1"); \
     [ "$(grep -c '^org.nabhold.baobab.erp.finance,' "$info" || true)" = 0 ] || { echo "duplicate native finance veto entry" >&2; exit 1; }; \
-    printf 'org.nabhold.baobab.erp.finance,0.1.0,plugins/%s,4,true\\n' "$jar" >> "$info"; \
+    echo "org.nabhold.baobab.erp.finance,0.1.0,plugins/$jar,4,true" >> "$info"; \
     grep -Fq "org.nabhold.baobab.erp.finance,0.1.0,plugins/$jar,4,true" "$info"
 
 
