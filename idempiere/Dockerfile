@@ -185,6 +185,10 @@ COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/exte
 COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.mapping/target/org.nabhold.baobab.erp.mapping-*.jar ${IDEMPIERE_PLUGINS_DIR}/
 COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.events/target/org.nabhold.baobab.erp.events-*.jar ${IDEMPIERE_PLUGINS_DIR}/
 COPY --from=extensions-builder --chown=idempiere:idempiere /build/idempiere/extensions/org.nabhold.baobab.erp.finance/target/org.nabhold.baobab.erp.finance-*.jar ${IDEMPIERE_PLUGINS_DIR}/
+# The active JVM bundle creates a per-process marker only after all native
+# synchronous financial veto callbacks were registered.
+RUN install -d -m 0750 -o idempiere -g idempiere "${IDEMPIERE_HOME}/.baobab"
+
 
 # Copying an OSGi bundle into plugins/ is insufficient: register it explicitly.
 RUN set -eu; \
@@ -275,4 +279,7 @@ RUN if [ -f /tmp/rest-api-p2/content.xml ] || [ -f /tmp/rest-api-p2/content.jar 
 # curl client that compose.yaml's healthcheck already uses for this image
 # (only 8443 is published), with -k for the image's self-signed certificate.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=3m --retries=3 \
-  CMD curl -kfsS https://127.0.0.1:8443/webui/index.zul >/dev/null || exit 1
+  CMD marker="${IDEMPIERE_HOME}/.baobab/native-finance-veto-active"; \
+      [ -r "$marker" ] && pid="$(cat "$marker")" && \
+      [ -n "$pid" ] && [ -d "/proc/$pid" ] && \
+      curl -kfsS https://127.0.0.1:8443/webui/index.zul >/dev/null || exit 1
