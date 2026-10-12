@@ -201,6 +201,9 @@ class RestIdempiereClient:
         return self._call("POST", f"/processes/{process_id}", body=parameters)
 
     def _call(self, method: str, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        # Deny before even authenticating to iDempiere.
+        from integration.native_finance_guard import require_native_financial_authority
+        require_native_financial_authority(method, path, body, self._credentials)
         token = self._ensure_token()
         try:
             return self._raw_request(method, path, body, token)
@@ -213,6 +216,9 @@ class RestIdempiereClient:
     def _raw_request(
         self, method: str, path: str, body: dict[str, Any] | None, token: str
     ) -> dict[str, Any]:
+        # Lower-level callers and token-refresh retries cannot bypass the gate.
+        from integration.native_finance_guard import require_native_financial_authority
+        require_native_financial_authority(method, path, body, self._credentials)
         request = urllib.request.Request(
             f"{self._credentials.base_url}{path}",
             data=json.dumps(body).encode() if body is not None else None,
