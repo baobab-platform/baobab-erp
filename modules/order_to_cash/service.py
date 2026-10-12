@@ -297,11 +297,22 @@ def _create_and_map(
     idempiere: IdempiereClient,
     mappings: MappingStore,
 ) -> NativeDocumentRef:
-    native_id = idempiere.create_record(native_table, fields)
+    from integration.native_finance_guard import authorised_native_financial_request
+    with authorised_native_financial_request("POST", f"/models/{native_table}", fields):
+        native_id = idempiere.create_record(native_table, fields)
     mappings.create_mapping(
         scope.tenant_id, scope.legal_entity_id, canonical_type, canonical_id, native_table, native_id
     )
     return NativeDocumentRef(canonical_id=canonical_id, table=native_table, native_id=native_id)
+
+
+def _execute_governed_process(
+    idempiere: IdempiereClient, process_id: int, parameters: dict[str, Any],
+) -> dict[str, Any]:
+    """Bind the exact native document IDs and process payload immediately at execution."""
+    from integration.native_finance_guard import authorised_native_financial_request
+    with authorised_native_financial_request("POST", f"/processes/{process_id}", parameters):
+        return idempiere.execute_process(process_id, parameters)
 
 
 def _resolve_native(
@@ -408,7 +419,7 @@ def complete_sales_order(
         expected_table=_TABLE_ORDER,
         mappings=mappings,
     )
-    idempiere.execute_process(process_ids.complete_sales_order, {"C_Order_ID": native_id, "DocAction": "CO"})
+    _execute_governed_process(idempiere, process_ids.complete_sales_order, {"C_Order_ID": native_id, "DocAction": "CO"})
     outbox.record(
         _envelope(
             _EVENT_SALES_ORDER_ACCEPTED,
@@ -479,7 +490,7 @@ def complete_shipment(
         expected_table=_TABLE_SHIPMENT,
         mappings=mappings,
     )
-    idempiere.execute_process(process_ids.complete_shipment, {"M_InOut_ID": native_id, "DocAction": "CO"})
+    _execute_governed_process(idempiere, process_ids.complete_shipment, {"M_InOut_ID": native_id, "DocAction": "CO"})
     outbox.record(
         _envelope(
             _EVENT_SHIPMENT_COMPLETED,
@@ -564,7 +575,7 @@ def post_customer_invoice(
         expected_table=_TABLE_INVOICE,
         mappings=mappings,
     )
-    idempiere.execute_process(process_ids.post_customer_invoice, {"C_Invoice_ID": native_id, "DocAction": "CO"})
+    _execute_governed_process(idempiere, process_ids.post_customer_invoice, {"C_Invoice_ID": native_id, "DocAction": "CO"})
     outbox.record(
         _envelope(
             _EVENT_INVOICE_POSTED,
@@ -635,7 +646,7 @@ def complete_payment(
         expected_table=_TABLE_PAYMENT,
         mappings=mappings,
     )
-    idempiere.execute_process(process_ids.complete_payment, {"C_Payment_ID": native_id, "DocAction": "CO"})
+    _execute_governed_process(idempiere, process_ids.complete_payment, {"C_Payment_ID": native_id, "DocAction": "CO"})
     outbox.record(
         _envelope(
             _EVENT_PAYMENT_COMPLETED,
@@ -683,7 +694,7 @@ def allocate_payment(
         expected_table=_TABLE_INVOICE,
         mappings=mappings,
     )
-    idempiere.execute_process(
+    _execute_governed_process(idempiere, 
         process_ids.allocate_payment,
         {"C_Payment_ID": payment_native_id, "C_Invoice_ID": invoice_native_id, "Amount": amount},
     )
