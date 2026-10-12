@@ -63,6 +63,12 @@ class NativeRestFinanceGuardTest(unittest.TestCase):
                 with self.assertRaises(NativeFinancialMutationDenied):
                     client.create_record("C_Invoice", {"PayAmt": "10"})
                 authenticate.assert_not_called()
+            # Calling the lower-level transport directly does not escape PEP.
+            with patch.object(client, "_send") as send:
+                with self.assertRaises(NativeFinancialMutationDenied):
+                    client._raw_request("POST", "/processes/3003",
+                                        {"C_Invoice_ID": 5, "DocAction": "CO"}, "synthetic-token")
+                send.assert_not_called()
 
     def test_finance_edits_delete_and_undocumented_records_always_denied(self):
         with patch.dict(os.environ, _ENV), _authorised_invoice_post(_SCOPE, "invoice-test-only"):
@@ -106,6 +112,9 @@ class NativeRestFinanceGuardTest(unittest.TestCase):
                     self.check("POST", "/processes/" + process_id, params)
                     with self.assertRaises(NativeFinancialMutationDenied):
                         self.check("POST", "/processes/9999", params)
+                    with self.assertRaises(NativeFinancialMutationDenied):
+                        self.check("POST", "/processes/" + process_id,
+                                   {**params, "ExtraPrivilegedParameter": "yes"})
                     with self.assertRaises(NativeFinancialMutationDenied):
                         self.check("POST", "/processes/3003", {"C_Invoice_ID": 5, "DocAction": "CO"})
             with _authorised_invoice_post(_SCOPE, "invoice-test-only"):
