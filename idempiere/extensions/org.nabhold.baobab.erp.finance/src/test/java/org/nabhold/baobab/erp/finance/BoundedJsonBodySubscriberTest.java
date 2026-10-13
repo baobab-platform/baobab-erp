@@ -8,15 +8,15 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BoundedJsonBodySubscriberTest {
-    static final class Subscription implements Flow.Subscription {
+    static final class TestSubscription implements Flow.Subscription {
         boolean cancelled;
         long requested;
-        public void request(long count) { requested += count; }
-        public void cancel() { cancelled = true; }
+        @Override public void request(long count) { requested += count; }
+        @Override public void cancel() { cancelled = true; }
     }
     @Test void completeBodyOnlyAndExactByteBoundary() throws Exception {
         var subscriber = new BoundedJsonBodySubscriber();
-        var flow = new Subscription();
+        var flow = new TestSubscription();
         subscriber.onSubscribe(flow);
         subscriber.onNext(List.of(ByteBuffer.wrap(new byte[1000]), ByteBuffer.wrap(new byte[15384])));
         assertFalse(subscriber.getBody().toCompletableFuture().isDone());
@@ -28,7 +28,7 @@ class BoundedJsonBodySubscriberTest {
     @Test void oversizedSingleOrCumulativeChunksCancelBeforeRetention() {
         for (boolean cumulative : new boolean[]{false, true}) {
             var subscriber = new BoundedJsonBodySubscriber();
-            var flow = new Subscription();
+            var flow = new TestSubscription();
             subscriber.onSubscribe(flow);
             if (cumulative) subscriber.onNext(List.of(ByteBuffer.wrap(new byte[1000])));
             subscriber.onNext(List.of(ByteBuffer.wrap(new byte[cumulative ? 15385 : 16385])));
@@ -40,7 +40,7 @@ class BoundedJsonBodySubscriberTest {
     }
     @Test void publisherFailureCannotSupplyPartialFact() {
         var subscriber = new BoundedJsonBodySubscriber();
-        var flow = new Subscription();
+        var flow = new TestSubscription();
         subscriber.onSubscribe(flow);
         subscriber.onNext(List.of(ByteBuffer.wrap(new byte[1])));
         subscriber.onError(new IllegalStateException("synthetic disconnect"));

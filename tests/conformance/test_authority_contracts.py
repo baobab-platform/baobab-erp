@@ -6,9 +6,7 @@ posting evidence. Semantic scope/freshness denial tests remain independent.
 import hashlib
 import importlib.util
 import json
-import subprocess
 import unittest
-from pathlib import Path
 
 import _shared as shared
 from shared_contracts import PROVENANCE, ContractViolation, validate_contract

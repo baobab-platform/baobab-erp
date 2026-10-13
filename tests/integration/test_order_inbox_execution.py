@@ -268,6 +268,9 @@ class ExecutionTests(_Base):
         from order_to_cash.native_action_gate import NativeActionPolicy
         from order_to_cash.legal_actor_gate import LegalActorOperation
 
+        # This positive legal-actor fixture is a synthetic canonical record;
+        # an operating business name is not a verified incorporation identity.
+        self.entity = "LE-SYNTHETIC-ISSUER"
         self.seed()
         wire = self.placed()
         self.assertEqual(self.deliver(wire), 200)
@@ -279,8 +282,8 @@ class ExecutionTests(_Base):
             authority_reference="synthetic/independent-provider-authority",
         )
         op = LegalActorOperation(
-            context_id="ctx-synthetic-reviewed-by-cp", tenant_id=self.tenant,
-            operating_organisation_id="org-synthetic-operated",
+            context_id="0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b", tenant_id=self.tenant,
+            operating_organisation_id="0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
             expected_legal_entity_id=self.entity,
             role="CONTRACTING_PARTY", activity=activity, market="ZA",
             capability=cap, operation_reference=self.order,
@@ -295,7 +298,8 @@ class ExecutionTests(_Base):
                     "provider_permissions_granted": False,
                     "legal_actor_resolution": {
                         "outcome":"AUTHORIZED",
-                        "mandate_id":"mandate-synthetic-external-reviewed",
+                        "policy_reference":"synthetic/independent-policy",
+                        "mandate_id":"0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d",
                         "responsible_legal_entity_id":op.expected_legal_entity_id,
                         "evidence_references":["synthetic/not-real-source"],
                         "evaluated_at":now.isoformat(),
@@ -316,7 +320,7 @@ class ExecutionTests(_Base):
         class Native:
             def ensure_legal_actor_usable(self, operation, mandate_id):
                 calls["provider"] += 1
-                testcase.assertEqual(mandate_id,"mandate-synthetic-external-reviewed")
+                testcase.assertEqual(mandate_id,"0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d")
         authorised = InboxNativeAuthority(
             policy=policy, operation=op, assessor=CPAssessor(),
             provider=Native(), documentary=Documentary(),

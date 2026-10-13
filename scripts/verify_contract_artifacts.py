@@ -6,7 +6,6 @@ run validators from the installed wheel or a standalone isolated Java loader.
 This is synthetic compatibility proof, never a legal/native support grant.
 """
 import argparse
-import json
 import subprocess
 import zipfile
 from pathlib import Path
