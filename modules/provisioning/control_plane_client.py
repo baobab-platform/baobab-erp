@@ -21,6 +21,8 @@ import urllib.parse
 import urllib.request
 from typing import Callable
 
+from shared_contracts.http import RejectRedirect, decode_object
+
 from provisioning.cp_contract import AssignmentError, CpErpAssignment, assignment_from_payload
 
 
@@ -49,7 +51,7 @@ class HttpControlPlaneAssignmentSource:
         self._base = base_url.rstrip("/")
         self._token = token_provider
         self._timeout = timeout
-        self._open = (opener or urllib.request.build_opener()).open
+        self._open = (opener or urllib.request.build_opener(RejectRedirect())).open
 
     def resolve_erp_assignment(self, *, tenant_id: str, tenant_provisioning_id: str, legal_entity_id: str,
                                correlation_id: str | None = None) -> CpErpAssignment:
@@ -61,12 +63,17 @@ class HttpControlPlaneAssignmentSource:
             raise
         except Exception as exc:  # noqa: BLE001 - a token failure is "cannot use Control Plane now", never a 500
             raise ControlPlaneUnavailable("could not obtain a Control Plane access token") from exc
-        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json", "Cache-Control": "no-store"}
         if correlation_id:
             headers["X-Correlation-ID"] = correlation_id
         try:
             with self._open(urllib.request.Request(url, headers=headers, method="GET"), timeout=self._timeout) as response:
-                payload = json.loads(response.read())
+                if getattr(response, 'status', 200) != 200:
+                    raise ValueError('non-200 CP assignment response')
+                raw = response.read(65537)
+                if len(raw) > 65536:
+                    raise ValueError('oversized CP assignment response')
+                payload = decode_object(raw)
         except urllib.error.HTTPError as error:
             if error.code in (404, 409):
                 code, detail = _problem(error)

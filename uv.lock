@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 
 [manifest]
@@ -34,8 +34,10 @@ name = "baobab-erp-modules"
 version = "0.1.0"
 source = { editable = "modules" }
 dependencies = [
+    { name = "jsonschema", extra = ["format-nongpl"] },
     { name = "psycopg", extra = ["binary"] },
     { name = "pyjwt", extra = ["crypto"] },
+    { name = "referencing" },
     { name = "tzdata" },
 ]
 
@@ -48,10 +50,12 @@ conformance = [
 
 [package.metadata]
 requires-dist = [
+    { name = "jsonschema", extras = ["format-nongpl"], specifier = ">=4.21,<5" },
     { name = "jsonschema", extras = ["format-nongpl"], marker = "extra == 'conformance'", specifier = ">=4.21,<5" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.1,<4" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.8,<3" },
     { name = "pyyaml", marker = "extra == 'conformance'", specifier = ">=6,<7" },
+    { name = "referencing", specifier = ">=0.35,<1" },
     { name = "referencing", marker = "extra == 'conformance'", specifier = ">=0.35,<1" },
     { name = "tzdata", specifier = ">=2024.1" },
 ]

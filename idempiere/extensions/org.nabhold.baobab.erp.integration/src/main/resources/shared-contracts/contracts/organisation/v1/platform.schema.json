@@ -1,0 +1,362 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.baobab-platform.com/organisation/v1/platform.schema.json",
+  "title": "Baobab Platform Relationship and Platform Account Contracts (ADR-BCP-018)",
+  "description": "Definition library for PlatformRelationship, PlatformAccount and PlatformAccountMembership.\nValidate resources against fragment URIs (e.g. #/$defs/PlatformRelationship), not the document root.\n\nAn Organisation may hold concurrent PlatformRelationships (e.g. PLATFORM_PARTNER + EXTERNAL_CLIENT). Privileged types (PLATFORM_OWNER, PLATFORM_OPERATOR, PLATFORM_GROUP_AFFILIATE) are server-authoritative and never self-assigned.\n\nInvariants (ADR-BCP-018):\n  PlatformRelationship != ProductSubscription, != runtime authorization\n  PLATFORM_GROUP_AFFILIATE != runtime permission\n  PlatformAccount != Tenant, != CorporateGroup, != authorization boundary\n  same PlatformAccount != shared tenant access",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {},
+  "$defs": {
+    "platformRelationshipType": {
+      "type": "string",
+      "description": "Durable relationship between an Organisation and the Baobab Platform (ADR-BCP-018 section 32). Extensible by a versioned contract change.",
+      "enum": [
+        "PLATFORM_OWNER",
+        "PLATFORM_OPERATOR",
+        "PLATFORM_GROUP_AFFILIATE",
+        "EXTERNAL_CLIENT",
+        "PLATFORM_PARTNER",
+        "MANAGED_ENTITY"
+      ]
+    },
+    "platformAccountRole": {
+      "type": "string",
+      "description": "Commercial/administrative role within a PlatformAccount (ADR-BCP-018 section 43). Never a runtime permission or IAM role.",
+      "enum": [
+        "PRIMARY_ACCOUNT_ORGANISATION",
+        "CONTRACTING_PARTY",
+        "BILLING_PARTY",
+        "SERVICE_RECIPIENT",
+        "ACCOUNT_MEMBER"
+      ]
+    },
+    "PlatformRelationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Carries no runtime authorization. PLATFORM_GROUP_AFFILIATE must preserve the CorporateRelationship that justifies it (ADR-BCP-018 section 118).",
+      "required": [
+        "id",
+        "platform_id",
+        "organisation_id",
+        "relationship_type",
+        "verification_state",
+        "source_authority",
+        "status",
+        "effective_from"
+      ],
+      "properties": {
+        "id": { "$ref": "domain.schema.json#/$defs/platformRelationshipId" },
+        "platform_id": { "$ref": "domain.schema.json#/$defs/platformId" },
+        "organisation_id": { "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalEntityId" },
+        "relationship_type": { "$ref": "#/$defs/platformRelationshipType" },
+        "verification_state": { "$ref": "domain.schema.json#/$defs/verificationState" },
+        "status": { "type": "string", "enum": ["PENDING", "ACTIVE", "SUSPENDED", "ENDED", "RETIRED"] },
+        "effective_from": { "type": "string", "format": "date-time" },
+        "effective_to": { "type": "string", "format": "date-time" },
+        "basis_relationship_id": {
+          "$ref": "domain.schema.json#/$defs/corporateRelationshipId",
+          "description": "CorporateRelationship that justifies group-derived relationship types."
+        },
+        "admission_decision_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Admission decision (ADR-BCP-017 / ADR-BCP-023) that authorised this platform relationship."
+        },
+        "source_authority": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Server-side authority for PLATFORM_OWNER, PLATFORM_OPERATOR and PLATFORM_GROUP_AFFILIATE; applicants cannot self-classify as first-party (ADR-BCP-018 section 70)."
+        },
+        "evidence_references": {
+          "type": "array",
+          "items": { "$ref": "domain.schema.json#/$defs/evidenceReference" },
+          "uniqueItems": true
+        },
+        "verified_by": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Authenticated principal or governed process that performed verification. Server-derived; never accepted from a client payload."
+        },
+        "verified_at": { "type": "string", "format": "date-time" },
+        "classification": { "$ref": "domain.schema.json#/$defs/relationshipClassification" },
+        "metadata": { "type": "object", "additionalProperties": true }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "verification_state": { "const": "VERIFIED" } }, "required": ["verification_state"] },
+          "then": {
+            "required": ["evidence_references", "verified_by", "verified_at"],
+            "properties": { "evidence_references": { "minItems": 1 } }
+          }
+        },
+        {
+          "if": { "properties": { "relationship_type": { "const": "PLATFORM_GROUP_AFFILIATE" } }, "required": ["relationship_type"] },
+          "then": { "required": ["basis_relationship_id"] }
+        }
+      ]
+    },
+    "PlatformAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Commercial, contractual and administrative grouping (ADR-BCP-018 section 41). Not a legal identity, corporate ownership, tenant or authorization boundary. Organisations participate only through explicit PlatformAccountMemberships.",
+      "required": [
+        "id",
+        "display_name",
+        "status",
+        "effective_from"
+      ],
+      "properties": {
+        "id": { "$ref": "domain.schema.json#/$defs/platformAccountId" },
+        "display_name": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "primary_organisation_id": { "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalEntityId" },
+        "status": { "$ref": "#/$defs/platformAccountStatus" },
+        "contract_references": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true,
+          "description": "Opaque references to master service or commercial agreements."
+        },
+        "billing_profile_reference": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Opaque billing-profile reference. Never payment credentials."
+        },
+        "support_profile_reference": { "type": "string", "minLength": 1 },
+        "effective_from": { "type": "string", "format": "date-time" },
+        "effective_to": { "type": "string", "format": "date-time" },
+        "metadata": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "PlatformAccountMembership": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Effective-dated participation of an Organisation in a PlatformAccount (ADR-BCP-018 section 43). Account roles are commercial and never runtime permissions. Tenant bindings to an account are a separate, explicit concept: TenantPlatformAccountBinding.",
+      "required": [
+        "id",
+        "platform_account_id",
+        "organisation_id",
+        "account_role",
+        "status",
+        "effective_from"
+      ],
+      "properties": {
+        "id": { "$ref": "domain.schema.json#/$defs/platformAccountMembershipId" },
+        "platform_account_id": { "$ref": "domain.schema.json#/$defs/platformAccountId" },
+        "organisation_id": { "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalEntityId" },
+        "account_role": { "$ref": "#/$defs/platformAccountRole" },
+        "status": { "type": "string", "enum": ["PENDING", "ACTIVE", "SUSPENDED", "ENDED"] },
+        "effective_from": { "type": "string", "format": "date-time" },
+        "effective_to": { "type": "string", "format": "date-time" },
+        "evidence_reference": { "$ref": "domain.schema.json#/$defs/evidenceReference" },
+        "metadata": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "platformAccountStatus": {
+      "type": "string",
+      "enum": [
+        "PENDING",
+        "ACTIVE",
+        "SUSPENDED",
+        "CLOSED"
+      ],
+      "description": "PlatformAccount lifecycle (ADR-BCP-018 section 83): PENDING -> ACTIVE; ACTIVE <-> SUSPENDED; PENDING, ACTIVE or SUSPENDED -> CLOSED. CLOSED is final. Closing deletes nothing: tenants, organisations, relationships and audit keep their own lifecycles."
+    },
+    "platformAccountTransitions": {
+      "description": "The permitted PlatformAccount status transitions (ADR-BCP-018 section 83), for consumers that enforce them.",
+      "const": {
+        "PENDING": [
+          "ACTIVE",
+          "CLOSED"
+        ],
+        "ACTIVE": [
+          "SUSPENDED",
+          "CLOSED"
+        ],
+        "SUSPENDED": [
+          "ACTIVE",
+          "CLOSED"
+        ],
+        "CLOSED": []
+      }
+    },
+    "PlatformAccountStatusChangeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A governed change of a PlatformAccount's status. Suspension blocks new tenant bindings and changes no tenant's access. An account with ACTIVE tenant bindings cannot be CLOSED: each binding is ended explicitly first, never by cascade.",
+      "required": [
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "ACTIVE",
+            "SUSPENDED",
+            "CLOSED"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "evidence_reference": {
+          "$ref": "domain.schema.json#/$defs/evidenceReference"
+        }
+      }
+    },
+    "tenantPlatformAccountBindingStatus": {
+      "type": "string",
+      "enum": [
+        "ACTIVE",
+        "ENDED"
+      ]
+    },
+    "TenantPlatformAccountBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The explicit, effective-dated binding of a Tenant to the PlatformAccount whose commercial terms it consumes under (ADR-BCP-018 sections 45, 48 and 119). A tenant has at most one ACTIVE binding at a time and may have none (section 152). The binding is commercial provenance only: it never grants access, never joins tenants, and is never inferred from organisation or account membership (sections 45 and 141).",
+      "required": [
+        "id",
+        "tenant_id",
+        "platform_account_id",
+        "status",
+        "reason",
+        "bound_by",
+        "effective_from"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "domain.schema.json#/$defs/tenantPlatformAccountBindingId"
+        },
+        "tenant_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/tenantId"
+        },
+        "platform_account_id": {
+          "$ref": "domain.schema.json#/$defs/platformAccountId"
+        },
+        "organisation_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalEntityId",
+          "description": "The tenant's primary organisation, whose live membership in the account justified the binding when it was made. Recorded, never used to resolve access."
+        },
+        "status": {
+          "$ref": "#/$defs/tenantPlatformAccountBindingStatus"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "evidence_reference": {
+          "$ref": "domain.schema.json#/$defs/evidenceReference"
+        },
+        "bound_by": {
+          "$ref": "../../admission/v1/application.schema.json#/$defs/principalId",
+          "description": "The Control Plane principal that made the binding. Never an IAM-internal id."
+        },
+        "effective_from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "effective_to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end_reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "ended_by": {
+          "$ref": "../../admission/v1/application.schema.json#/$defs/principalId"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "ENDED"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "effective_to",
+              "end_reason",
+              "ended_by"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "ACTIVE"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "effective_to"
+                  ]
+                },
+                {
+                  "required": [
+                    "end_reason"
+                  ]
+                },
+                {
+                  "required": [
+                    "ended_by"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "TenantPlatformAccountBindingRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Bind a tenant to a PlatformAccount. The account must be ACTIVE and the tenant's ACTIVE primary organisation must hold a live membership in it. A tenant bound to another account must end that binding first; binding again to the same account converges.",
+      "required": [
+        "platform_account_id",
+        "reason"
+      ],
+      "properties": {
+        "platform_account_id": {
+          "$ref": "domain.schema.json#/$defs/platformAccountId"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "evidence_reference": {
+          "$ref": "domain.schema.json#/$defs/evidenceReference"
+        }
+      }
+    },
+    "TenantPlatformAccountBindingEndRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "End a tenant's ACTIVE binding. Ending changes no tenant access, subscription or grant.",
+      "required": [
+        "reason"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.baobab-platform.com/organisation/v1/relationship.schema.json",
+  "title": "Baobab Corporate Relationship and Corporate Group Contracts (ADR-BCP-018)",
+  "description": "Definition library for CorporateRelationship, CorporateGroup and CorporateGroupMembership.\nValidate resources against fragment URIs (e.g. #/$defs/CorporateRelationship), not the document root.\n\nCorporateRelationship records directed, effective-dated corporate facts between Organisations (source -> target, e.g. 'A OWNS B'). The graph is not a tree: multiple parents, cross-holdings and cycles may exist and must be surfaced, not resolved by guessing.\n\nInvariants (ADR-BCP-018):\n  CorporateRelationship != CounterpartyRelationship (ADR-BCP-014)\n  CorporateRelationship != ADR-BCP-012 LegalEntityRelationship\n  CorporateRelationship != PlatformRelationship\n  ownership != control\n  CorporateGroup != LegalEntity, != Tenant, != authorization boundary\n\nControl Plane is the runtime authority. Shared is the contract authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {},
+  "$defs": {
+    "corporateRelationshipType": {
+      "type": "string",
+      "description": "Directed corporate relationship from source_organisation_id to target_organisation_id (ADR-BCP-018 section 18). Inverse facts (owned-by, subsidiary-of, parent-of, sister-of) are derived, never stored. Commercial roles such as SUPPLIER_OF are counterparty facts and do not belong here. Extensible by a versioned contract change.",
+      "enum": [
+        "OWNS",
+        "CONTROLS",
+        "BRANCH_OF",
+        "AFFILIATE_OF",
+        "JOINT_VENTURE_WITH",
+        "SUCCESSOR_OF"
+      ]
+    },
+    "relationshipStatus": {
+      "type": "string",
+      "description": "Record lifecycle. Evidence state is carried separately by verification_state; an ENDED relationship remains queryable for historical resolution.",
+      "enum": ["PENDING", "ACTIVE", "SUSPENDED", "ENDED", "RETIRED"]
+    },
+    "CorporateRelationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Platform-scoped, effective-dated corporate fact between two Organisations. Carries no tenant_id. Consequential decisions (e.g. ADR-BCP-017 INTERNAL eligibility) MUST fail closed unless verification_state is VERIFIED. Never a runtime authorization input.",
+      "required": [
+        "id",
+        "source_organisation_id",
+        "target_organisation_id",
+        "relationship_type",
+        "direct_or_derived",
+        "verification_state",
+        "source_authority",
+        "status",
+        "effective_from"
+      ],
+      "properties": {
+        "id": { "$ref": "domain.schema.json#/$defs/corporateRelationshipId" },
+        "source_organisation_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalEntityId",
+          "description": "Subject of the directed fact (e.g. the owner in 'A OWNS B')."
+        },
+        "target_organisation_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalEntityId",
+          "description": "Object of the directed fact (e.g. the owned organisation in 'A OWNS B'). Must differ from source_organisation_id."
+        },
+        "relationship_type": { "$ref": "#/$defs/corporateRelationshipType" },
+        "ownership_percentage": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "description": "Recorded ownership stake. Never interpreted as control by generic platform code (ADR-BCP-018 section 21). Conflicting evidence moves verification_state to CONFLICTED rather than choosing a value."
+        },
+        "control_basis": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Recorded basis of control (e.g. majority voting rights, board appointment, contractual). Policy, not this field, determines consequences."
+        },
+        "direct_or_derived": {
+          "type": "string",
+          "enum": ["DIRECT", "DERIVED"],
+          "description": "DERIVED facts are projections and must carry basis_relationship_ids (ADR-BCP-018 section 81). Derived facts never silently become source facts."
+        },
+        "basis_relationship_ids": {
+          "type": "array",
+          "items": { "$ref": "domain.schema.json#/$defs/corporateRelationshipId" },
+          "uniqueItems": true
+        },
+        "derived_at": { "type": "string", "format": "date-time" },
+        "derivation_version": { "type": "string", "minLength": 1 },
+        "verification_state": { "$ref": "domain.schema.json#/$defs/verificationState" },
+        "source_authority": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Who or what established this record (e.g. shared-governance, admission-review, external-registry). An applicant claim alone never establishes a corporate fact (ADR-BCP-018 section 69)."
+        },
+        "status": { "$ref": "#/$defs/relationshipStatus" },
+        "effective_from": { "type": "string", "format": "date-time" },
+        "effective_to": { "type": "string", "format": "date-time" },
+        "evidence_references": {
+          "type": "array",
+          "items": { "$ref": "domain.schema.json#/$defs/evidenceReference" },
+          "uniqueItems": true,
+          "description": "Registry filings, shareholder registers, board records, legal review, etc. Binaries live in a document system."
+        },
+        "verified_by": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Authenticated principal or governed process that performed verification. Server-derived; never accepted from a client payload."
+        },
+        "verified_at": { "type": "string", "format": "date-time" },
+        "classification": { "$ref": "domain.schema.json#/$defs/relationshipClassification" },
+        "metadata": { "type": "object", "additionalProperties": true }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "verification_state": { "const": "VERIFIED" } }, "required": ["verification_state"] },
+          "then": {
+            "required": ["evidence_references", "verified_by", "verified_at"],
+            "properties": { "evidence_references": { "minItems": 1 } }
+          }
+        },
+        {
+          "if": { "properties": { "direct_or_derived": { "const": "DERIVED" } }, "required": ["direct_or_derived"] },
+          "then": {
+            "required": ["basis_relationship_ids", "derived_at", "derivation_version"],
+            "properties": { "basis_relationship_ids": { "minItems": 1 } }
+          }
+        }
+      ]
+    },
+    "CorporateGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Economic or governance grouping of Organisations (ADR-BCP-018 section 26). Not a LegalEntity, not the holding company, not a Tenant and not an authorization boundary. A unique root may not exist; root_organisation_id is therefore optional.",
+      "required": [
+        "id",
+        "display_name",
+        "status",
+        "grouping_policy",
+        "effective_from"
+      ],
+      "properties": {
+        "id": { "$ref": "domain.schema.json#/$defs/corporateGroupId" },
+        "display_name": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "root_organisation_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalEntityId",
+          "description": "Conventional root, only where one can be established safely. Absent when the ultimate parent is ambiguous."
+        },
+        "status": { "type": "string", "enum": ["PENDING", "ACTIVE", "SUSPENDED", "RETIRED"] },
+        "grouping_policy": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identifier and version of the policy that decides membership (e.g. which relationship types and verification states qualify)."
+        },
+        "effective_from": { "type": "string", "format": "date-time" },
+        "effective_to": { "type": "string", "format": "date-time" },
+        "classification": { "$ref": "domain.schema.json#/$defs/relationshipClassification" },
+        "metadata": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "CorporateGroupMembership": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Materialised membership of an Organisation in a CorporateGroup (ADR-BCP-018 section 28). Backed by CorporateRelationship references, or by an explicitly governed manual basis where derivation is impossible. Never a second ownership database; confers no runtime permission.",
+      "required": [
+        "id",
+        "corporate_group_id",
+        "organisation_id",
+        "basis_relationship_ids",
+        "status",
+        "effective_from",
+        "derived_at",
+        "derivation_version"
+      ],
+      "properties": {
+        "id": { "$ref": "domain.schema.json#/$defs/corporateGroupMembershipId" },
+        "corporate_group_id": { "$ref": "domain.schema.json#/$defs/corporateGroupId" },
+        "organisation_id": { "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalEntityId" },
+        "group_role": {
+          "type": "string",
+          "enum": ["ROOT", "MEMBER", "BRANCH", "JOINT_VENTURE", "OTHER"],
+          "description": "Descriptive role within the group. Not an IAM role."
+        },
+        "basis_relationship_ids": {
+          "type": "array",
+          "items": { "$ref": "domain.schema.json#/$defs/corporateRelationshipId" },
+          "uniqueItems": true
+        },
+        "manual_basis_reference": {
+          "$ref": "domain.schema.json#/$defs/evidenceReference",
+          "description": "Governed manual basis, used only where membership cannot be derived from CorporateRelationships."
+        },
+        "status": { "type": "string", "enum": ["PENDING", "ACTIVE", "SUSPENDED", "ENDED"] },
+        "effective_from": { "type": "string", "format": "date-time" },
+        "effective_to": { "type": "string", "format": "date-time" },
+        "derived_at": { "type": "string", "format": "date-time" },
+        "derivation_version": { "type": "string", "minLength": 1 },
+        "metadata": { "type": "object", "additionalProperties": true }
+      },
+      "anyOf": [
+        { "properties": { "basis_relationship_ids": { "minItems": 1 } } },
+        { "required": ["manual_basis_reference"] }
+      ]
+    }
+  }
+}

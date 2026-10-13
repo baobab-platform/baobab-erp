@@ -40,3 +40,13 @@ Unit tests for this layer live under `tests/unit/` at the repository root, not i
 `modules/`, so that `tests/` can also hold integration, contract, architecture,
 tenancy, security, migration, and golden-transaction suites against the same layout
 described in `docs/development.md`.
+
+## P0-04A authority contract consumption
+
+`shared_contracts` packages the exact pinned Shared schema closure and cached
+format-enforcing validators. Legal/documentary PEPs, caller-context validation and
+ERP assignments check wire facts before their separate semantic authority checks.
+These validators and format dependencies are installed in production, with wheel
+byte/inventory and isolated-runtime checks. See the
+[maintenance plan](../docs/plans/P0-04A-erp-contract-convergence.md) for regeneration
+and remaining protected acceptance requirements.

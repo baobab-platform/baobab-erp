@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.baobab-platform.com/organisation/v2/legal-actor-enforcement.schema.json",
+  "title": "LA-05A trusted cross-engine legal-actor assessment boundary",
+  "description": "A resource PEP may ask CP to re-resolve a legal actor for a transaction using only its previously resolved, principal-owned RUNTIME PlatformContext. Request cannot select a tenant, Organisation, LegalEntity, mandate, decision timestamp or provider. CP authority fact is not downstream provider approval.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {},
+  "$defs": {
+    "AssessLegalActorRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "context_id",
+        "role",
+        "activity",
+        "market",
+        "operation_reference"
+      ],
+      "properties": {
+        "context_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128
+        },
+        "role": {
+          "$ref": "legal-actor-mandate.schema.json#/$defs/legalActorRole"
+        },
+        "activity": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "market": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$"
+        },
+        "capability": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 120
+        },
+        "operation_reference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
+      }
+    },
+    "AssessLegalActorResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "context_id",
+        "operation_reference",
+        "provider_permissions_granted",
+        "legal_actor_resolution"
+      ],
+      "properties": {
+        "context_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128
+        },
+        "operation_reference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "provider_permissions_granted": {
+          "const": false
+        },
+        "legal_actor_resolution": {
+          "$ref": "legal-actor-mandate.schema.json#/$defs/LegalActorResolution"
+        }
+      }
+    }
+  }
+}

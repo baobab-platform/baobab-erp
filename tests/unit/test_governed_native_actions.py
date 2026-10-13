@@ -35,7 +35,7 @@ class Assessor:
             "operation_reference": request["operation_reference"],
             "provider_permissions_granted": False,
             "legal_actor_resolution": {
-                "outcome": outcome, "mandate_id": "mandate-synthetic-reviewed",
+                "outcome": outcome, "policy_reference": "synthetic/independent-policy", "mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d",
                 "responsible_legal_entity_id": SCOPE.legal_entity_id,
                 "evidence_references": ["synthetic/evidence/independent"],
                 "evaluated_at": NOW.isoformat(),
@@ -47,7 +47,7 @@ class Provider:
     def __init__(self): self.calls = 0
     def ensure_legal_actor_usable(self, operation, mandate):
         self.calls += 1
-        assert mandate == "mandate-synthetic-reviewed"
+        assert mandate == "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d"
 
 class Documentary:
     def __init__(self, blocked=False):
@@ -57,7 +57,7 @@ class Documentary:
         self.calls += 1
         return {
             **request,
-            "organisation_id": "org-fixture",
+            "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
             "blocked": self.blocked,
             "authority_granted": False,
             "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
@@ -73,9 +73,9 @@ def inputs(action):
         capability=capability, authority_reference="synthetic/shared-provider-census",
     )
     operation = LegalActorOperation(
-        context_id="ctx-fixture-verified-by-cp",
+        context_id="0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
         tenant_id=SCOPE.tenant_id,
-        operating_organisation_id="org-fixture",
+        operating_organisation_id="0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
         expected_legal_entity_id=SCOPE.legal_entity_id,
         role=ROLES[action], activity=policy.activity, market="ZA",
         capability=capability, operation_reference=reference,

@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.baobab-platform.com/capability/v1/domain.schema.json",
+  "title": "Baobab-Platform capability-centric domain identifiers and enumerations",
+  "description": "Canonical identifiers and enumerations for the capability-centric platform model (ADR-BCP-002 through ADR-BCP-009, ADR-SHARED-007). This package defines vocabulary only; baobab-platform/baobab-cp is the runtime authority that persists, evaluates and resolves these concepts.",
+  "$defs": {
+    "capabilityKey": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*\\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*\\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "minLength": 5,
+      "maxLength": 128,
+      "description": "Implementation-neutral capability identity in <domain>.<resource>.<action> form, e.g. \"commerce.order.create\". Must never contain a vendor name (medusa, idempiere, payload, haystack), a tenant name, or a region/country name. The key is stable across provider replacement: moving a capability from one provider to another never renames it."
+    },
+    "capabilityDomain": {
+      "type": "string",
+      "enum": ["identity", "tenant", "organisation", "counterparty", "supplier", "customer", "market", "internal-trade", "commercial", "contract", "commerce", "catalogue", "pricing", "inventory", "procurement", "regulations", "trade", "customs", "tax", "logistics", "fulfilment", "documents", "finance", "billing", "payment", "settlement", "content", "intelligence", "audit", "integration"],
+      "description": "Governed top-level namespace for a capability key's first segment. A new top-level domain requires an architecture review and an update to this enum; see namespace-registry.yaml for rationale per domain."
+    },
+    "capabilityId": {
+      "type": "string",
+      "pattern": "^cap_[a-z0-9]+$",
+      "minLength": 6,
+      "maxLength": 63,
+      "description": "Control Plane-minted opaque identifier for a registered Capability. Never derived from the capability_key."
+    },
+    "capabilityDependencyType": {
+      "type": "string",
+      "enum": ["REQUIRED", "OPTIONAL", "CONDITIONAL"],
+      "description": "Whether a depended-upon capability must, may, or conditionally must be satisfied."
+    },
+    "capabilityLifecycle": {
+      "type": "string",
+      "enum": ["DRAFT", "ACTIVE", "SUSPENDED", "DEPRECATED", "RETIRED"],
+      "description": "Operational lifecycle of a Capability, CapabilityProvider or CapabilityBinding. Distinct from maturity: a capability can be maturity=SUPPORTED and lifecycle=SUSPENDED simultaneously."
+    },
+    "capabilityMaturity": {
+      "type": "string",
+      "enum": ["EXPERIMENTAL", "PREVIEW", "SUPPORTED", "DEPRECATED", "RETIRED"],
+      "description": "Confidence/support level of a Capability's contract and implementation. Distinct from lifecycle."
+    },
+    "capabilityCompositionId": {
+      "type": "string",
+      "pattern": "^comp_[a-z0-9]+$",
+      "minLength": 6,
+      "maxLength": 63
+    },
+    "capabilityCompositionKey": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*\\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "minLength": 5,
+      "maxLength": 128,
+      "description": "Composition key in <type>.<name> form, e.g. \"platform.core\", \"profile.b2b\", \"solution.baobab-xbt\", \"addon.advanced-intelligence\"."
+    },
+    "capabilityCompositionType": {
+      "type": "string",
+      "enum": ["PLATFORM", "PRODUCT", "PROFILE", "ADD_ON", "INTERNAL"],
+      "description": "Classification of a CapabilityComposition. Governs how it may be combined with others, not runtime behaviour."
+    },
+    "capabilityMembershipCriticality": {
+      "type": "string",
+      "enum": ["MANDATORY", "IMPORTANT", "OPTIONAL"],
+      "description": "Criticality of one capability's membership within one specific composition. The same capability can be MANDATORY in one composition and OPTIONAL in another."
+    },
+    "capabilityScopeId": {
+      "type": "string",
+      "pattern": "^capscope_[a-z0-9]+$",
+      "minLength": 10,
+      "maxLength": 63,
+      "description": "Identifier for a CapabilityScope. Deliberately distinct from mapping.mappingScopeId (contracts/control-plane/v1/domain.schema.json): the two share dimension vocabulary but are not the same object, per ADR-SHARED-007 §25."
+    },
+    "capabilityGrantId": {
+      "type": "string",
+      "pattern": "^grant_[a-z0-9]+$",
+      "minLength": 8,
+      "maxLength": 63
+    },
+    "capabilityGrantStatus": {
+      "type": "string",
+      "enum": ["PENDING", "ACTIVE", "SUSPENDED", "REVOKED", "EXPIRED"],
+      "description": "Lifecycle of a CapabilityGrant. A grant is effective only when status=ACTIVE and the current time falls within [effective_from, effective_to)."
+    },
+    "capabilityGrantSource": {
+      "type": "string",
+      "enum": ["PLATFORM_BASELINE", "PRODUCT_SUBSCRIPTION", "CONTRACT", "TRIAL", "MANUAL_APPROVAL", "INTERNAL_POLICY", "MIGRATION"],
+      "description": "Provenance of a CapabilityGrant. Multiple independent grants from different sources may coexist for the same tenant/capability/scope; revoking one source does not revoke grants from another."
+    },
+    "capabilityProviderId": {
+      "type": "string",
+      "pattern": "^provider_[a-z0-9]+$",
+      "minLength": 10,
+      "maxLength": 63
+    },
+    "capabilityProviderKey": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9-]*$",
+      "minLength": 5,
+      "maxLength": 128,
+      "description": "Provider identity in <engine-id>.<provider-name> form, e.g. \"baobab-trade.medusa\", \"baobab-erp.idempiere\", \"baobab-payments.sandbox\", \"baobab-iam.ory\". The first segment is the engine that owns the provider (control-plane/v1 engineId, ADR-SHARED-012), never a technology family; the second names the provider within that engine and is usually its implementationKey. One engine may own several providers, e.g. baobab-iam.keycloak and baobab-iam.ory (ADR-SHARED-017 SS8-9, SS23)."
+    },
+    "capabilityProviderType": {
+      "type": "string",
+      "enum": ["BAOBAB_ENGINE", "EXTERNAL_SERVICE", "PLATFORM_NATIVE", "ADAPTER"],
+      "description": "Kind of implementation a CapabilityProvider represents."
+    },
+    "providerHealthStatus": {
+      "type": "string",
+      "enum": ["UNKNOWN", "HEALTHY", "DEGRADED", "UNAVAILABLE"],
+      "description": "Ephemeral operational health of a provider or engine instance, distinct from lifecycle. Health is never persisted as a substitute for lifecycle state."
+    },
+    "capabilityHealthCriticality": {
+      "type": "string",
+      "enum": ["CRITICAL", "STANDARD"],
+      "description": "Which provider health a capability tolerates (ADR-BCP-006 SS22). A per-capability policy, independent of any composition's membership criticality. CRITICAL, e.g. payment authorisation: only HEALTHY is eligible. STANDARD: HEALTHY or UNKNOWN. See health-policy.yaml."
+    },
+    "healthObservationSource": {
+      "type": "string",
+      "enum": ["ACTIVE_PROBE", "PASSIVE_TELEMETRY", "ENGINE_REPORT", "OPERATOR"],
+      "description": "How a HealthObservation (health.schema.json) was obtained. ACTIVE_PROBE: the Control Plane called the subject's health endpoint. PASSIVE_TELEMETRY: derived from the subject's observed request outcomes. ENGINE_REPORT: the engine instance reported its own health under its workload identity. OPERATOR: an authenticated operator recorded it. A closed set, so it is safe as a bounded metric label."
+    },
+    "healthReasonCode": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$",
+      "maxLength": 64,
+      "description": "A code registered in the health_observation category of contracts/authorization/v1/reason-code-registry.yaml."
+    },
+    "capabilityBindingId": {
+      "type": "string",
+      "pattern": "^bind_[a-z0-9]+$",
+      "minLength": 8,
+      "maxLength": 63
+    },
+    "bindingMode": {
+      "type": "string",
+      "enum": ["PRIMARY", "FALLBACK", "SHADOW", "MIGRATION", "DISABLED"],
+      "description": "Canonical binding mode (locked by BCP-TS-ONBOARDING-001 CR-002, confirmed in baobab-platform/baobab-cp Phase-0 audit against ADR-SHARED-007's own independent proposal of the same five values). PRIMARY: normal authoritative binding. FALLBACK: eligible only under approved failover conditions, never a bypass of entitlement/scope/contract/residency/isolation checks. SHADOW: non-authoritative mirrored execution, never determines the business result. MIGRATION: temporary binding participating in an explicit ProviderMigration plan. DISABLED: retained but excluded from resolution. No other value is valid; a superseded seven-value set (including SECONDARY, READ_ONLY, MIGRATION_SOURCE, MIGRATION_TARGET) existed in early baobab-platform/baobab-cp migrations and must not be reintroduced -- see this schema's own README.md for the rationale."
+    },
+    "engineKey": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "minLength": 2,
+      "maxLength": 63,
+      "deprecated": true,
+      "description": "TRANSITIONAL (ADR-SHARED-017 SS9). The v1 provider field whose meaning has drifted between technology family (\"medusa\", \"idempiere\") and provider label (\"sandbox-payments\", \"temporary-billing\"). Kept unchanged for v1 compatibility; the next capability contract major removes it. New contracts name the Baobab engine with control-plane/v1 engineId (e.g. \"baobab-trade\"), the provider with capabilityProviderKey and the technology family with implementationKey. An engine key never defines Baobab product identity."
+    },
+    "implementationKey": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "minLength": 2,
+      "maxLength": 63,
+      "description": "The implementation technology or provider family beneath a CapabilityProvider, e.g. \"medusa\", \"idempiere\", \"payload\", \"haystack\", \"keycloak\", \"ory\", \"hyperswitch\", \"killbill\", \"sandbox\" (ADR-SHARED-017 SS8-9). Distinct from the engine (control-plane/v1 engineId, e.g. \"baobab-trade\") and from the provider (capabilityProviderKey, e.g. \"baobab-trade.medusa\"). Never part of a capability key."
+    },
+    "providerImplementationStatus": {
+      "type": "string",
+      "enum": ["PARTIAL", "IMPLEMENTED"],
+      "description": "How complete an engine repository says its implementation of one capability contract is (ADR-SHARED-017 SS25). PARTIAL: part of the contract is implemented; never registered as provider support. IMPLEMENTED: the declared contract majors are implemented, with implementation evidence. Deliberately not a lifecycle, certification or health value: ACTIVE belongs to the Control Plane, CERTIFIED to EA-09 and HEALTHY to HealthObservation."
+    },
+    "capabilityProposalStatus": {
+      "type": "string",
+      "enum": ["CANDIDATE", "PROPOSED", "CONTRACTING", "CONTRACTED"],
+      "description": "Architecture-workflow state of a planned capability (ADR-SHARED-017 SS16-17). CANDIDATE: found during census, not yet proposed. PROPOSED: under architecture review. CONTRACTING: the Shared contract is being written. CONTRACTED: the canonical Shared definition exists, but this provider does not implement it yet. Never a runtime lifecycle: a planned capability creates no Capability, ProviderCapabilitySupport or CapabilityBinding, satisfies no composition and never takes part in resolution."
+    },
+    "implementationEvidenceType": {
+      "type": "string",
+      "enum": ["source", "test", "contract-test", "integration-test", "simulation", "conformance-fixture"],
+      "description": "Kind of repository artefact behind an implementation claim (ADR-SHARED-017 SS47). Evidence explains why a repository claims an implementation exists; it is not certification, which EA-09 owns."
+    },
+    "architectureDecisionId": {
+      "type": "string",
+      "pattern": "^ADR-(?:[A-Z][A-Z0-9]*-)*[0-9]{3,4}$",
+      "maxLength": 40,
+      "description": "Identifier of a governing architecture decision record, e.g. \"ADR-SHARED-017\", \"ADR-BCP-006\", \"ADR-PAY-0002\", \"ADR-0020\"."
+    },
+    "platformRepository": {
+      "type": "string",
+      "pattern": "^baobab-platform/[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "maxLength": 100,
+      "description": "A repository of the baobab-platform GitHub organisation in owner/name form, e.g. \"baobab-platform/baobab-payments\"."
+    },
+    "capabilityResolutionId": {
+      "type": "string",
+      "pattern": "^res_[a-z0-9]+$",
+      "minLength": 6,
+      "maxLength": 63
+    },
+    "capabilityResolutionDecision": {
+      "type": "string",
+      "enum": ["RESOLVED", "DENIED", "UNAVAILABLE", "AMBIGUOUS", "INCOMPATIBLE"],
+      "description": "Outcome of a capability resolution request."
+    }
+  }
+}

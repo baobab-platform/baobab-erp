@@ -11,8 +11,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.util.concurrent.TimeUnit;
 
-import org.nabhold.baobab.erp.integration.MinimalJson;
+import org.nabhold.baobab.erp.integration.PinnedSharedSchemas;
 import org.nabhold.baobab.erp.integration.WorkloadTokenProvider;
 import org.osgi.util.tracker.ServiceTracker;
 
@@ -55,7 +56,9 @@ public final class CpNativeFinancialAuthority implements NativeFinancialAuthorit
                 .followRedirects(HttpClient.Redirect.NEVER).build();
     }
 
-    private Map<String,Object> current(String route, Map<String,String> input) throws Exception {
+    private Map<String,Object> current(String route, Map<String,String> input,
+            String requestContract, String responseContract) throws Exception {
+        PinnedSharedSchemas.require(requestContract, input);
         String token = iamToken.get();
         if (token == null || token.isBlank() || token.length() > 7000
                 || token.chars().anyMatch(c -> c <= 32 || c > 126)) {
@@ -63,7 +66,7 @@ public final class CpNativeFinancialAuthority implements NativeFinancialAuthorit
         }
         // CP legal and documentary routes require different independently
         // registered JWT scopes; the workload is not authorised by this code.
-        String json = writeFlat(input);
+        String json = PinnedSharedSchemas.encode(input);
         HttpRequest request = HttpRequest.newBuilder(cpOrigin.resolve(route))
                 .timeout(Duration.ofSeconds(3))
                 .header("Authorization", "Bearer " + token)
@@ -71,28 +74,20 @@ public final class CpNativeFinancialAuthority implements NativeFinancialAuthorit
                 .header("Accept", "application/json")
                 .header("Cache-Control", "no-store")
                 .POST(HttpRequest.BodyPublishers.ofString(json)).build();
-        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() != 200 || response.body().length() > 16384) {
-            throw new IllegalStateException("CP decision unavailable or denied");
+        // Bound bytes before materialisation AND the complete response deadline.
+        // ofInputStream completes at headers and would leave a slow body read
+        // outside that deadline. The subscriber completes only after the body.
+        var exchange = http.sendAsync(request, info -> new BoundedJsonBodySubscriber());
+        try {
+            HttpResponse<byte[]> response = exchange.get(3, TimeUnit.SECONDS);
+            if (response.statusCode() != 200) throw new IllegalStateException("CP decision denied");
+            return PinnedSharedSchemas.parse(responseContract, response.body());
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw interrupted;
+        } finally {
+            if (!exchange.isDone()) exchange.cancel(true);
         }
-        return MinimalJson.parseObject(response.body());
-    }
-
-    private static String writeFlat(Map<String,String> values) {
-        // CP contract keys and values are JSON encoded; no header or path
-        // injection, no dynamic route data.
-        StringBuilder s = new StringBuilder("{");
-        for (Map.Entry<String,String> entry : values.entrySet()) {
-            if (s.length() > 1) s.append(',');
-            s.append('"').append(escape(entry.getKey())).append("\":\"")
-             .append(escape(entry.getValue())).append('"');
-        }
-        return s.append('}').toString();
-    }
-
-    private static String escape(String s) {
-        return s.replace("\\","\\\\").replace("\"","\\\"")
-                .replace("\n","\\n").replace("\r","\\r");
     }
 
     private static boolean recent(Object stamp, Instant now, long maxAgeSeconds, long maxFutureSeconds) {
@@ -127,7 +122,7 @@ public final class CpNativeFinancialAuthority implements NativeFinancialAuthorit
         Map<String,Object> response = current("/v1/platform-context/resolve", Map.of(
                 "tenant_id", nativeScope.tenantId(),
                 "organisation_id", nativeScope.organisationId(),
-                "country_code", nativeScope.market()));
+                "country_code", nativeScope.market()), "context_request", "context_response");
         if (!nativeScope.tenantId().equals(response.get("tenant_id"))
                 || !nativeScope.organisationId().equals(response.get("organisation_id"))
                 || !nativeScope.market().equals(response.get("country_code"))
@@ -152,7 +147,7 @@ public final class CpNativeFinancialAuthority implements NativeFinancialAuthorit
         Map<String,Object> response = current("/internal/legal-actor/v1/assess", Map.of(
                 "context_id", lease.contextId(), "role", lease.role(),
                 "activity", lease.activity(), "market", lease.market(),
-                "capability", lease.capability(), "operation_reference", operation));
+                "capability", lease.capability(), "operation_reference", operation), "legal_request", "legal_response");
         if (!lease.contextId().equals(response.get("context_id"))
                 || !operation.equals(response.get("operation_reference"))
                 || !Boolean.FALSE.equals(response.get("provider_permissions_granted"))) {
@@ -181,7 +176,7 @@ public final class CpNativeFinancialAuthority implements NativeFinancialAuthorit
             throws Exception {
         Map<String,Object> r = current("/internal/documentary/v1/restrictions/assess", Map.of(
                 "context_id", lease.contextId(), "market", lease.market(),
-                "capability", lease.capability(), "operation_reference", operation));
+                "capability", lease.capability(), "operation_reference", operation), "documentary_request", "documentary_response");
         if (!lease.contextId().equals(r.get("context_id"))
                 || !lease.organisationId().equals(r.get("organisation_id"))
                 || !lease.market().equals(r.get("market"))

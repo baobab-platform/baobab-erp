@@ -6,6 +6,9 @@ checks ownership, audience, lifecycle and expiry. No local authority fallback.
 """
 from __future__ import annotations
 
+from shared_contracts import ContractViolation, validate_contract
+from shared_contracts.http import decode_object
+
 import http.client
 import json
 import re
@@ -88,6 +91,12 @@ def request_context_id(method: str, body: bytes, query: str) -> str:
 
 def validated_context(payload, context_id: str, *, now: datetime | None = None) -> ValidatedContext:
     """A successful CP answer must still be structurally valid, bounded, and state its purpose."""
+    # Validate canonical purpose/plan grammar first; current owner/time remain
+    # separate checks below and never derive authority from a well-formed handle.
+    try:
+        validate_contract("context_validation", payload)
+    except ContractViolation as exc:
+        raise ContextUnavailable("invalid canonical CP validation response") from exc
     required = {"context_id", "tenant_id", "resolved_at", "expires_at", "authority_purpose"}
     allowed = required | {"market_id", "organisation_id", "provisioning_authority"}
     if not isinstance(payload, dict) or not required <= payload.keys() or payload.keys() - allowed:
@@ -205,7 +214,7 @@ class HttpContextValidator:
                 raw = response.read(65537)
                 if len(raw) > 65536:
                     raise ContextUnavailable("CP validation response too large")
-                payload = json.loads(raw)
+                payload = decode_object(raw)
         except urllib.error.HTTPError as exc:
             if _is_caller_rejection(exc):
                 raise ContextRejected() from None

@@ -21,3 +21,12 @@ The OSGi ports `NativeFinancialContextSource` and `NativeFinanceReadiness` have 
 3. Apply the migration to native iDempiere PostgreSQL; verify commit and rollback of attribution and native finance mutation atomically.
 4. Test revoked mandate, documentary hold, foreign tenant, incorrect market, inactive tax/period baseline, UI import/batch and direct SQL bypass.
 5. Prove installed OSGi bundles ACTIVE, Equinox integration dependency resolved, health marker bound to JVM PID, and protected staging IAM/CP event evidence.
+
+## P0-04A follow-up (13 October 2026)
+
+Python and JVM consumers now enforce exact pinned Shared wire schemas, including
+closed fields and formats, before existing current operation/actor, negative veto
+and readiness checks. The native client bounds retained bytes and the complete
+response deadline; malformed or unavailable facts cannot reach attribution.
+This convergence grants no workload admission or protected execution support.
+See the [contract-convergence maintenance plan](../plans/P0-04A-erp-contract-convergence.md).

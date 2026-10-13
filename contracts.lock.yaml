@@ -12,8 +12,21 @@ schema: baobab-contract-consumer-lock
 version: "1.0"
 source:
   repository: baobab-platform/shared
-  commit: 9e6e40739914b37465a7aa5ff463797d3c82d1cd
+  commit: a9c53087d63caa356edf54ec8037ba1713c4827f
 contracts:
+  # Transitive closure of the actual ERP assignment and authority consumers.
+  - contracts/evidence/v1/domain.schema.json
+  - contracts/organisation/v1/platform.schema.json
+  - contracts/organisation/v1/relationship.schema.json
+  - contracts/organisation/v1/admission.schema.json
+  # P0-04A: actual Python/JVM consequential consumers and workload admission vocabulary.
+  - contracts/organisation/v2/legal-actor-enforcement.schema.json
+  - contracts/organisation/v2/legal-actor-mandate.schema.json
+  - contracts/organisation/v2/domain.schema.json
+  - contracts/organisation/v1/iam.schema.json
+  - contracts/admission/v2/documentary-restriction.schema.json
+  - contracts/identity/v1/workload-registry.yaml
+  - contracts/authorization/v1/scope-registry.yaml
   # Tenant and legal-entity identifier grammars; the access-token claim set whose tenant_id is the
   # mapping reads' tenant authority; the four context-bound operations use validated CP context.
   - contracts/control-plane/v1/access-token-claims.schema.json

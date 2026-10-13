@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.baobab-platform.com/admission/v2/documentary-restriction.schema.json",
+  "title": "PEO-02T — current documentary remediation veto for consequential PEP operations",
+  "description": "Only CP owns the current negative documentary remediation hold. This short-lived response is NOT a legal-actor mandate, provider certification, entitlement, document authenticity claim, statutory waiver or positive permission. Consumer must bind the exact current runtime Context, tenant PRIMARY Organisation, capability, market and operation, check expiry, and separately require all other authorities. Transport is IAM workload-authenticated, no-store, and fails closed.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {},
+  "$defs": {
+    "DocumentaryRestrictionAssessmentRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "context_id",
+        "capability",
+        "market",
+        "operation_reference"
+      ],
+      "properties": {
+        "context_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "capability": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9._-]{2,199}$"
+        },
+        "market": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$"
+        },
+        "operation_reference": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 256
+        }
+      },
+      "description": "Consumer provides only an already issued, workload-owned bounded runtime context and the exact operation. The request MUST NOT select an Organisation, tenant, LegalEntity, mandate or provider."
+    },
+    "DocumentaryRestrictionAssessmentResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "context_id",
+        "operation_reference",
+        "organisation_id",
+        "capability",
+        "market",
+        "blocked",
+        "authority_granted",
+        "policy_reference",
+        "evaluated_at",
+        "expires_at"
+      ],
+      "properties": {
+        "context_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "operation_reference": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 256
+        },
+        "organisation_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "capability": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9._-]{2,199}$"
+        },
+        "market": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$"
+        },
+        "blocked": {
+          "type": "boolean"
+        },
+        "authority_granted": {
+          "const": false
+        },
+        "policy_reference": {
+          "const": "ADR-BCP-026/PEO-02T:negative-only"
+        },
+        "evaluated_at": {
+          "type": "string",
+          "format": "date-time",
+          "minLength": 20,
+          "maxLength": 40,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "minLength": 20,
+          "maxLength": 40,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$"
+        }
+      },
+      "description": "Noncacheable CP-sourced negative hold. A `blocked: false` result NEVER authorizes an irreversible operation. Consumer MUST deny stale (>2-second lease), mismatched, missing, non-CP, or blocked results; unavailability is not an allow."
+    }
+  }
+}

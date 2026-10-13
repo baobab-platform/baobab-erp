@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.baobab-platform.com/control-plane/v1/domain.schema.json",
+  "title": "Baobab-Platform control-plane domain identifiers",
+  "$defs": {
+    "resourceId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+      "minLength": 3,
+      "maxLength": 63
+    },
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "canonicalLegalEntityId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*$",
+      "minLength": 3,
+      "maxLength": 63,
+      "description": "Canonical legal-entity identifier known to Control Plane. First-party IDs reconcile to contracts/legal-entity/registry.yaml; external IDs are Control-Plane-issued or registered and need not appear in that registry (ADR-BCP-018)."
+    },
+    "legacyLegalEntityAlias": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+      "minLength": 3,
+      "maxLength": 63,
+      "deprecated": true,
+      "description": "Legacy control-plane alias accepted at documented input boundaries during the v1 compatibility window only."
+    },
+    "legalEntityIdInput": {
+      "oneOf": [
+        { "$ref": "#/$defs/canonicalLegalEntityId" },
+        { "$ref": "#/$defs/legacyLegalEntityAlias" }
+      ],
+      "description": "Compatibility input union. Consumers must resolve aliases and emit only canonicalLegalEntityId values."
+    },
+    "legalEntityId": {
+      "$ref": "#/$defs/canonicalLegalEntityId",
+      "description": "Backward-compatible definition name for canonical legal-entity output and persistence contracts."
+    },
+    "tenantId": {
+      "type": "string",
+      "pattern": "^tn_[a-z0-9]+$",
+      "minLength": 6,
+      "maxLength": 63,
+      "description": "Opaque Control Plane-minted tenant identifier. It must not contain a legal-entity, country, market or vendor identity."
+    },
+    "productId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*$",
+      "minLength": 3,
+      "maxLength": 63,
+      "description": "Version-1 product identifier. Canonical engine products use kebab case; underscore aliases remain accepted during migration."
+    },
+    "estateId": { "$ref": "#/$defs/resourceId" },
+    "environment": {
+      "type": "string",
+      "enum": ["local", "development", "staging", "production"]
+    },
+    "engineId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "minLength": 3,
+      "maxLength": 63,
+      "description": "A registered engine: the service that owns a capability provider, named as its repository, e.g. baobab-trade. Distinct from capability/v1 engineKey, the technology family (e.g. medusa), which an ExternalReference names as its system_namespace (ADR-SHARED-012)."
+    },
+    "engineInstanceId": {
+      "type": "string",
+      "pattern": "^ei_[a-z0-9]+$",
+      "minLength": 6,
+      "maxLength": 63,
+      "description": "Control Plane-minted identifier of a concrete engine deployment. The single grammar for engine_instance_id in every contract (ADR-SHARED-012)."
+    },
+    "engineInstanceStatus": {
+      "type": "string",
+      "enum": ["PROVISIONING", "ACTIVE", "DRAINING", "MAINTENANCE", "FAILED", "RETIRED"],
+      "description": "An engine instance's lifecycle status. Only an ACTIVE instance is eligible for capability resolution; RETIRED is terminal."
+    },
+    "engineReleaseId": {
+      "type": "string",
+      "pattern": "^erl_[a-z0-9]+$",
+      "minLength": 7,
+      "maxLength": 63,
+      "description": "Control Plane-minted identifier of an immutable EngineRelease (ADR-BCP-025 section 2.1, topology/v1 release.schema.json)."
+    },
+    "deploymentObservationId": {
+      "type": "string",
+      "pattern": "^dob_[a-z0-9]+$",
+      "minLength": 7,
+      "maxLength": 63,
+      "description": "Control Plane-minted identifier of one accepted DeploymentObservation (ADR-BCP-025 section 2.6, topology/v1 deployment-observation.schema.json)."
+    },
+    "mappingId": {
+      "type": "string",
+      "pattern": "^map_[a-z0-9]+$",
+      "minLength": 8,
+      "maxLength": 63,
+      "description": "Control Plane-minted opaque mapping identifier. Not derived from canonical identity or external reference."
+    },
+    "canonicalEntityId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+      "minLength": 3,
+      "maxLength": 128,
+      "description": "Opaque canonical identifier for a business concept minted by its authoritative domain."
+    },
+    "externalReferenceId": {
+      "type": "string",
+      "pattern": "^ref_[a-z0-9]+$",
+      "minLength": 8,
+      "maxLength": 63,
+      "description": "Control Plane reference to a native identifier from an external system."
+    },
+    "mappingScopeId": {
+      "type": "string",
+      "pattern": "^scope_[a-z0-9]+$",
+      "minLength": 8,
+      "maxLength": 63,
+      "description": "Identifier for a mapping scope (combination of dimensions)."
+    },
+    "mappingType": {
+      "type": "string",
+      "enum": ["IDENTITY", "REPRESENTATION", "ORGANISATIONAL", "CONTENT", "COMMERCE", "ERP", "CATALOGUE", "PRICING", "TAX", "WAREHOUSE", "FULFILMENT", "PAYMENT", "DOMAIN", "LOCALE", "CURRENCY", "CHANNEL", "CAPABILITY", "INTEGRATION", "MIGRATION", "ALIAS", "SUCCESSOR"],
+      "description": "Semantic classification of the mapping relationship."
+    },
+    "mappingStatus": {
+      "type": "string",
+      "enum": ["DRAFT", "VALIDATED", "ACTIVE", "DEPRECATED", "SUSPENDED", "MIGRATING", "QUARANTINED", "RETIRED"],
+      "description": "Lifecycle state of the mapping."
+    },
+    "mappingDirection": {
+      "type": "string",
+      "enum": ["BIDIRECTIONAL", "CANONICAL_TO_EXTERNAL", "EXTERNAL_TO_CANONICAL", "SOURCE_TO_TARGET"],
+      "description": "Direction of resolution for the mapping."
+    },
+    "mappingConfidence": {
+      "type": "string",
+      "enum": ["CONFIRMED", "PROBABLE", "CANDIDATE", "REJECTED"],
+      "description": "Confidence level for imported or reconciled mappings."
+    },
+    "mappingCardinality": {
+      "type": "string",
+      "enum": ["ONE_TO_ONE", "ONE_TO_MANY", "MANY_TO_ONE", "MANY_TO_MANY"],
+      "description": "Cardinality of the mapping relationship."
+    },
+    "tenantProvisioningId": {
+      "type": "string",
+      "pattern": "^tp_[a-z0-9]+$",
+      "minLength": 6,
+      "maxLength": 63,
+      "description": "Control Plane-minted opaque identifier for a TenantProvisioning orchestration aggregate (Technical Specification SS21). Distinct from tenantId: a tenant has exactly one lifecycle identity but may have more than one provisioning run over time (initial onboarding, later product additions)."
+    },
+    "tenantProvisioningPhase": {
+      "type": "string",
+      "enum": ["DRAFT", "VALIDATING", "PLANNED", "REGISTERING", "CONFIGURING_CONTEXT", "PROVISIONING_ENTITLEMENTS", "PROVISIONING_PROVIDERS", "VALIDATING_SECURITY", "VERIFYING_READINESS", "BLOCKED", "REMEDIATING", "READY"],
+      "description": "Deprecated (ADR-SHARED-015): the orchestration phases of Technical Specification SS22 without the terminal states. Use tenantProvisioningState, the canonical TenantProvisioning lifecycle."
+    },
+    "tenantProvisioningState": {
+      "type": "string",
+      "enum": ["DRAFT", "VALIDATING", "PLANNED", "REGISTERING", "CONFIGURING_CONTEXT", "PROVISIONING_ENTITLEMENTS", "PROVISIONING_PROVIDERS", "VALIDATING_SECURITY", "VERIFYING_READINESS", "BLOCKED", "REMEDIATING", "READY", "ACTIVE", "FAILED", "CANCELLED", "DEPROVISIONED"],
+      "description": "The canonical TenantProvisioning lifecycle (Technical Specification SS22, ADR-SHARED-015; transitions in tenant-provisioning-lifecycle.yaml). BLOCKED is a known, remediable condition; FAILED an operational failure; REMEDIATING the deliberate resolution of known blockers. Distinct from ExecutionOperation status and readiness status."
+    },
+    "provisioningPlanId": {
+      "type": "string",
+      "pattern": "^plan_[a-z0-9]+$",
+      "minLength": 8,
+      "maxLength": 63,
+      "description": "Control Plane-minted identifier of an immutable plan (a ChangePlan, ADR-BCP-021 SS21)."
+    },
+    "changesetId": {
+      "type": "string",
+      "pattern": "^cs_[a-z0-9]+$",
+      "minLength": 6,
+      "maxLength": 63,
+      "description": "Control Plane-minted identifier of a Changeset (ADR-BCP-021 section 7)."
+    },
+    "providerMigrationId": {
+      "type": "string",
+      "pattern": "^pmg_[a-z0-9]+$",
+      "minLength": 7,
+      "maxLength": 63,
+      "description": "Control Plane-minted identifier of a ProviderMigration (ADR-BCP-006 section 119)."
+    },
+    "approvalDecisionId": {
+      "type": "string",
+      "pattern": "^apd_[a-z0-9]+$",
+      "minLength": 7,
+      "maxLength": 63,
+      "description": "Control Plane-minted identifier of an ApprovalDecision (ADR-BCP-021 SS50)."
+    },
+    "operationId": {
+      "type": "string",
+      "pattern": "^op_[a-z0-9]+$",
+      "minLength": 6,
+      "maxLength": 63,
+      "description": "Control Plane-minted identifier of a durable ExecutionOperation (ADR-BCP-022 SS58)."
+    },
+    "marketParticipationCapability": {
+      "type": "string",
+      "enum": ["LEGAL_PRESENCE", "SOURCING", "PROCUREMENT", "SELLING", "IMPORTING", "EXPORTING", "WAREHOUSING", "DISTRIBUTION", "FULFILMENT", "PROCESSING", "TRANSIT"],
+      "description": "What a tenant may do in a market (ADR-BCP-011 section 6). A governed vocabulary: extended only through controlled registry evolution, never with arbitrary strings."
+    },
+    "planDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Digest of a plan's material execution semantics (ADR-BCP-021 SS23). An approval binds to it; any material change produces another digest."
+    },
+    "readinessSnapshotId": {
+      "type": "string",
+      "pattern": "^ready_[a-z0-9]+$",
+      "minLength": 8,
+      "maxLength": 63,
+      "description": "Control Plane-minted opaque identifier for a ReadinessSnapshot (Technical Specification SS44, SS51)."
+    },
+    "readinessStatus": {
+      "type": "string",
+      "enum": ["UNKNOWN", "NOT_READY", "BLOCKED", "DEGRADED", "READY"],
+      "description": "Readiness verdict for one object in the readiness hierarchy (Provider/Capability/Product/Estate/Tenant, Technical Specification SS44). UNKNOWN until readiness has been evaluated."
+    },
+    "driftRecordId": {
+      "type": "string",
+      "pattern": "^drift_[a-z0-9]+$",
+      "minLength": 8,
+      "maxLength": 63,
+      "description": "Control Plane-minted opaque identifier for a Drift record (Technical Specification SS42-43)."
+    },
+    "driftObjectType": {
+      "type": "string",
+      "enum": ["TENANT", "LEGAL_ENTITY", "DIGITAL_ESTATE", "MARKET_PARTICIPATION", "PRODUCT_SUBSCRIPTION", "CAPABILITY_GRANT", "CAPABILITY_BINDING", "PROVIDER_CONFIGURATION", "TRADE_LANE", "ENGINE_INSTANCE_RELEASE"],
+      "description": "The class of object a Drift record compares desired vs. observed state for. Intentionally the set of objects Programme Gate P0's classification (phase-0-architecture-inventory-and-lock.md) identified as carrying desired/observed state, not an open-ended free-text field. ENGINE_INSTANCE_RELEASE (ADR-BCP-025 section 2.7) compares an engine instance's desired release with the release it is observed running; its object_reference is the engine_instance_id, its reason_code a topology/v1 releaseDriftReason, and it is recorded for each tenant bound to the instance (ADR-BCP-006 section 67 reverse impact)."
+    },
+    "driftResolution": {
+      "type": "string",
+      "enum": ["UNRESOLVED", "RECONCILED", "BLOCKED"],
+      "description": "Whether a detected drift has been reconciled, remains unresolved, or reconciliation itself is blocked (e.g. reconciling it safely requires human approval)."
+    }
+  }
+}

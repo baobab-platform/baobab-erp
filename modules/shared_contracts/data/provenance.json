@@ -1,0 +1,41 @@
+{
+  "repository": "baobab-platform/shared",
+  "commit": "a9c53087d63caa356edf54ec8037ba1713c4827f",
+  "roots": [
+    "contracts/admission/v2/documentary-restriction.schema.json",
+    "contracts/control-plane/v1/domain.schema.json",
+    "contracts/control-plane/v1/erp-assignment.schema.json",
+    "contracts/control-plane/v1/platform-context.schema.json",
+    "contracts/organisation/v2/legal-actor-enforcement.schema.json"
+  ],
+  "entries": {
+    "context_uuid": "https://contracts.baobab-platform.com/control-plane/v1/domain.schema.json#/$defs/uuid",
+    "legal_request": "https://contracts.baobab-platform.com/organisation/v2/legal-actor-enforcement.schema.json#/$defs/AssessLegalActorRequest",
+    "legal_response": "https://contracts.baobab-platform.com/organisation/v2/legal-actor-enforcement.schema.json#/$defs/AssessLegalActorResponse",
+    "documentary_request": "https://contracts.baobab-platform.com/admission/v2/documentary-restriction.schema.json#/$defs/DocumentaryRestrictionAssessmentRequest",
+    "documentary_response": "https://contracts.baobab-platform.com/admission/v2/documentary-restriction.schema.json#/$defs/DocumentaryRestrictionAssessmentResponse",
+    "context_request": "https://contracts.baobab-platform.com/control-plane/v1/platform-context.schema.json#/$defs/PlatformContextResolveRequest",
+    "context_response": "https://contracts.baobab-platform.com/control-plane/v1/platform-context.schema.json#/$defs/PlatformContext",
+    "context_validation": "https://contracts.baobab-platform.com/control-plane/v1/platform-context.schema.json#/$defs/PlatformContextValidation",
+    "erp_assignment": "https://contracts.baobab-platform.com/control-plane/v1/erp-assignment.schema.json#/$defs/ErpAssignment"
+  },
+  "files": {
+    "contracts/admission/v1/application.schema.json": "3febbc5e37744f50ee64e4737e9ca87bcd959263099356d14fe3734ef482e8f3",
+    "contracts/admission/v1/decision.schema.json": "7ac5a22331341a20c3e2d20a1f652149561267fdc20c5201f0d4826426cf3b36",
+    "contracts/admission/v2/documentary-restriction.schema.json": "1d12d8ed0581e152444a36b31c9f42f971c58215fdae9648bd4cfbc66eb29937",
+    "contracts/capability/v1/domain.schema.json": "45bd91c915bff16c010b4123a8dc814ceded7d2806a6755b13dc3fcdd508d4fc",
+    "contracts/control-plane/v1/domain.schema.json": "d310ea065ba9445a27a83d50875a2616514608782345e7bb4413d9d1d69416ee",
+    "contracts/control-plane/v1/erp-assignment.schema.json": "e412e22d9931d36fbc5816f134af5c3588a178775c4a9a0124a9855c2d018f3a",
+    "contracts/control-plane/v1/market.schema.json": "acbdc4c1e8c716f1dcd9b855b79f5206ebcb69fd911f5a14b515bbcb78cca2f9",
+    "contracts/control-plane/v1/platform-context.schema.json": "92a3584f1db3c192fa0315820b6054607d377a52028f43a6fe48deda14c7ed2f",
+    "contracts/evidence/v1/domain.schema.json": "36847f9a85bc8e45cb2944851145e07e776abb2140f3626b9e922ed224226a64",
+    "contracts/organisation/v1/admission.schema.json": "e24b7942afb626a91d1e6f42d905609fbb53102bc91d492285f375c1b399bcf1",
+    "contracts/organisation/v1/domain.schema.json": "8409e3d9f1741421ee08818540ddeae60e1990dd9b117826f032d3733f3c5801",
+    "contracts/organisation/v1/iam.schema.json": "ecd5668c8fed74869f76651b9f722d78ef9061c186b878b75c97f8f721a14bdd",
+    "contracts/organisation/v1/platform.schema.json": "cca98334ef4974c7ce534412f2a6784cb46d62f11fc60b7db96eef97795acdf8",
+    "contracts/organisation/v1/relationship.schema.json": "b4cd03addc0ea24f183d6d71c744bf5d9ff70808abe8116b25e943dd79e2d171",
+    "contracts/organisation/v2/domain.schema.json": "749191c7b1831586cd68c8b0e1722bcb82353cd81a92d39b3de447adcad8ba08",
+    "contracts/organisation/v2/legal-actor-enforcement.schema.json": "fc0f9d097b8a4ab2d9d7a4a8a87f47fdec208e5f9070b6eb0dd5337baf858681",
+    "contracts/organisation/v2/legal-actor-mandate.schema.json": "38510c700e1b448541c65e04a6a5463f8fa275017cae65f3c163495867e8285c"
+  }
+}

@@ -18,7 +18,7 @@ python -m compileall -q modules tests
 # dependency itself needs installing, from PyPI, and --target a scratch
 # directory under /tmp sidesteps needing to know whether this container's user
 # can write to its own site-packages, same as it can't write to the mount.
-pip install --break-system-packages -q --target /tmp/py-deps "PyJWT[crypto]>=2.8,<3"
+pip install --break-system-packages -q --target /tmp/py-deps "PyJWT[crypto]>=2.8,<3" "jsonschema[format-nongpl]>=4.21,<5" "referencing>=0.35,<1"
 
 PYTHONPATH=modules:/tmp/py-deps python -m unittest discover -s tests/unit -p 'test_*.py'
 PYTHONPATH=modules:/tmp/py-deps python -m unittest discover -s tests/security -p 'test_*.py'

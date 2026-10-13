@@ -14,6 +14,8 @@ Request is not authority: the assignment must name the tenant, provisioning and 
 """
 from __future__ import annotations
 
+from shared_contracts import ContractViolation, validate_contract
+
 import hashlib
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -242,4 +244,10 @@ def assignment_from_payload(payload: dict[str, Any]) -> CpErpAssignment:
     )
     if len(result.capabilities) != len(payload["capabilities"]):
         raise AssignmentError("capabilities must be unique")
+    # Preserve established closed-member/time/uniqueness diagnostics; the
+    # canonical schema additionally enforces scalar formats and field limits.
+    try:
+        validate_contract("erp_assignment", payload)
+    except ContractViolation as exc:
+        raise AssignmentError(str(exc)) from exc
     return result

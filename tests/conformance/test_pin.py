@@ -9,6 +9,11 @@ from events import registry
 # change to it is reported as drift and the pin cannot silently move under the code.
 CODE_DEPENDS_ON = {
     "contracts/control-plane/v1/openapi.yaml",
+    "contracts/organisation/v2/legal-actor-enforcement.schema.json",
+    "contracts/organisation/v2/legal-actor-mandate.schema.json",
+    "contracts/admission/v2/documentary-restriction.schema.json",
+    "contracts/identity/v1/workload-registry.yaml",
+    "contracts/authorization/v1/scope-registry.yaml",
     "contracts/control-plane/v1/platform-context.schema.json",
     "contracts/control-plane/v1/market.schema.json",
     "contracts/erp/v1/provisioning-request.schema.json",

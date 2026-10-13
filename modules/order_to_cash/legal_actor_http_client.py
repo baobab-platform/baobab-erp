@@ -12,6 +12,9 @@ import urllib.parse
 import urllib.request
 from typing import Callable, Mapping
 
+from shared_contracts import ContractViolation, validate_contract
+from shared_contracts.http import RejectRedirect as _RejectRedirect
+
 from provisioning.control_plane_client import ControlPlaneUnavailable
 
 _ALLOWED_FIELDS = frozenset({
@@ -48,9 +51,14 @@ class HttpControlPlaneLegalActorAssessor:
         self._get_token = token_provider
         self._correlation = correlation_provider
         self._timeout = timeout
-        self._open = (opener or urllib.request.build_opener()).open
+        self._open = (opener or urllib.request.build_opener(_RejectRedirect())).open
 
     def assess(self, request: Mapping[str, str]) -> Mapping[str, object]:
+        try:
+            validate_contract("legal_request", request)
+            validate_contract("context_uuid", request["context_id"])
+        except ContractViolation as exc:
+            raise ControlPlaneUnavailable("invalid canonical legal-actor request") from exc
         if (not isinstance(request, Mapping) or set(request) - _ALLOWED_FIELDS or
                 not _REQUIRED.issubset(request) or
                 any(not isinstance(v, str) or not v.strip() for v in request.values())):
@@ -74,6 +82,8 @@ class HttpControlPlaneLegalActorAssessor:
             )
             with self._open(http, timeout=self._timeout) as response:
                 # Cap potentially malicious upstream payload before parsing.
+                if getattr(response, "status", 200) != 200:
+                    raise ValueError("non-200 legal-actor response")
                 payload = response.read(16_385)
             if len(payload) > 16_384:
                 raise ValueError("oversized Control Plane response")
@@ -83,6 +93,10 @@ class HttpControlPlaneLegalActorAssessor:
             raise ControlPlaneUnavailable("legal actor assessment unavailable or invalid") from exc
         except Exception as exc:  # noqa: BLE001 - issuer/token provider failures must deny
             raise ControlPlaneUnavailable("authenticated legal actor assessment unavailable") from exc
+        try:
+            validate_contract("legal_response", decoded)
+        except ContractViolation as exc:
+            raise ControlPlaneUnavailable("invalid canonical legal-actor response") from exc
         if (not isinstance(decoded, dict) or
                 decoded.get("context_id") != request["context_id"] or
                 decoded.get("operation_reference") != request["operation_reference"] or

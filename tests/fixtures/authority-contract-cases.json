@@ -1,0 +1,2888 @@
+[
+  {
+    "name": "legal_request/valid",
+    "contract": "legal_request",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "role": "INVOICE_ISSUER",
+      "activity": "B2B_INVOICE",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123"
+    },
+    "valid": true
+  },
+  {
+    "name": "legal_request/missing/context_id",
+    "contract": "legal_request",
+    "instance": {
+      "role": "INVOICE_ISSUER",
+      "activity": "B2B_INVOICE",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123"
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_request/missing/role",
+    "contract": "legal_request",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "activity": "B2B_INVOICE",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123"
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_request/missing/activity",
+    "contract": "legal_request",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "role": "INVOICE_ISSUER",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123"
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_request/missing/market",
+    "contract": "legal_request",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "role": "INVOICE_ISSUER",
+      "activity": "B2B_INVOICE",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123"
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_request/missing/operation_reference",
+    "contract": "legal_request",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "role": "INVOICE_ISSUER",
+      "activity": "B2B_INVOICE",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post"
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_request/type/context_id",
+    "contract": "legal_request",
+    "instance": {
+      "context_id": [],
+      "role": "INVOICE_ISSUER",
+      "activity": "B2B_INVOICE",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123"
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_request/type/role",
+    "contract": "legal_request",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "role": [],
+      "activity": "B2B_INVOICE",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123"
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_request/type/activity",
+    "contract": "legal_request",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "role": "INVOICE_ISSUER",
+      "activity": [],
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123"
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_request/type/market",
+    "contract": "legal_request",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "role": "INVOICE_ISSUER",
+      "activity": "B2B_INVOICE",
+      "market": [],
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123"
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_request/type/capability",
+    "contract": "legal_request",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "role": "INVOICE_ISSUER",
+      "activity": "B2B_INVOICE",
+      "market": "ZA",
+      "capability": [],
+      "operation_reference": "synthetic/invoice/123"
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_request/type/operation_reference",
+    "contract": "legal_request",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "role": "INVOICE_ISSUER",
+      "activity": "B2B_INVOICE",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": []
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_request/invented-grant",
+    "contract": "legal_request",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "role": "INVOICE_ISSUER",
+      "activity": "B2B_INVOICE",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "grant_override": true
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/valid",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "outcome": "AUTHORIZED",
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d",
+        "responsible_legal_entity_id": "LE-SYNTHETIC-ZA",
+        "evidence_references": [
+          "synthetic/independent-evidence"
+        ],
+        "valid_until": "2026-10-13T04:00:20Z"
+      }
+    },
+    "valid": true
+  },
+  {
+    "name": "legal_response/missing/context_id",
+    "contract": "legal_response",
+    "instance": {
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "outcome": "AUTHORIZED",
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d",
+        "responsible_legal_entity_id": "LE-SYNTHETIC-ZA",
+        "evidence_references": [
+          "synthetic/independent-evidence"
+        ],
+        "valid_until": "2026-10-13T04:00:20Z"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/missing/operation_reference",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "outcome": "AUTHORIZED",
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d",
+        "responsible_legal_entity_id": "LE-SYNTHETIC-ZA",
+        "evidence_references": [
+          "synthetic/independent-evidence"
+        ],
+        "valid_until": "2026-10-13T04:00:20Z"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/missing/provider_permissions_granted",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "legal_actor_resolution": {
+        "outcome": "AUTHORIZED",
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d",
+        "responsible_legal_entity_id": "LE-SYNTHETIC-ZA",
+        "evidence_references": [
+          "synthetic/independent-evidence"
+        ],
+        "valid_until": "2026-10-13T04:00:20Z"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/missing/legal_actor_resolution",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/type/context_id",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": [],
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "outcome": "AUTHORIZED",
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d",
+        "responsible_legal_entity_id": "LE-SYNTHETIC-ZA",
+        "evidence_references": [
+          "synthetic/independent-evidence"
+        ],
+        "valid_until": "2026-10-13T04:00:20Z"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/type/operation_reference",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": [],
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "outcome": "AUTHORIZED",
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d",
+        "responsible_legal_entity_id": "LE-SYNTHETIC-ZA",
+        "evidence_references": [
+          "synthetic/independent-evidence"
+        ],
+        "valid_until": "2026-10-13T04:00:20Z"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/type/provider_permissions_granted",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": [],
+      "legal_actor_resolution": {
+        "outcome": "AUTHORIZED",
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d",
+        "responsible_legal_entity_id": "LE-SYNTHETIC-ZA",
+        "evidence_references": [
+          "synthetic/independent-evidence"
+        ],
+        "valid_until": "2026-10-13T04:00:20Z"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/type/legal_actor_resolution",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": []
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/invented-grant",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "outcome": "AUTHORIZED",
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d",
+        "responsible_legal_entity_id": "LE-SYNTHETIC-ZA",
+        "evidence_references": [
+          "synthetic/independent-evidence"
+        ],
+        "valid_until": "2026-10-13T04:00:20Z"
+      },
+      "grant_override": true
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_request/valid",
+    "contract": "documentary_request",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123"
+    },
+    "valid": true
+  },
+  {
+    "name": "documentary_request/missing/context_id",
+    "contract": "documentary_request",
+    "instance": {
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_request/missing/capability",
+    "contract": "documentary_request",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "operation_reference": "synthetic/invoice/123"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_request/missing/market",
+    "contract": "documentary_request",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_request/missing/operation_reference",
+    "contract": "documentary_request",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_request/type/context_id",
+    "contract": "documentary_request",
+    "instance": {
+      "context_id": [],
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_request/type/market",
+    "contract": "documentary_request",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": [],
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_request/type/capability",
+    "contract": "documentary_request",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": [],
+      "operation_reference": "synthetic/invoice/123"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_request/type/operation_reference",
+    "contract": "documentary_request",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": []
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_request/invented-grant",
+    "contract": "documentary_request",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "grant_override": true
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/valid",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": true
+  },
+  {
+    "name": "documentary_response/missing/context_id",
+    "contract": "documentary_response",
+    "instance": {
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/missing/operation_reference",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/missing/organisation_id",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "blocked": false,
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/missing/capability",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/missing/market",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/missing/blocked",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/missing/authority_granted",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/missing/policy_reference",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "authority_granted": false,
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/missing/evaluated_at",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/missing/expires_at",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/type/context_id",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": [],
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/type/market",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": [],
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/type/capability",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": [],
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/type/operation_reference",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": [],
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/type/organisation_id",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": [],
+      "blocked": false,
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/type/blocked",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": [],
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/type/authority_granted",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "authority_granted": [],
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/type/policy_reference",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "authority_granted": false,
+      "policy_reference": [],
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/type/evaluated_at",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": [],
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/type/expires_at",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": []
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/invented-grant",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z",
+      "grant_override": true
+    },
+    "valid": false
+  },
+  {
+    "name": "context_request/valid",
+    "contract": "context_request",
+    "instance": {
+      "tenant_id": "tn_synthetic",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "country_code": "ZA"
+    },
+    "valid": true
+  },
+  {
+    "name": "context_request/type/tenant_id",
+    "contract": "context_request",
+    "instance": {
+      "tenant_id": [],
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "country_code": "ZA"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_request/type/organisation_id",
+    "contract": "context_request",
+    "instance": {
+      "tenant_id": "tn_synthetic",
+      "organisation_id": [],
+      "country_code": "ZA"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_request/type/country_code",
+    "contract": "context_request",
+    "instance": {
+      "tenant_id": "tn_synthetic",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "country_code": []
+    },
+    "valid": false
+  },
+  {
+    "name": "context_request/invented-grant",
+    "contract": "context_request",
+    "instance": {
+      "tenant_id": "tn_synthetic",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "country_code": "ZA",
+      "grant_override": true
+    },
+    "valid": false
+  },
+  {
+    "name": "context_response/valid",
+    "contract": "context_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": "tn_synthetic",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "country_code": "ZA",
+      "market_id": "mkt_za",
+      "currency_code": "ZAR",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "organisation_type": "ORGANISATION"
+    },
+    "valid": true
+  },
+  {
+    "name": "context_response/missing/context_id",
+    "contract": "context_response",
+    "instance": {
+      "tenant_id": "tn_synthetic",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "country_code": "ZA",
+      "market_id": "mkt_za",
+      "currency_code": "ZAR",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "organisation_type": "ORGANISATION"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_response/missing/tenant_id",
+    "contract": "context_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "country_code": "ZA",
+      "market_id": "mkt_za",
+      "currency_code": "ZAR",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "organisation_type": "ORGANISATION"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_response/missing/resolved_at",
+    "contract": "context_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": "tn_synthetic",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "country_code": "ZA",
+      "market_id": "mkt_za",
+      "currency_code": "ZAR",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "organisation_type": "ORGANISATION"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_response/type/context_id",
+    "contract": "context_response",
+    "instance": {
+      "context_id": [],
+      "tenant_id": "tn_synthetic",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "country_code": "ZA",
+      "market_id": "mkt_za",
+      "currency_code": "ZAR",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "organisation_type": "ORGANISATION"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_response/type/tenant_id",
+    "contract": "context_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": [],
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "country_code": "ZA",
+      "market_id": "mkt_za",
+      "currency_code": "ZAR",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "organisation_type": "ORGANISATION"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_response/type/resolved_at",
+    "contract": "context_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": "tn_synthetic",
+      "resolved_at": [],
+      "expires_at": "2026-10-13T04:01:00Z",
+      "country_code": "ZA",
+      "market_id": "mkt_za",
+      "currency_code": "ZAR",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "organisation_type": "ORGANISATION"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_response/type/expires_at",
+    "contract": "context_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": "tn_synthetic",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": [],
+      "country_code": "ZA",
+      "market_id": "mkt_za",
+      "currency_code": "ZAR",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "organisation_type": "ORGANISATION"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_response/type/country_code",
+    "contract": "context_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": "tn_synthetic",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "country_code": [],
+      "market_id": "mkt_za",
+      "currency_code": "ZAR",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "organisation_type": "ORGANISATION"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_response/type/market_id",
+    "contract": "context_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": "tn_synthetic",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "country_code": "ZA",
+      "market_id": [],
+      "currency_code": "ZAR",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "organisation_type": "ORGANISATION"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_response/type/currency_code",
+    "contract": "context_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": "tn_synthetic",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "country_code": "ZA",
+      "market_id": "mkt_za",
+      "currency_code": [],
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "organisation_type": "ORGANISATION"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_response/type/organisation_id",
+    "contract": "context_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": "tn_synthetic",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "country_code": "ZA",
+      "market_id": "mkt_za",
+      "currency_code": "ZAR",
+      "organisation_id": [],
+      "organisation_type": "ORGANISATION"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_response/type/organisation_type",
+    "contract": "context_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": "tn_synthetic",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "country_code": "ZA",
+      "market_id": "mkt_za",
+      "currency_code": "ZAR",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "organisation_type": []
+    },
+    "valid": false
+  },
+  {
+    "name": "context_response/invented-grant",
+    "contract": "context_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": "tn_synthetic",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "country_code": "ZA",
+      "market_id": "mkt_za",
+      "currency_code": "ZAR",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "organisation_type": "ORGANISATION",
+      "grant_override": true
+    },
+    "valid": false
+  },
+  {
+    "name": "context_validation/valid",
+    "contract": "context_validation",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": "tn_synthetic",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "authority_purpose": "RUNTIME"
+    },
+    "valid": true
+  },
+  {
+    "name": "context_validation/missing/context_id",
+    "contract": "context_validation",
+    "instance": {
+      "tenant_id": "tn_synthetic",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "authority_purpose": "RUNTIME"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_validation/missing/tenant_id",
+    "contract": "context_validation",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "authority_purpose": "RUNTIME"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_validation/missing/resolved_at",
+    "contract": "context_validation",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": "tn_synthetic",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "authority_purpose": "RUNTIME"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_validation/missing/expires_at",
+    "contract": "context_validation",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": "tn_synthetic",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "authority_purpose": "RUNTIME"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_validation/missing/authority_purpose",
+    "contract": "context_validation",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": "tn_synthetic",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:01:00Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_validation/type/context_id",
+    "contract": "context_validation",
+    "instance": {
+      "context_id": [],
+      "tenant_id": "tn_synthetic",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "authority_purpose": "RUNTIME"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_validation/type/tenant_id",
+    "contract": "context_validation",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": [],
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "authority_purpose": "RUNTIME"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_validation/type/resolved_at",
+    "contract": "context_validation",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": "tn_synthetic",
+      "resolved_at": [],
+      "expires_at": "2026-10-13T04:01:00Z",
+      "authority_purpose": "RUNTIME"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_validation/type/expires_at",
+    "contract": "context_validation",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": "tn_synthetic",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": [],
+      "authority_purpose": "RUNTIME"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_validation/type/authority_purpose",
+    "contract": "context_validation",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": "tn_synthetic",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "authority_purpose": []
+    },
+    "valid": false
+  },
+  {
+    "name": "context_validation/invented-grant",
+    "contract": "context_validation",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": "tn_synthetic",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "authority_purpose": "RUNTIME",
+      "grant_override": true
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/valid",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": true
+  },
+  {
+    "name": "erp_assignment/missing/tenant_id",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/missing/tenant_provisioning_id",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/missing/plan_id",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/missing/plan_version",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/missing/plan_digest",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/missing/legal_entity",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/missing/markets",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/missing/engine_id",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/missing/engine_instance_id",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/missing/isolation_requirement",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/missing/capabilities",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security"
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/missing/issued_at",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/missing/expires_at",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/type/tenant_id",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": [],
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/type/tenant_provisioning_id",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": [],
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/type/plan_id",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": [],
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/type/plan_version",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": [],
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/type/plan_digest",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": [],
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/type/legal_entity",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": [],
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/type/markets",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/type/engine_id",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": [],
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/type/engine_instance_id",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": [],
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/type/issued_at",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": [],
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/type/expires_at",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": [],
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/type/isolation_requirement",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": [],
+      "capabilities": [
+        "finance.order-consequence.process"
+      ]
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/type/capabilities",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": []
+    },
+    "valid": false
+  },
+  {
+    "name": "erp_assignment/invented-grant",
+    "contract": "erp_assignment",
+    "instance": {
+      "tenant_id": "tn_0199a1b2c3d47e8f9a0b1c2d3e4f5a6b",
+      "tenant_provisioning_id": "tp_0199a1b2c3d47e8f",
+      "plan_id": "plan_0199a1b2c3d47e8f",
+      "plan_version": 1,
+      "plan_digest": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "legal_entity": {
+        "legal_entity_id": "NABHOLD",
+        "legal_name": "NABHOLD GROUP AFRICA (Pty) Ltd",
+        "jurisdiction_code": "ZA",
+        "registration_identifiers": [
+          {
+            "type": "COMPANY_REGISTRATION",
+            "value": "2026/029839/07",
+            "issuing_jurisdiction": "ZA",
+            "verified": true
+          }
+        ],
+        "verification_state": "VERIFIED"
+      },
+      "markets": [
+        {
+          "market": "ZA",
+          "activities": [
+            "LEGAL_PRESENCE",
+            "SELLING",
+            "IMPORTING"
+          ]
+        }
+      ],
+      "engine_id": "baobab-erp",
+      "engine_instance_id": "ei_0199a1b2c3d47e8f",
+      "issued_at": "2026-10-02T09:00:00Z",
+      "expires_at": "2026-10-02T10:00:00Z",
+      "isolation_requirement": "row_level_security",
+      "capabilities": [
+        "finance.order-consequence.process"
+      ],
+      "grant_override": true
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/invalid/mandate_id",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "outcome": "AUTHORIZED",
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "mandate_id": "1-1-1-1-1",
+        "responsible_legal_entity_id": "LE-SYNTHETIC-ZA",
+        "evidence_references": [
+          "synthetic/independent-evidence"
+        ],
+        "valid_until": "2026-10-13T04:00:20Z"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/invalid/responsible_legal_entity_id",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "outcome": "AUTHORIZED",
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d",
+        "responsible_legal_entity_id": "lowercase-local",
+        "evidence_references": [
+          "synthetic/independent-evidence"
+        ],
+        "valid_until": "2026-10-13T04:00:20Z"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/invalid/evaluated_at",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "outcome": "AUTHORIZED",
+        "evaluated_at": "2026-02-30T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d",
+        "responsible_legal_entity_id": "LE-SYNTHETIC-ZA",
+        "evidence_references": [
+          "synthetic/independent-evidence"
+        ],
+        "valid_until": "2026-10-13T04:00:20Z"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/invalid/valid_until",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "outcome": "AUTHORIZED",
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d",
+        "responsible_legal_entity_id": "LE-SYNTHETIC-ZA",
+        "evidence_references": [
+          "synthetic/independent-evidence"
+        ],
+        "valid_until": "2026-10-13"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/invalid/outcome",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "outcome": "TRUST_ME",
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d",
+        "responsible_legal_entity_id": "LE-SYNTHETIC-ZA",
+        "evidence_references": [
+          "synthetic/independent-evidence"
+        ],
+        "valid_until": "2026-10-13T04:00:20Z"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/invalid/policy_reference",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "outcome": "AUTHORIZED",
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d",
+        "responsible_legal_entity_id": "LE-SYNTHETIC-ZA",
+        "evidence_references": [
+          "synthetic/independent-evidence"
+        ],
+        "valid_until": "2026-10-13T04:00:20Z"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/invalid/evidence_references",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "outcome": "AUTHORIZED",
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d",
+        "responsible_legal_entity_id": "LE-SYNTHETIC-ZA",
+        "evidence_references": [
+          "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        ],
+        "valid_until": "2026-10-13T04:00:20Z"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/invalid/provider_grant",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "outcome": "AUTHORIZED",
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d",
+        "responsible_legal_entity_id": "LE-SYNTHETIC-ZA",
+        "evidence_references": [
+          "synthetic/independent-evidence"
+        ],
+        "valid_until": "2026-10-13T04:00:20Z",
+        "provider_grant": true
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/denial/NO_APPLICABLE_MANDATE",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "outcome": "NO_APPLICABLE_MANDATE"
+      }
+    },
+    "valid": true
+  },
+  {
+    "name": "legal_response/denied-mandate/NO_APPLICABLE_MANDATE",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "outcome": "NO_APPLICABLE_MANDATE",
+        "mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/denial/AMBIGUOUS",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "outcome": "AMBIGUOUS"
+      }
+    },
+    "valid": true
+  },
+  {
+    "name": "legal_response/denied-mandate/AMBIGUOUS",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "outcome": "AMBIGUOUS",
+        "mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/denial/REVOKED_OR_EXPIRED",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "outcome": "REVOKED_OR_EXPIRED"
+      }
+    },
+    "valid": true
+  },
+  {
+    "name": "legal_response/denied-mandate/REVOKED_OR_EXPIRED",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "outcome": "REVOKED_OR_EXPIRED",
+        "mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/denial/ACTOR_NOT_VERIFIED",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "outcome": "ACTOR_NOT_VERIFIED"
+      }
+    },
+    "valid": true
+  },
+  {
+    "name": "legal_response/denied-mandate/ACTOR_NOT_VERIFIED",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "outcome": "ACTOR_NOT_VERIFIED",
+        "mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "legal_response/denial/PROVIDER_RESTRICTED",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "outcome": "PROVIDER_RESTRICTED"
+      }
+    },
+    "valid": true
+  },
+  {
+    "name": "legal_response/denied-mandate/PROVIDER_RESTRICTED",
+    "contract": "legal_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "operation_reference": "synthetic/invoice/123",
+      "provider_permissions_granted": false,
+      "legal_actor_resolution": {
+        "evaluated_at": "2026-10-13T04:00:00Z",
+        "policy_reference": "synthetic/independent-policy",
+        "outcome": "PROVIDER_RESTRICTED",
+        "mandate_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6d"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/invalid/organisation_id",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "1-1-1-1-1",
+      "blocked": false,
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/invalid/evaluated_at",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-02-30T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/invalid/expires_at",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/invalid/authority_granted",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "authority_granted": true,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/invalid/policy_reference",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": false,
+      "authority_granted": false,
+      "policy_reference": "synthetic/grant",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": false
+  },
+  {
+    "name": "documentary_response/blocked",
+    "contract": "documentary_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "market": "ZA",
+      "capability": "accounting.customer-invoice.post",
+      "operation_reference": "synthetic/invoice/123",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "blocked": true,
+      "authority_granted": false,
+      "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+      "evaluated_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:00:01Z"
+    },
+    "valid": true
+  },
+  {
+    "name": "context_response/incomplete-market",
+    "contract": "context_response",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": "tn_synthetic",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "country_code": "ZA",
+      "market_id": "mkt_za",
+      "organisation_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6c",
+      "organisation_type": "ORGANISATION"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_validation/provisioning-no-plan",
+    "contract": "context_validation",
+    "instance": {
+      "context_id": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+      "tenant_id": "tn_synthetic",
+      "resolved_at": "2026-10-13T04:00:00Z",
+      "expires_at": "2026-10-13T04:01:00Z",
+      "authority_purpose": "TENANT_PROVISIONING"
+    },
+    "valid": false
+  },
+  {
+    "name": "context_uuid/valid",
+    "contract": "context_uuid",
+    "instance": "0199a1b2-c3d4-7e8f-9a0b-1c2d3e4f5a6b",
+    "valid": true
+  },
+  {
+    "name": "context_uuid/abbreviated",
+    "contract": "context_uuid",
+    "instance": "1-1-1-1-1",
+    "valid": false
+  },
+  {
+    "name": "context_uuid/noncanonical",
+    "contract": "context_uuid",
+    "instance": "ctx-local-fiction",
+    "valid": false
+  },
+  {
+    "name": "context_uuid/wrong-type",
+    "contract": "context_uuid",
+    "instance": [],
+    "valid": false
+  }
+]

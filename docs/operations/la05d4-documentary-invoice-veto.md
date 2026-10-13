@@ -42,3 +42,12 @@ readiness adapter, and demonstrate that direct bypass is impossible.
 The code/CI tests are synthetic only; they do not verify a live CIPC company
 record, registered legal mandate, Regulations rule, iDempiere finance baseline,
 or real customer invoice posting.
+
+## P0-04A follow-up (13 October 2026)
+
+Python and JVM consumers now enforce exact pinned Shared wire schemas, including
+closed fields and formats, before existing current operation/actor, negative veto
+and readiness checks. The native client bounds retained bytes and the complete
+response deadline; malformed or unavailable facts cannot reach attribution.
+This convergence grants no workload admission or protected execution support.
+See the [contract-convergence maintenance plan](../plans/P0-04A-erp-contract-convergence.md).

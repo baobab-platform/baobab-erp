@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.baobab-platform.com/organisation/v1/iam.schema.json",
+  "title": "Baobab IAM Organisation Projection Contracts (ADR-BCP-018 gate ORG-10)",
+  "description": "Definition library for the link between a canonical Organisation and its IAM-native projections (Keycloak Organization), and for the IAM organisation evidence the Control Plane resolves.\nValidate resources against fragment URIs (e.g. #/$defs/IamOrganisationReference), not the document root.\n\nKeycloak Organization is an IAM projection, never the canonical Organisation (ADR-BCP-018 sections 64, 97 and 180). A canonical Organisation MAY have several IAM representations, for example one per realm, environment or region (section 65); one provider organisation within one issuer maps to exactly one canonical Organisation. An IAM organisation claim is context evidence, not truth (section 66): the Control Plane resolves it through an active IamOrganisationReference to a canonical Organisation and then validates that Organisation against the tenant; it never copies the claim into trusted context.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {},
+  "$defs": {
+    "iamProvider": {
+      "type": "string",
+      "enum": ["keycloak"],
+      "description": "IAM product whose native organisation the reference points to. Adding a provider is a contract change; provider IDs never replace canonical Organisation identity."
+    },
+    "iamIssuer": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://",
+      "minLength": 9,
+      "maxLength": 512,
+      "description": "Token issuer that scopes the provider organisation ID: for Keycloak, the realm issuer URL (https://<host>/realms/<realm>). The same provider organisation ID under two issuers names two different IAM organisations."
+    },
+    "providerOrganisationId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "The provider's own immutable organisation identifier (for Keycloak, the Organization id, not its alias or name)."
+    },
+    "iamReferenceStatus": {
+      "type": "string",
+      "enum": ["ACTIVE", "RETIRED"],
+      "description": "Only an ACTIVE reference inside its effective window resolves. A RETIRED reference is kept for history and never resolves."
+    },
+    "IamOrganisationReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Explicit link from one canonical Organisation to one IAM-native organisation. Creating or retiring it never changes the canonical Organisation, its tenants or its relationships.",
+      "required": [
+        "id",
+        "organisation_id",
+        "provider",
+        "issuer",
+        "provider_organisation_id",
+        "status",
+        "effective_from",
+        "source_authority"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "domain.schema.json#/$defs/iamOrganisationReferenceId"
+        },
+        "organisation_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalEntityId"
+        },
+        "provider": {
+          "$ref": "#/$defs/iamProvider"
+        },
+        "issuer": {
+          "$ref": "#/$defs/iamIssuer"
+        },
+        "provider_organisation_id": {
+          "$ref": "#/$defs/providerOrganisationId"
+        },
+        "status": {
+          "$ref": "#/$defs/iamReferenceStatus"
+        },
+        "effective_from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "effective_to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source_authority": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Who established the link (e.g. control-plane-admission, iam-reconciliation). Never the applicant."
+        }
+      }
+    },
+    "IamOrganisationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "IAM organisation evidence a workload presents instead of a canonical organisation_id, taken from its authenticated user's organisation claim. The Control Plane resolves it through an ACTIVE IamOrganisationReference and then attests the resulting Organisation against the tenant exactly as for an organisation_id; unresolvable evidence fails closed.",
+      "required": ["provider", "issuer", "provider_organisation_id"],
+      "properties": {
+        "provider": {
+          "$ref": "#/$defs/iamProvider"
+        },
+        "issuer": {
+          "$ref": "#/$defs/iamIssuer"
+        },
+        "provider_organisation_id": {
+          "$ref": "#/$defs/providerOrganisationId"
+        }
+      }
+    },
+    "keycloakOrganizationClaim": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Keycloak's `organization` token claim in the form Baobab relies on: the Organization Membership mapper with the organisation id included, keyed by organisation alias. Only the id is evidence; aliases are mutable display handles and are never resolved. The alias-only list form (`[\"acme\"]`) is not resolvable, and a claim naming several organisations resolves only when the caller selects exactly one of them.",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 255
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/providerOrganisationId"
+          }
+        }
+      }
+    },
+    "IamOrganisationLinkRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "issuer", "provider_organisation_id"],
+      "description": "Links a canonical Organisation to its IAM-native projection (ADR-BCP-018 gate ORG-10). The Organisation comes from the path and the source authority from the Control Plane. Repeating an existing link returns it; a link held by another Organisation is refused.",
+      "properties": {
+        "provider": { "$ref": "#/$defs/iamProvider" },
+        "issuer": { "$ref": "#/$defs/iamIssuer" },
+        "provider_organisation_id": { "$ref": "#/$defs/providerOrganisationId" },
+        "effective_from": { "type": "string", "format": "date-time", "description": "Defaults to now." }
+      }
+    },
+    "IamOrganisationRetireRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason"],
+      "description": "Retires a link. A RETIRED link never resolves.",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "pattern": "\\S",
+          "description": "Why, recorded in the audit trail."
+        },
+        "effective_to": { "type": "string", "format": "date-time", "description": "Defaults to now." }
+      }
+    },
+    "IamOrganisationResolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["organisation_id"],
+      "description": "The canonical Organisation that IAM evidence resolves to now, through an ACTIVE link in effect.",
+      "properties": {
+        "organisation_id": { "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalEntityId" }
+      }
+    }
+  }
+}
