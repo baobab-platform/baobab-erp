@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   foundation:
-    uses: baobab-platform/shared/.github/workflows/foundation-repository-gates.yml@40d180756461f3fbbdcf06d1dcd3e1fe6481bed2
+    uses: baobab-platform/shared/.github/workflows/foundation-repository-gates.yml@b9f497f247f1c19be9b02a0d5eedd538daf9d84b
     with:
       foundation_ref: "40d180756461f3fbbdcf06d1dcd3e1fe6481bed2"
       dependency_review_enabled: false
