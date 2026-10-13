@@ -1,0 +1,311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.baobab-platform.com/organisation/v2/legal-actor-mandate.schema.json",
+  "title": "Scoped Operating Legal Actor Mandate (ADR-BCP-027)",
+  "description": "A legal actor's evidence-backed, time-bounded permission to perform specific actions for one operating Organisation and Tenant. NOT corporate ownership, tenant access, universal compliance, or proof of incorporation. Only CP may approve and resolve.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {},
+  "$defs": {
+    "legalActorRole": {
+      "type": "string",
+      "enum": [
+        "CONTRACTING_PARTY",
+        "SELLER_OF_RECORD",
+        "INVOICE_ISSUER",
+        "IMPORTER_OF_RECORD",
+        "EXPORTER_OF_RECORD",
+        "EMPLOYER",
+        "ACCOUNTING_ENTITY",
+        "PAYMENT_BENEFICIARY",
+        "PROPERTY_OWNER",
+        "SERVICE_PROVIDER_OF_RECORD"
+      ],
+      "description": "Finite v2 vocabulary; extensions require versioned contract revision."
+    },
+    "mandateStatus": {
+      "type": "string",
+      "enum": [
+        "PENDING",
+        "ACTIVE",
+        "SUSPENDED",
+        "REVOKED",
+        "EXPIRED"
+      ]
+    },
+    "OperatingLegalActorMandate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mandate_id",
+        "tenant_id",
+        "operating_organisation_id",
+        "responsible_legal_entity_id",
+        "roles",
+        "activity_scope",
+        "market_scope",
+        "status",
+        "authority_basis_reference",
+        "evidence_references",
+        "effective_from",
+        "created_at"
+      ],
+      "properties": {
+        "mandate_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "tenant_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/tenantId"
+        },
+        "operating_organisation_id": {
+          "$ref": "domain.schema.json#/$defs/organisationId"
+        },
+        "responsible_legal_entity_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalLegalEntityId"
+        },
+        "roles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/legalActorRole"
+          }
+        },
+        "activity_scope": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 160
+          }
+        },
+        "market_scope": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          }
+        },
+        "capability_scope": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 100,
+          "items": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 120
+          }
+        },
+        "status": {
+          "$ref": "#/$defs/mandateStatus"
+        },
+        "authority_basis_reference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "evidence_references": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "legal_actor_verification_reference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "effective_from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "effective_to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "approved_by": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "approved_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revoked_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "supersedes_mandate_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "provenance": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "ACTIVE"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "approved_by",
+              "approved_at",
+              "legal_actor_verification_reference"
+            ]
+          }
+        }
+      ]
+    },
+    "LegalActorResolutionRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tenant_id",
+        "operating_organisation_id",
+        "role",
+        "activity",
+        "market",
+        "effective_at"
+      ],
+      "properties": {
+        "tenant_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/tenantId"
+        },
+        "operating_organisation_id": {
+          "$ref": "domain.schema.json#/$defs/organisationId"
+        },
+        "role": {
+          "$ref": "#/$defs/legalActorRole"
+        },
+        "activity": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "market": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$"
+        },
+        "effective_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "description": "Trusted internal CP/PEP evaluation input. Never accepts caller-selected legal_entity_id or mandate_id."
+    },
+    "LegalActorResolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outcome",
+        "evaluated_at",
+        "policy_reference"
+      ],
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "AUTHORIZED",
+            "NO_APPLICABLE_MANDATE",
+            "AMBIGUOUS",
+            "REVOKED_OR_EXPIRED",
+            "ACTOR_NOT_VERIFIED",
+            "PROVIDER_RESTRICTED"
+          ]
+        },
+        "evaluated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "policy_reference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "mandate_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "responsible_legal_entity_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalLegalEntityId"
+        },
+        "evidence_references": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "valid_until": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "AUTHORIZED"
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          },
+          "then": {
+            "required": [
+              "mandate_id",
+              "responsible_legal_entity_id",
+              "evidence_references",
+              "valid_until"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "mandate_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "responsible_legal_entity_id"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

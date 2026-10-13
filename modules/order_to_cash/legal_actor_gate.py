@@ -8,6 +8,8 @@ This seam MUST be installed at the live command path before production support.
 """
 from __future__ import annotations
 
+from shared_contracts import ContractViolation, validate_contract
+
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Mapping, Protocol, TypeVar
@@ -34,6 +36,17 @@ class LegalActorOperation:
     operation_reference: str
 
     def validate(self) -> None:
+        # Check the canonical request even when an injected assessor bypasses HTTP.
+        # Schema validity does not replace the independently expected native actor.
+        try:
+            validate_contract("context_uuid", self.context_id)
+            validate_contract("legal_request", {
+                "context_id": self.context_id, "role": self.role,
+                "activity": self.activity, "market": self.market,
+                "capability": self.capability, "operation_reference": self.operation_reference,
+            })
+        except ContractViolation as exc:
+            raise LegalActorNotAuthorised("invalid canonical operation scope") from exc
         import re
         if not all((self.context_id, self.tenant_id, self.operating_organisation_id,
                     self.expected_legal_entity_id, self.activity, self.capability,
@@ -59,6 +72,12 @@ def assert_current_decision(
 ) -> str:
     """Return a mandate identifier only after a strictly current CP decision."""
     operation.validate()
+    # Apply the exact wire contract at the consequential boundary too: injected
+    # ports must not turn malformed UUID/date/extra authority fields into a permit.
+    try:
+        validate_contract("legal_response", response)
+    except ContractViolation as exc:
+        raise LegalActorNotAuthorised("invalid canonical legal-actor decision") from exc
     if (response.get("context_id") != operation.context_id or
             response.get("operation_reference") != operation.operation_reference or
             response.get("provider_permissions_granted") is not False):

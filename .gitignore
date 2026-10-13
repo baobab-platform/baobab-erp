@@ -13,3 +13,6 @@ target/
 *.gz
 .DS_Store
 *.egg-info/
+
+# Reproducible setuptools wheel staging; canonical source stays in modules/.
+modules/build/

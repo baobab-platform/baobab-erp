@@ -13,6 +13,9 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Mapping, Protocol
 
+from shared_contracts import ContractViolation, validate_contract
+from shared_contracts.http import RejectRedirect as _RejectRedirect
+
 from order_to_cash.legal_actor_gate import LegalActorNotAuthorised, LegalActorOperation
 
 POLICY = "ADR-BCP-026/PEO-02T:negative-only"
@@ -54,6 +57,10 @@ def assert_documentary_scope_unblocked(
 ) -> None:
     """No native invoice mutation unless an exact, fresh CP veto is FALSE."""
     operation.validate()
+    try:
+        validate_contract("documentary_response", raw)
+    except ContractViolation as exc:
+        raise LegalActorNotAuthorised("invalid canonical documentary decision") from exc
     if not isinstance(raw, Mapping) or now.tzinfo is None:
         raise LegalActorNotAuthorised("current CP documentary restriction unavailable")
     required = {
@@ -110,13 +117,6 @@ def _unique_json(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return result
 
 
-class _RejectRedirect(urllib.request.HTTPRedirectHandler):
-    """Never forward a workload bearer credential to a redirect target."""
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        raise ValueError("redirected authenticated CP evidence is forbidden")
-
-
 class HttpControlPlaneDocumentaryRestrictionAssessor:
     """Private workload-authenticated PEO-02T request; no applicant claims."""
 
@@ -142,6 +142,10 @@ class HttpControlPlaneDocumentaryRestrictionAssessor:
         self._open = (opener or urllib.request.build_opener(_RejectRedirect())).open
 
     def assess(self, request: Mapping[str, str]) -> Mapping[str, object]:
+        try:
+            validate_contract("documentary_request", request)
+        except ContractViolation as exc:
+            raise LegalActorNotAuthorised("invalid canonical documentary scope") from exc
         if (
             set(request) != {"context_id", "capability", "market", "operation_reference"}
             or any(not isinstance(v, str) or not v.strip() for v in request.values())
@@ -170,6 +174,7 @@ class HttpControlPlaneDocumentaryRestrictionAssessor:
             if len(payload) > 16_384:
                 raise ValueError("oversized CP decision")
             value = json.loads(payload, object_pairs_hook=_unique_json)
+            validate_contract("documentary_response", value)
             if not isinstance(value, dict):
                 raise ValueError("CP decision is not an object")
             return value

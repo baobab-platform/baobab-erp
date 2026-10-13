@@ -154,8 +154,17 @@ ADR-ERP-013.
 
 ## Runtime dependency
 
-iDempiere 13 "Orion" LTS targets Java 17 and PostgreSQL. All four extension modules
+iDempiere 13 "Orion" LTS targets Java 17 and PostgreSQL. All six extension modules
 compile against Java 17 and OSGi Core R6, matching iDempiere's own Equinox runtime.
 `events` additionally compiles against the standard OSGi compendium APIs
 `org.osgi.service.event` and `org.osgi.util.tracker` (both on Maven Central, both
 provided by iDempiere's own Equinox runtime, so neither is bundled into our jar).
+
+## P0-04A native wire validation
+
+The integration bundle packages pinned Shared schemas and privately relocated
+Networknt/Jackson dependencies. Native financial authority validates exact wire
+facts before independent current-scope/readiness and atomic attribution checks.
+The build checks byte inventories, Java 17 targeting and an isolated class loader
+with no runtime schema download. Full Equinox ACTIVE/native posting acceptance
+remains separate. See the [maintenance plan](../docs/plans/P0-04A-erp-contract-convergence.md).

@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.baobab-platform.com/admission/v1/decision.schema.json",
+  "title": "Baobab AdmissionDecision Contracts (ADR-BCP-017 sections 10-17, 21-22, 39)",
+  "description": "Definition library for the explicit decision that ends every reviewed ClientApplication.\nValidate resources against fragment URIs (e.g. #/$defs/AdmissionDecision), not the document root.\n\nThe decision is made by an authenticated platform decider who is never the applicant (section 39, ADR-BCP-020 section 39). Subscription classification is server-authoritative (section 12): an INTERNAL classification is accepted only when the Control Plane itself establishes, from governed platform and corporate relationships, that the named Organisation is eligible, and it records that evidence (section 13). Approval permits governed onboarding; it activates nothing (section 22). The admission_decision_id keys organisation admission (organisation/v1 admission.schema.json), so replaying an approved decision converges instead of duplicating (section 46).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {},
+  "$defs": {
+    "admissionDecisionId": {
+      "type": "string",
+      "pattern": "^adm_[a-z0-9]+$",
+      "minLength": 6,
+      "maxLength": 63,
+      "description": "Opaque Control Plane-minted AdmissionDecision identifier. A strict subset of organisation/v1 admissionDecisionId, so it keys organisation admission directly."
+    },
+    "admissionDecisionValue": {
+      "type": "string",
+      "enum": ["APPROVED", "REJECTED"],
+      "description": "Section 21. INFORMATION_REQUIRED belongs to the application workflow, not to the decision."
+    },
+    "subscriptionType": {
+      "type": "string",
+      "enum": ["COMMERCIAL", "INTERNAL", "TRIAL", "PARTNER", "MANUAL", "MIGRATION"],
+      "description": "The ADR-BCP-005 subscription vocabulary (sections 10, 16-17). There is no INTERNAL_GROUP. INTERNAL means zero monetary charge, never zero governance: grants, metering, isolation, audit and readiness all still apply (section 11)."
+    },
+    "isolationStrategy": {
+      "type": "string",
+      "enum": ["schema_per_tenant", "row_level_security"],
+      "description": "The tenant isolation strategies the Control Plane provisions."
+    },
+    "InternalEligibilityEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["organisation_id", "platform_id", "eligibility_status", "basis_relationship_ids", "evaluated_at"],
+      "description": "Section 13: why an INTERNAL classification was granted. Recorded by the Control Plane from its own evaluation of governed relationships (ADR-BCP-018 internal eligibility); never supplied by a reviewer or applicant. It references the governing facts instead of duplicating ownership.",
+      "properties": {
+        "organisation_id": {"$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalEntityId"},
+        "platform_id": {"$ref": "../../organisation/v1/domain.schema.json#/$defs/platformId"},
+        "eligibility_status": {"const": "ELIGIBLE"},
+        "basis_relationship_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "../../organisation/v1/domain.schema.json#/$defs/platformRelationshipId"},
+          "description": "The qualifying platform relationships in force at evaluated_at: a verified PLATFORM_OWNER or PLATFORM_OPERATOR, or a PLATFORM_GROUP_AFFILIATE whose basis leads through verified OWNS/CONTROLS to a platform owner (ADR-BCP-018 internal eligibility)."
+        },
+        "evaluated_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "AdmissionDecisionRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "reason"],
+      "description": "What a platform decider submits. The decider's identity and time come from authentication, never from this body. For APPROVED, the approved market scope must lie within the markets the application requested.",
+      "properties": {
+        "decision": {"$ref": "#/$defs/admissionDecisionValue"},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 2000, "description": "Shown to the applicant."},
+        "approved_subscription_type": {"$ref": "#/$defs/subscriptionType"},
+        "internal_eligibility_organisation_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalEntityId",
+          "description": "For INTERNAL only: the canonical Organisation the decider asserts the applicant is. The Control Plane evaluates its eligibility itself and refuses the decision unless it is eligible now."
+        },
+        "approved_market_scope": {"type": "array", "minItems": 1, "maxItems": 50, "uniqueItems": true, "items": {"$ref": "application.schema.json#/$defs/countryCode"}},
+        "approved_product_requirements": {
+          "type": "array",
+          "maxItems": 50,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$", "maxLength": 63},
+          "description": "Product or profile keys review mapped the business requirements to (section 19). Subscriptions and grants are created later, by onboarding."
+        },
+        "approved_isolation_requirements": {"$ref": "#/$defs/isolationStrategy"},
+        "conditions": {"type": "array", "maxItems": 20, "items": {"type": "string", "minLength": 1, "maxLength": 500}},
+        "evidence_references": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {"$ref": "../../organisation/v1/domain.schema.json#/$defs/evidenceReference"},
+          "description": "The evidence the decision rests on."
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"decision": {"const": "APPROVED"}}},
+          "then": {"required": ["approved_subscription_type", "approved_market_scope", "evidence_references"],
+            "properties": {"evidence_references": {"minItems": 1}}},
+          "else": {"not": {"anyOf": [
+            {"required": ["approved_subscription_type"]}, {"required": ["approved_market_scope"]},
+            {"required": ["approved_product_requirements"]}, {"required": ["approved_isolation_requirements"]},
+            {"required": ["conditions"]}, {"required": ["internal_eligibility_organisation_id"]}
+          ]}}
+        },
+        {
+          "if": {"required": ["approved_subscription_type"], "properties": {"approved_subscription_type": {"const": "INTERNAL"}}},
+          "then": {"required": ["internal_eligibility_organisation_id"]},
+          "else": {"not": {"required": ["internal_eligibility_organisation_id"]}}
+        }
+      ]
+    },
+    "AdmissionDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["admission_decision_id", "client_application_id", "decision", "reason", "decided_by", "decided_at"],
+      "description": "Section 21. Immutable once recorded: a later change of subscription is a reclassification (section 48), never an edit of this record.",
+      "properties": {
+        "admission_decision_id": {"$ref": "#/$defs/admissionDecisionId"},
+        "client_application_id": {"$ref": "application.schema.json#/$defs/clientApplicationId"},
+        "decision": {"$ref": "#/$defs/admissionDecisionValue"},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "decided_by": {"$ref": "application.schema.json#/$defs/principalId"},
+        "decided_at": {"type": "string", "format": "date-time"},
+        "approved_subscription_type": {"$ref": "#/$defs/subscriptionType"},
+        "internal_eligibility": {"$ref": "#/$defs/InternalEligibilityEvidence"},
+        "approved_market_scope": {"type": "array", "minItems": 1, "maxItems": 50, "uniqueItems": true, "items": {"$ref": "application.schema.json#/$defs/countryCode"}},
+        "approved_product_requirements": {"type": "array", "maxItems": 50, "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$", "maxLength": 63}},
+        "approved_isolation_requirements": {"$ref": "#/$defs/isolationStrategy"},
+        "conditions": {"type": "array", "maxItems": 20, "items": {"type": "string", "minLength": 1, "maxLength": 500}},
+        "evidence_references": {"type": "array", "maxItems": 50,
+          "items": {"$ref": "../../organisation/v1/domain.schema.json#/$defs/evidenceReference"}}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"decision": {"const": "APPROVED"}}},
+          "then": {"required": ["approved_subscription_type", "approved_market_scope", "evidence_references"],
+            "properties": {"evidence_references": {"minItems": 1}}},
+          "else": {"not": {"anyOf": [
+            {"required": ["approved_subscription_type"]}, {"required": ["approved_market_scope"]},
+            {"required": ["approved_product_requirements"]}, {"required": ["approved_isolation_requirements"]},
+            {"required": ["conditions"]}, {"required": ["internal_eligibility"]}
+          ]}}
+        },
+        {
+          "if": {"required": ["approved_subscription_type"], "properties": {"approved_subscription_type": {"const": "INTERNAL"}}},
+          "then": {"required": ["internal_eligibility"]},
+          "else": {"not": {"required": ["internal_eligibility"]}}
+        }
+      ]
+    }
+  }
+}

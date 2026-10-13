@@ -59,6 +59,27 @@ jobs:
           java-version: "17"
       - name: Build Baobab OSGi extension bundles
         run: mvn -q -B -f idempiere/extensions package
+      - name: Verify standalone shaded OSGi contract bundle
+        run: python3 scripts/verify_contract_artifacts.py --jar idempiere/extensions/org.nabhold.baobab.erp.integration/target/org.nabhold.baobab.erp.integration-0.1.0.jar
+
+  contract-wheel:
+    # Prove production dependencies/resources from a real installed wheel,
+    # without editable source or conformance extras masking missing packages.
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up runtime Python
+        uses: actions/setup-python@06da6279cdbca41027908073e81a4544dc79c06b
+        with:
+          python-version: "3.12"
+      - name: Build and install standalone wheel
+        run: |
+          python -m pip wheel --no-deps --wheel-dir /tmp/erp-wheel modules/
+          python -m venv /tmp/erp-wheel-runtime
+          /tmp/erp-wheel-runtime/bin/pip install /tmp/erp-wheel/*.whl
+      - name: Verify packaged schema bytes and installed validators
+        run: python scripts/verify_contract_artifacts.py --wheel /tmp/erp-wheel/*.whl --runtime-python /tmp/erp-wheel-runtime/bin/python
 
   build-image:
     runs-on: ubuntu-26.04
@@ -113,6 +134,8 @@ jobs:
         run: pip install --break-system-packages -q -e "modules[conformance]"
       - name: Apply database migrations
         run: ./db/migrate.sh
+      - name: Verify exact generated contract bundles
+        run: python3 scripts/sync_authority_contracts.py --shared-checkout "$BAOBAB_SHARED_PATH" --check
       - name: Shared conformance
         run: PYTHONPATH=modules:tests/conformance python3 -m unittest discover -s tests/conformance -p 'test_*.py' -v
       - name: Provider registration preflight

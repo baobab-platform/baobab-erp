@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.baobab-platform.com/control-plane/v1/erp-assignment.schema.json",
+  "title": "ERP assignment projection",
+  "description": "The narrow, Control Plane-owned projection of an APPROVED tenant provisioning plan that an ERP workload needs to provision one legal entity (ADR-ERP-002 sections 113 and 114). It carries only facts Control Plane is the authority for: the legal entity's identity and verified profile, the markets the tenant participates in, and the resolved topology (engine, engine instance, the capability keys bound to it) and the isolation requirement the plan was made under. It deliberately carries no native placement: which AD_Client or AD_Org a legal entity lands in is an ERP decision (ADR-ERP-021), and no accounting configuration, which a Finance-approved ERP baseline owns (ADR-ERP-008). Per-market currencies, localisation profiles and warehouse codes are not stored by Control Plane, so they are not projected. The projection is read with the erp-assignment:read workload scope; the scope grants no authority over any resource, so Control Plane additionally requires the token's tenant_id to equal the path tenant and the provisioning and legal entity to belong to it. A definition library; validate against the fragment, e.g. erp-assignment.schema.json#/$defs/ErpAssignment.",
+  "$defs": {
+    "erpAssignmentMarket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "market",
+        "activities"
+      ],
+      "description": "A market the tenant participates in, as authorised on its onboarding request.",
+      "properties": {
+        "market": {
+          "$ref": "../../admission/v1/application.schema.json#/$defs/countryCode"
+        },
+        "activities": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "domain.schema.json#/$defs/marketParticipationCapability"
+          }
+        }
+      }
+    },
+    "erpAssignmentLegalEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "legal_entity_id",
+        "legal_name",
+        "jurisdiction_code",
+        "verification_state"
+      ],
+      "description": "The legal entity's Control Plane profile (ADR-BCP-018). legal_entity_id is itself the canonical business identifier, so no separate code is projected.",
+      "properties": {
+        "legal_entity_id": {
+          "$ref": "domain.schema.json#/$defs/canonicalLegalEntityId"
+        },
+        "legal_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "jurisdiction_code": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 16,
+          "description": "The jurisdiction of incorporation as Control Plane records it."
+        },
+        "registration_identifiers": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "$ref": "../../organisation/v1/domain.schema.json#/$defs/organisationIdentifier"
+          },
+          "default": []
+        },
+        "verification_state": {
+          "$ref": "../../organisation/v1/domain.schema.json#/$defs/verificationState"
+        }
+      }
+    },
+    "ErpAssignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tenant_id",
+        "tenant_provisioning_id",
+        "plan_id",
+        "plan_version",
+        "plan_digest",
+        "legal_entity",
+        "markets",
+        "engine_id",
+        "engine_instance_id",
+        "isolation_requirement",
+        "capabilities",
+        "issued_at",
+        "expires_at"
+      ],
+      "description": "What Control Plane has decided for one legal entity of one approved tenant provisioning. It is read-only, derived, and bound to the approved plan by the exact tuple plan_id, plan_version and plan_digest, the same tuple an ERP provisioning request names in control_plane_authority (erp/v1 provisioning-request.schema.json); ERP validates it against its own request and fails closed on any mismatch (request is not authority).",
+      "properties": {
+        "tenant_id": {
+          "$ref": "domain.schema.json#/$defs/tenantId"
+        },
+        "tenant_provisioning_id": {
+          "$ref": "domain.schema.json#/$defs/tenantProvisioningId"
+        },
+        "plan_id": {
+          "$ref": "domain.schema.json#/$defs/provisioningPlanId"
+        },
+        "plan_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "plan_digest": {
+          "$ref": "domain.schema.json#/$defs/planDigest"
+        },
+        "legal_entity": {
+          "$ref": "#/$defs/erpAssignmentLegalEntity"
+        },
+        "markets": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/erpAssignmentMarket"
+          }
+        },
+        "engine_id": {
+          "$ref": "domain.schema.json#/$defs/engineId"
+        },
+        "engine_instance_id": {
+          "$ref": "domain.schema.json#/$defs/engineInstanceId"
+        },
+        "issued_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "After this instant ERP must re-read the projection; an expired assignment authorises nothing."
+        },
+        "isolation_requirement": {
+          "$ref": "../../admission/v1/decision.schema.json#/$defs/isolationStrategy",
+          "description": "The tenant isolation strategy the approved plan was made under (the canonical value frozen into the desired state). ERP validates that its own native placement satisfies it; ERP, not Control Plane, chooses the placement. Control Plane's registry identifier for the isolation profile is internal and is never projected."
+        },
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../../capability/v1/domain.schema.json#/$defs/capabilityKey"
+          },
+          "description": "The canonical capability keys the approved plan binds to this ERP engine instance. Control Plane's capability-binding registry identifiers are internal (UUIDs) and are never projected: Shared's bind_ identifier is not yet minted by Control Plane, so no binding id is emitted."
+        }
+      }
+    }
+  }
+}

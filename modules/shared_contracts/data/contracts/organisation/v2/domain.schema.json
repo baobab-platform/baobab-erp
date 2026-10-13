@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.baobab-platform.com/organisation/v2/domain.schema.json",
+  "title": "Canonical Organisation identity refinement (ADR-BCP-027 / LA-01)",
+  "description": "A v2 Organisation is a CP CanonicalEntity with its durable UUID identifier. This tightened v2 boundary prevents legal-entity first-party aliases such as ZURIBEANS/NABHOLD being used as organisation_id. It does not alter the legacy generic canonicalEntityId definition.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {},
+  "$defs": {
+    "organisationId": {
+      "allOf": [
+        {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalEntityId"
+        },
+        {
+          "type": "string",
+          "format": "uuid"
+        }
+      ],
+      "description": "Canonical Organisation UUID minted/attested by Control Plane. No first-party legal-entity ID, alias, brand or display name is a valid substitute."
+    }
+  }
+}

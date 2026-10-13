@@ -1,0 +1,438 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.baobab-platform.com/organisation/v1/domain.schema.json",
+  "title": "Baobab Organisation Domain Contracts (ADR-BCP-018)",
+  "description": "Definition library for Organisation and LegalEntityProfile, plus the opaque resource identifiers used across organisation/v1.\nValidate resources against fragment URIs (e.g. #/$defs/Organisation), not the document root.\n\nShared = contract/schema authority and first-party governance source.\nControl Plane = runtime authority for Organisation and LegalEntityProfile instances.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {},
+  "$defs": {
+    "corporateRelationshipId": {
+      "type": "string",
+      "pattern": "^crel_[a-z0-9]+$",
+      "minLength": 6,
+      "maxLength": 63,
+      "description": "Opaque Control Plane-minted CorporateRelationship identifier. Must not embed organisation names, countries, markets or brands."
+    },
+    "corporateGroupId": {
+      "type": "string",
+      "pattern": "^cgrp_[a-z0-9]+$",
+      "minLength": 6,
+      "maxLength": 63,
+      "description": "Opaque Control Plane-minted CorporateGroup identifier. Must not embed organisation names, countries, markets or brands."
+    },
+    "corporateGroupMembershipId": {
+      "type": "string",
+      "pattern": "^cgm_[a-z0-9]+$",
+      "minLength": 5,
+      "maxLength": 63,
+      "description": "Opaque Control Plane-minted CorporateGroupMembership identifier. Must not embed organisation names, countries, markets or brands."
+    },
+    "platformRelationshipId": {
+      "type": "string",
+      "pattern": "^prel_[a-z0-9]+$",
+      "minLength": 6,
+      "maxLength": 63,
+      "description": "Opaque Control Plane-minted PlatformRelationship identifier. Must not embed organisation names, countries, markets or brands."
+    },
+    "platformAccountId": {
+      "type": "string",
+      "pattern": "^pacct_[a-z0-9]+$",
+      "minLength": 7,
+      "maxLength": 63,
+      "description": "Opaque Control Plane-minted PlatformAccount identifier. Must not embed organisation names, countries, markets or brands."
+    },
+    "platformAccountMembershipId": {
+      "type": "string",
+      "pattern": "^pam_[a-z0-9]+$",
+      "minLength": 5,
+      "maxLength": 63,
+      "description": "Opaque Control Plane-minted PlatformAccountMembership identifier. Must not embed organisation names, countries, markets or brands."
+    },
+    "tenantPlatformAccountBindingId": {
+      "type": "string",
+      "pattern": "^tpab_[a-z0-9]+$",
+      "minLength": 6,
+      "maxLength": 63,
+      "description": "Opaque Control Plane-minted TenantPlatformAccountBinding identifier. Must not embed organisation names, countries, markets or brands."
+    },
+    "tenantOrganisationMappingId": {
+      "type": "string",
+      "pattern": "^tom_[a-z0-9]+$",
+      "minLength": 5,
+      "maxLength": 63,
+      "description": "Opaque Control Plane-minted TenantOrganisationMapping identifier. Must not embed organisation names, countries, markets or brands."
+    },
+    "tenantLegalEntityMappingId": {
+      "type": "string",
+      "pattern": "^tlem_[a-z0-9]+$",
+      "minLength": 6,
+      "maxLength": 63,
+      "description": "Opaque Control Plane-minted TenantLegalEntityMapping identifier. Must not embed organisation names, countries, markets or brands."
+    },
+    "iamOrganisationReferenceId": {
+      "type": "string",
+      "pattern": "^iamorg_[a-z0-9]+$",
+      "minLength": 8,
+      "maxLength": 63,
+      "description": "Opaque Control Plane-minted IamOrganisationReference identifier. Must not embed organisation names, realms, providers or brands."
+    },
+    "platformId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "minLength": 3,
+      "maxLength": 63,
+      "description": "Identifier of the Baobab Platform instance or product plane. The platform is not a legal entity (ADR-BCP-018 section 30)."
+    },
+    "evidenceReference": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "description": "Opaque reference to evidence held in a document or evidence system (ADR-BCP-023). Evidence binaries are never embedded in these contracts."
+    },
+    "relationshipClassification": {
+      "type": "string",
+      "enum": [
+        "PUBLIC",
+        "INTERNAL",
+        "TENANT_CONFIDENTIAL",
+        "RESTRICTED"
+      ],
+      "description": "Security classification of a relationship record (ADR-BCP-018 section 102). A canonical relationship is not enumerable by every tenant."
+    },
+    "organisationForm": {
+      "type": "string",
+      "description": "Organisational form only. MUST NOT encode commercial role (SUPPLIER/CUSTOMER).",
+      "enum": [
+        "COMPANY",
+        "PARTNERSHIP",
+        "TRUST",
+        "ASSOCIATION",
+        "PUBLIC_BODY",
+        "NONPROFIT",
+        "UNINCORPORATED_ORGANISATION",
+        "SOLE_PROPRIETOR",
+        "COOPERATIVE",
+        "GOVERNMENT_ENTITY",
+        "FINANCIAL_INSTITUTION",
+        "OTHER"
+      ]
+    },
+    "verificationState": {
+      "type": "string",
+      "description": "Evidence state. Consequential decisions MUST fail closed unless VERIFIED.",
+      "enum": [
+        "UNVERIFIED",
+        "PENDING_REVIEW",
+        "VERIFIED",
+        "CONFLICTED",
+        "REJECTED",
+        "EXPIRED"
+      ]
+    },
+    "lifecycleStatus": {
+      "type": "string",
+      "enum": [
+        "DRAFT",
+        "VALIDATED",
+        "ACTIVE",
+        "DEPRECATED",
+        "SUSPENDED",
+        "MIGRATING",
+        "QUARANTINED",
+        "RETIRED"
+      ]
+    },
+    "organisationIdentifier": {
+      "type": "object",
+      "required": [
+        "type",
+        "value"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "COMPANY_REGISTRATION",
+            "TAX_IDENTIFIER",
+            "VAT_IDENTIFIER",
+            "CUSTOMS_IDENTIFIER",
+            "IMPORTER_IDENTIFIER",
+            "EXPORTER_IDENTIFIER",
+            "LEI",
+            "OTHER"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "issuing_jurisdiction": {
+          "type": "string"
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "verified": {
+          "type": "boolean",
+          "default": false
+        },
+        "valid_from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "valid_to": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "organisationAddress": {
+      "type": "object",
+      "required": [
+        "address_type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "address_type": {
+          "type": "string",
+          "enum": [
+            "REGISTERED",
+            "BILLING",
+            "SHIPPING",
+            "WAREHOUSE",
+            "OPERATING",
+            "CORRESPONDENCE"
+          ]
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "locality": {
+          "type": "string"
+        },
+        "region": {
+          "type": "string"
+        },
+        "postal_code": {
+          "type": "string"
+        },
+        "country_code": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$"
+        },
+        "verified": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "Organisation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonical_entity_id",
+        "display_name",
+        "verification_state",
+        "source_authority",
+        "status",
+        "effective_from"
+      ],
+      "properties": {
+        "canonical_entity_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalEntityId",
+          "description": "Platform CanonicalEntity identifier. Organisation identity is never independent of CanonicalEntity."
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "official_name": {
+          "type": "string"
+        },
+        "trading_names": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "organisation_form": {
+          "$ref": "#/$defs/organisationForm"
+        },
+        "jurisdiction": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}(?:-[A-Z0-9]{1,3})?$",
+          "description": "ISO 3166-1 alpha-2 country code, optionally with an ISO 3166-2 subdivision suffix."
+        },
+        "verification_state": {
+          "$ref": "#/$defs/verificationState"
+        },
+        "source_authority": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Authoritative source that established or last verified this Organisation record. An applicant submission is a claim, not an authority for VERIFIED state (ADR-BCP-018 section 69, ADR-BCP-023)."
+        },
+        "status": {
+          "$ref": "#/$defs/lifecycleStatus"
+        },
+        "effective_from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "effective_to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "identifiers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/organisationIdentifier"
+          }
+        },
+        "addresses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/organisationAddress"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "evidence_references": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidenceReference"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "LegalEntityProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Legally recognised person attached to an Organisation. organisation_id and legal_entity_id remain distinct. Runtime instances are Control Plane authority; Shared governs first-party registry ids only.",
+      "required": [
+        "legal_entity_id",
+        "organisation_id",
+        "legal_name",
+        "legal_status",
+        "source_authority",
+        "verification_state",
+        "effective_from"
+      ],
+      "properties": {
+        "legal_entity_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalLegalEntityId",
+          "description": "Canonical legal-entity identifier known to Control Plane. First-party IDs reconcile to contracts/legal-entity/registry.yaml; newly admitted external IDs SHOULD be opaque (LE-<token>) per ADR-BCP-018 section 12. Names, registration numbers and brands belong in legal_name, registration_identifiers and external references."
+        },
+        "organisation_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalEntityId",
+          "description": "Organisation this legal person is attached to. organisation_id != legal_entity_id even when one-to-one."
+        },
+        "legal_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "jurisdiction_of_incorporation": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}(?:-[A-Z0-9]{1,3})?$"
+        },
+        "registration_identifiers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/organisationIdentifier"
+          }
+        },
+        "incorporation_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "legal_status": {
+          "$ref": "#/$defs/legalStatus"
+        },
+        "source_authority": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verification_state": {
+          "$ref": "#/$defs/verificationState"
+        },
+        "effective_from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "effective_to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "evidence_references": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidenceReference"
+          },
+          "uniqueItems": true,
+          "description": "Opaque references to evidence in a document system. Binaries are not stored here."
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "verified_by": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Authenticated principal or governed process that performed verification. Server-derived; never accepted from applicant payloads."
+        },
+        "verified_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "verification_state": {
+                "const": "VERIFIED"
+              }
+            },
+            "required": [
+              "verification_state"
+            ]
+          },
+          "then": {
+            "required": [
+              "evidence_references",
+              "verified_at"
+            ],
+            "properties": {
+              "evidence_references": {
+                "minItems": 1
+              }
+            }
+          },
+          "description": "VERIFIED is an outcome of evidence review, never of receipt of a claim."
+        }
+      ]
+    },
+    "legalStatus": {
+      "type": "string",
+      "enum": [
+        "ACTIVE",
+        "DORMANT",
+        "IN_ADMINISTRATION",
+        "IN_LIQUIDATION",
+        "DISSOLVED",
+        "UNKNOWN"
+      ],
+      "description": "Legal standing of the legal person as recorded by the source authority. UNKNOWN until an authoritative source has confirmed it; never guessed."
+    }
+  }
+}

@@ -12,7 +12,12 @@ ARG IDEMPIERE_IMAGE=idempiereofficial/idempiere:13-release
 FROM maven:3-eclipse-temurin-27 AS extensions-builder
 WORKDIR /build
 COPY idempiere/extensions/ idempiere/extensions/
-RUN mvn -q -B -f idempiere/extensions package -DskipTests
+COPY tests/fixtures/authority-contract-cases.json /build/authority-contract-cases.json
+RUN mvn -q -B -f idempiere/extensions package -DskipTests \
+    && java -cp idempiere/extensions/org.nabhold.baobab.erp.integration/target/org.nabhold.baobab.erp.integration-0.1.0.jar \
+       org.nabhold.baobab.erp.integration.PinnedSharedSchemas --self-test \
+    && java -cp idempiere/extensions/org.nabhold.baobab.erp.integration/target/org.nabhold.baobab.erp.integration-0.1.0.jar \
+       org.nabhold.baobab.erp.integration.PinnedSharedSchemas --conformance /build/authority-contract-cases.json
 
 # Bouncy Castle override for the iDempiere runtime. The pinned iDempiere
 # image bundles Bouncy Castle 1.81 (OSGi bundles bcprov/bcpkix/bcutil/bcpg/bcmail),

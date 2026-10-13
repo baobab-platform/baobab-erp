@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.baobab-platform.com/organisation/v1/admission.schema.json",
+  "title": "Baobab Organisation Admission Onboarding Contracts (ADR-BCP-018 gate ORG-09)",
+  "description": "Definition library for the organisation stages of external admission (ADR-BCP-018 sections 68-70, 99-100 and 108): identity resolution, legal verification, corporate relationship assessment, the EXTERNAL_CLIENT platform relationship, PlatformAccount assignment and the tenant's organisation mappings.\nValidate resources against fragment URIs (e.g. #/$defs/OrganisationAdmissionRequest), not the document root.\n\nThe request is issued by the Control Plane's admission reviewer after an approved admission decision (ADR-BCP-017 section 21); it is never an applicant payload. Applicant-supplied organisation data is evidence, not canonical truth (ADR-BCP-017 section 7): identifiers are recorded as unverified claims, claimed corporate relationships are recorded PENDING_REVIEW and never verified by admission (section 69), and the platform relationship is server-authoritative (section 70), so the request has no field that could set it. Identity is resolved only on governed identifiers, never on names, and a possible duplicate quarantines the admission instead of merging organisations (sections 99-100).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {},
+  "$defs": {
+    "admissionDecisionId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+      "minLength": 3,
+      "maxLength": 128,
+      "description": "Identifier of the approved AdmissionDecision (ADR-BCP-017 section 21). It keys the onboarding: replaying the same decision converges on the same records and changes nothing."
+    },
+    "identityResolutionOutcome": {
+      "type": "string",
+      "enum": ["NEW_ORGANISATION", "EXISTING_ORGANISATION", "QUARANTINED"],
+      "description": "NEW_ORGANISATION: no other Organisation carries any of the applicant's governed identifiers, so the tenant's registered Organisation is the applicant Organisation. EXISTING_ORGANISATION: a reviewer resolved the applicant to an existing Organisation. QUARANTINED: another Organisation carries a matching governed identifier and no reviewer resolution was supplied; nothing further is written."
+    },
+    "identityResolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A reviewer's governed decision on a quarantined identity. It never comes from the applicant.",
+      "required": ["decision", "reason"],
+      "properties": {
+        "decision": {
+          "type": "string",
+          "enum": ["USE_EXISTING_ORGANISATION", "CONFIRM_NEW_ORGANISATION"]
+        },
+        "organisation_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalEntityId",
+          "description": "Required for USE_EXISTING_ORGANISATION."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "if": {
+        "properties": {"decision": {"const": "USE_EXISTING_ORGANISATION"}}
+      },
+      "then": {
+        "required": ["organisation_id"]
+      }
+    },
+    "applicantOrganisation": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Applicant organisation evidence (ADR-BCP-017 section 7). Recorded as claims; it establishes nothing on its own.",
+      "required": ["legal_name", "registration_identifiers"],
+      "properties": {
+        "legal_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "jurisdiction_of_incorporation": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$"
+        },
+        "organisation_form": {
+          "$ref": "domain.schema.json#/$defs/organisationForm"
+        },
+        "registration_identifiers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "domain.schema.json#/$defs/organisationIdentifier"
+          }
+        }
+      }
+    },
+    "corporateRelationshipClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A corporate relationship the applicant declared (e.g. 'we are a subsidiary of Acme Holdings'). It is recorded PENDING_REVIEW with source_authority applicant-submission and is never verified by admission (section 69). The counterparty is an existing Organisation, named either by id or by governed identifiers that resolve to exactly one Organisation; an unresolvable counterparty is reported, not created.",
+      "required": ["relationship_type", "applicant_role"],
+      "properties": {
+        "relationship_type": {
+          "$ref": "relationship.schema.json#/$defs/corporateRelationshipType"
+        },
+        "applicant_role": {
+          "type": "string",
+          "enum": ["SOURCE", "TARGET"],
+          "description": "Whether the applicant is the source (e.g. OWNS the counterparty) or the target (e.g. is OWNED by it)."
+        },
+        "counterparty_organisation_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalEntityId"
+        },
+        "counterparty_identifiers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "domain.schema.json#/$defs/organisationIdentifier"
+          }
+        },
+        "ownership_percentage": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100
+        },
+        "evidence_references": {
+          "type": "array",
+          "items": {
+            "$ref": "domain.schema.json#/$defs/evidenceReference"
+          }
+        }
+      },
+      "oneOf": [
+        {"required": ["counterparty_organisation_id"]},
+        {"required": ["counterparty_identifiers"]}
+      ]
+    },
+    "platformAccountAssignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Where the admitted Organisation sits commercially (ADR-BCP-018 sections 42-45). A PlatformAccount confers no tenant access.",
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["EXISTING_ACCOUNT", "NEW_ACCOUNT", "NONE"]
+        },
+        "platform_account_id": {
+          "$ref": "domain.schema.json#/$defs/platformAccountId",
+          "description": "Required for EXISTING_ACCOUNT."
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Required for NEW_ACCOUNT."
+        },
+        "account_role": {
+          "$ref": "platform.schema.json#/$defs/platformAccountRole",
+          "description": "The Organisation's role in the account. Defaults to PRIMARY_ACCOUNT_ORGANISATION for a new account and CONTRACTING_PARTY for an existing one."
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"mode": {"const": "EXISTING_ACCOUNT"}}},
+          "then": {"required": ["platform_account_id"]}
+        },
+        {
+          "if": {"properties": {"mode": {"const": "NEW_ACCOUNT"}}},
+          "then": {"required": ["display_name"]}
+        }
+      ]
+    },
+    "OrganisationAdmissionRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Onboard the organisation behind an approved admission decision onto an already registered tenant. Issued by the admission reviewer, never by the applicant.",
+      "required": ["admission_decision_id", "applicant_organisation", "platform_account"],
+      "properties": {
+        "admission_decision_id": {
+          "$ref": "#/$defs/admissionDecisionId"
+        },
+        "application_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "applicant_organisation": {
+          "$ref": "#/$defs/applicantOrganisation"
+        },
+        "identity_resolution": {
+          "$ref": "#/$defs/identityResolution"
+        },
+        "verification_case_id": {
+          "$ref": "../../evidence/v1/domain.schema.json#/$defs/verificationCaseId",
+          "description": "The ADR-BCP-023 VerificationCase that verified the applicant's legal identity (sections 191-193). It must be VERIFIED and for purpose ORGANISATION_ADMISSION. Its subject is either the client application being admitted (subject APPLICATION, whose id must equal application_id; the usual case, since the case is worked before approval) or the admitted organisation or one of its legal entities. It needs VERIFIED REGISTRATION_IDENTIFIER and LEGAL_NAME claims about that subject. Only those accepted claims are promoted (section 192). Without it the legal entity stays unverified; there is no other way to verify legal identity at admission."
+        },
+        "corporate_relationship_claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/corporateRelationshipClaim"
+          }
+        },
+        "platform_account": {
+          "$ref": "#/$defs/platformAccountAssignment"
+        },
+        "effective_from": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "OrganisationAdmissionOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What organisation onboarding converged on. A QUARANTINED outcome lists the Organisations whose governed identifiers match and carries no other results.",
+      "required": ["admission_decision_id", "tenant_id", "identity_resolution"],
+      "properties": {
+        "admission_decision_id": {
+          "$ref": "#/$defs/admissionDecisionId"
+        },
+        "tenant_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/tenantId"
+        },
+        "identity_resolution": {
+          "$ref": "#/$defs/identityResolutionOutcome"
+        },
+        "candidate_organisation_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalEntityId"
+          }
+        },
+        "organisation_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalEntityId"
+        },
+        "legal_entity_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalLegalEntityId"
+        },
+        "legal_entity_verification_state": {
+          "$ref": "domain.schema.json#/$defs/verificationState"
+        },
+        "corporate_relationship_claims": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["status"],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["RECORDED_PENDING_REVIEW", "COUNTERPARTY_UNRESOLVED", "COUNTERPARTY_AMBIGUOUS"]
+              },
+              "corporate_relationship_id": {
+                "$ref": "domain.schema.json#/$defs/corporateRelationshipId"
+              }
+            }
+          }
+        },
+        "platform_relationship_id": {
+          "$ref": "domain.schema.json#/$defs/platformRelationshipId"
+        },
+        "platform_account_id": {
+          "$ref": "domain.schema.json#/$defs/platformAccountId"
+        },
+        "platform_account_membership_id": {
+          "$ref": "domain.schema.json#/$defs/platformAccountMembershipId"
+        },
+        "tenant_organisation_mapping_id": {
+          "$ref": "domain.schema.json#/$defs/tenantOrganisationMappingId"
+        },
+        "tenant_legal_entity_mapping_id": {
+          "$ref": "domain.schema.json#/$defs/tenantLegalEntityMappingId"
+        }
+      }
+    }
+  }
+}

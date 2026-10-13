@@ -8,6 +8,9 @@ dependencies = [
     "PyJWT[crypto]>=2.8,<3",
     # The IANA timezone database warehouse timezones are verified against; the slim runtime image has none of its own.
     "tzdata>=2024.1",
+    # P0-04A: format-enforcing authority validators are production dependencies.
+    "jsonschema[format-nongpl]>=4.21,<5",
+    "referencing>=0.35,<1",
 ]
 
 [project.optional-dependencies]
@@ -36,4 +39,9 @@ packages = [
     "security",
     "provisioning",
     "order_to_cash",
+    "shared_contracts",
 ]
+
+# Imported immutable schemas must survive wheel/image builds.
+[tool.setuptools.package-data]
+shared_contracts = ["data/provenance.json", "data/contracts/**/*.json"]

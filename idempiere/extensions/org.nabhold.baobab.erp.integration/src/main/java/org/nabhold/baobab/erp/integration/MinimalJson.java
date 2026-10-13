@@ -4,11 +4,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Parses exactly the flat JSON object shapes baobab-app's endpoints return --
- * string, number, boolean, and null values, no nesting or arrays. Not a general
- * JSON parser; deliberately narrow so it needs no dependency embedded into this
- * OSGi bundle. Numbers are returned as {@link Long} or {@link Double} depending on
- * whether a decimal point/exponent is present.
+ * Small compatibility parser for legacy application-service responses, including
+ * nested objects and arrays. It is not JSON Schema validation. Consequential CP
+ * facts use {@link PinnedSharedSchemas}, which enforces the immutable Shared wire
+ * contracts and strict JSON syntax before native financial authority checks.
+ * Numbers are returned as {@link Long} or {@link Double}.
  */
 public final class MinimalJson {
 

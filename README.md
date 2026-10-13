@@ -37,6 +37,18 @@ flowchart LR
 There is no shared database between engines. Canonical identifiers are mapped to
 iDempiere records rather than replacing them; see ADR-ERP-002 and ADR-ERP-007.
 
+## P0-04A contract convergence
+
+ERP pins Shared `a9c53087` and generates an exact 17-schema bundle for Python
+and the native JVM financial guard. Canonical wire validation precedes independent
+scope, actor, freshness and finance checks. Packaged wheel/JAR checks verify the
+original schema bytes and offline validators; the JVM guards the whole HTTP
+response deadline and body size. See the [maintenance and audited completion
+note](docs/plans/P0-04A-erp-contract-convergence.md).
+
+Staging assessment remains PROVISIONED. Real founding-record acceptance, trusted
+native providers and protected posting certification remain separate requirements.
+
 ## Pinned upstream
 
 - iDempiere: `13-release` ("Orion" LTS)

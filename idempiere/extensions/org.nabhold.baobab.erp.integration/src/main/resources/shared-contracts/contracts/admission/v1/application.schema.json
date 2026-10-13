@@ -1,0 +1,769 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.baobab-platform.com/admission/v1/application.schema.json",
+  "title": "Baobab ClientApplication Contracts (ADR-BCP-017 sections 5-9, 18-20, 42-43)",
+  "description": "Definition library for the ClientApplication: an organisation's request to use Baobab, made by an authenticated applicant principal before any tenant exists.\nValidate resources against fragment URIs (e.g. #/$defs/ClientApplication), not the document root.\n\nRegistering an applicant creates no tenant, membership, role, subscription or capability (section 5). Everything the applicant submits is application evidence, never canonical Organisation state (section 7): identifiers and addresses here have no 'verified' field, and nothing the applicant writes can set status, channel, subscription classification, tenant or organisation identifiers. Documents are held by reference only (section 42, ADR-BCP-023). Lifecycle transitions are published in lifecycle.yaml.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {},
+  "$defs": {
+    "clientApplicationId": {
+      "type": "string",
+      "pattern": "^capp_[a-z0-9]+$",
+      "minLength": 6,
+      "maxLength": 63,
+      "description": "Opaque Control Plane-minted ClientApplication identifier. Must not embed organisation names, countries, markets or brands."
+    },
+    "applicationReference": {
+      "type": "string",
+      "pattern": "^APP-[0-9]{4}-[0-9]{6,}$",
+      "description": "Human-quotable reference (year of creation and a sequence), for correspondence. Never used for authorization."
+    },
+    "applicationStatus": {
+      "type": "string",
+      "enum": [
+        "DRAFT",
+        "SUBMITTED",
+        "VALIDATING",
+        "INFORMATION_REQUIRED",
+        "UNDER_REVIEW",
+        "APPROVED",
+        "REJECTED",
+        "WITHDRAWN",
+        "EXPIRED",
+        "CANCELLED"
+      ],
+      "description": "Section 8. APPROVED, REJECTED, WITHDRAWN, EXPIRED and CANCELLED are terminal. APPROVED permits governed onboarding to begin; it is never tenant activation (section 22). Permitted transitions and who may perform them are in lifecycle.yaml."
+    },
+    "applicationChannel": {
+      "type": "string",
+      "enum": [
+        "SELF_SERVICE",
+        "ASSISTED_ENTERPRISE",
+        "INTERNAL_GROUP"
+      ],
+      "description": "Section 9. The channel may shape the workflow; it never weakens review, provisioning, isolation, audit or readiness, and INTERNAL_GROUP does not by itself make an application eligible for an INTERNAL subscription (section 12). Applicants create SELF_SERVICE applications only; platform staff open the other channels."
+    },
+    "principalId": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+      "description": "Opaque Control Plane principal identifier. Never an IAM provider's internal user id (section 58)."
+    },
+    "countryCode": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}$",
+      "description": "ISO 3166-1 alpha-2."
+    },
+    "applicantIdentifier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "value"
+      ],
+      "description": "A registration, tax or other identifier as the applicant declares it. It has no 'verified' field: applicants never assert verification. Admission records it as an unverified claim.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "COMPANY_REGISTRATION",
+            "TAX_IDENTIFIER",
+            "VAT_IDENTIFIER",
+            "CUSTOMS_IDENTIFIER",
+            "IMPORTER_IDENTIFIER",
+            "EXPORTER_IDENTIFIER",
+            "LEI",
+            "OTHER"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "issuing_jurisdiction": {
+          "$ref": "#/$defs/countryCode"
+        }
+      }
+    },
+    "applicantAddress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lines",
+        "country_code"
+      ],
+      "description": "An address as declared. Unverified by construction.",
+      "properties": {
+        "lines": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "locality": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "region": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "postal_code": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "country_code": {
+          "$ref": "#/$defs/countryCode"
+        }
+      }
+    },
+    "authorisedRepresentative": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "full_name",
+        "role"
+      ],
+      "description": "The person authorised to apply for the organisation. Personal data: only what review needs (section 43).",
+      "properties": {
+        "full_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 254
+        }
+      }
+    },
+    "declaredLegalEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "legal_name",
+        "jurisdiction"
+      ],
+      "description": "Another legal entity the organisation declares it will operate through. A declaration only; it creates nothing.",
+      "properties": {
+        "legal_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "jurisdiction": {
+          "$ref": "#/$defs/countryCode"
+        },
+        "registration_identifiers": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "$ref": "#/$defs/applicantIdentifier"
+          }
+        }
+      }
+    },
+    "ApplicantOrganisationProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Section 7: the application-scoped representation of the applying organisation. Pre-canonical evidence; it is reconciled against canonical registries only by admission after approval. Every field is optional while the application is a DRAFT; submission requires the fields ClientApplication lists.",
+      "properties": {
+        "legal_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "trading_names": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          }
+        },
+        "organisation_form": {
+          "$ref": "../../organisation/v1/domain.schema.json#/$defs/organisationForm"
+        },
+        "jurisdiction_of_incorporation": {
+          "$ref": "#/$defs/countryCode"
+        },
+        "registration_identifiers": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "$ref": "#/$defs/applicantIdentifier"
+          }
+        },
+        "registered_address": {
+          "$ref": "#/$defs/applicantAddress"
+        },
+        "website": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "maxLength": 2048
+        },
+        "industry": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "business_model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "authorised_representative": {
+          "$ref": "#/$defs/authorisedRepresentative"
+        },
+        "declared_legal_entities": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/declaredLegalEntity"
+          }
+        },
+        "ownership_claims": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "$ref": "../../organisation/v1/admission.schema.json#/$defs/corporateRelationshipClaim"
+          },
+          "description": "Declared corporate relationships (e.g. 'we are a subsidiary of ...'), in the form organisation admission records them: PENDING_REVIEW, never verified by admission (ADR-BCP-018 section 69)."
+        }
+      }
+    },
+    "BusinessRequirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Section 18: requirements in business language. Deliberately no provider or engine names; review maps them to products, profiles and capability compositions (section 19).",
+      "properties": {
+        "operates_b2b": {
+          "type": "boolean"
+        },
+        "operates_b2c": {
+          "type": "boolean"
+        },
+        "sells_online": {
+          "type": "boolean"
+        },
+        "requires_accounting": {
+          "type": "boolean"
+        },
+        "requires_procurement": {
+          "type": "boolean"
+        },
+        "manages_inventory": {
+          "type": "boolean"
+        },
+        "requires_supplier_management": {
+          "type": "boolean"
+        },
+        "trades_cross_border": {
+          "type": "boolean"
+        },
+        "requires_content_management": {
+          "type": "boolean"
+        },
+        "requires_intelligence": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      }
+    },
+    "requestedMarket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "country_code"
+      ],
+      "description": "Section 20: where the organisation intends to do business. Review maps these to Markets; they never select a deployment region (Market is not DeploymentRegion).",
+      "properties": {
+        "country_code": {
+          "$ref": "#/$defs/countryCode"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 500
+        }
+      }
+    },
+    "applicationEvidenceType": {
+      "type": "string",
+      "enum": [
+        "REGISTRATION_EVIDENCE",
+        "TAX_EVIDENCE",
+        "OWNERSHIP_EVIDENCE",
+        "AUTHORISATION_EVIDENCE",
+        "CONTRACT",
+        "SECURITY_QUESTIONNAIRE",
+        "MIGRATION_INVENTORY",
+        "COMPLIANCE_EVIDENCE",
+        "OTHER"
+      ],
+      "description": "Section 42."
+    },
+    "ApplicationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_type",
+        "evidence_reference"
+      ],
+      "description": "A reference to a document held in the approved document or object store. The application never carries the binary (section 42, ADR-BCP-023).",
+      "properties": {
+        "evidence_type": {
+          "$ref": "#/$defs/applicationEvidenceType"
+        },
+        "evidence_reference": {
+          "$ref": "../../organisation/v1/domain.schema.json#/$defs/evidenceReference"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "recorded_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Set by the Control Plane."
+        }
+      }
+    },
+    "InformationRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requested_at",
+        "message"
+      ],
+      "description": "A reviewer's request for more information, and the applicant's response. Internal reviewer notes are never carried here.",
+      "properties": {
+        "requested_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "responded_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "response": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      }
+    },
+    "DecisionSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "admission_decision_id",
+        "decision",
+        "decided_at",
+        "reason"
+      ],
+      "description": "What the applicant sees of the admission decision. The full AdmissionDecision (decision.schema.json) is a platform record.",
+      "properties": {
+        "admission_decision_id": {
+          "$ref": "decision.schema.json#/$defs/admissionDecisionId"
+        },
+        "decision": {
+          "$ref": "decision.schema.json#/$defs/admissionDecisionValue"
+        },
+        "decided_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      }
+    },
+    "ClientApplication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "client_application_id",
+        "reference",
+        "status",
+        "application_channel",
+        "version",
+        "applicant_principal_id",
+        "organisation_profile",
+        "requirements",
+        "requested_markets",
+        "evidence",
+        "information_requests",
+        "created_at",
+        "updated_at"
+      ],
+      "description": "Section 6. The Control Plane's representation of an application, returned to its applicant and to platform reviewers. 'assigned_reviewer' appears only in the platform view.",
+      "properties": {
+        "client_application_id": {
+          "$ref": "#/$defs/clientApplicationId"
+        },
+        "reference": {
+          "$ref": "#/$defs/applicationReference"
+        },
+        "status": {
+          "$ref": "#/$defs/applicationStatus"
+        },
+        "application_channel": {
+          "$ref": "#/$defs/applicationChannel"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Optimistic-concurrency version (ADR-BCP-019 section 48); every change increments it."
+        },
+        "applicant_principal_id": {
+          "$ref": "#/$defs/principalId"
+        },
+        "assigned_reviewer": {
+          "$ref": "#/$defs/principalId"
+        },
+        "organisation_profile": {
+          "$ref": "#/$defs/ApplicantOrganisationProfile"
+        },
+        "requirements": {
+          "$ref": "#/$defs/BusinessRequirements"
+        },
+        "requested_markets": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/requestedMarket"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/ApplicationEvidence"
+          }
+        },
+        "information_requests": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/InformationRequest"
+          }
+        },
+        "decision": {
+          "$ref": "#/$defs/DecisionSummary"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "submitted_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "closed_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When a terminal state was reached."
+        },
+        "opened_by_staff_principal_id": {
+          "$ref": "#/$defs/principalId",
+          "description": "Registered platform operator who opened an ASSISTED_ENTERPRISE or INTERNAL_GROUP draft. Not the applicant and not eligible to decide the application. Audit provenance retained; absent on self-service."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "SUBMITTED",
+                  "VALIDATING",
+                  "INFORMATION_REQUIRED",
+                  "UNDER_REVIEW",
+                  "APPROVED",
+                  "REJECTED",
+                  "CANCELLED"
+                ]
+              }
+            }
+          },
+          "then": {
+            "description": "Every state only a submitted application can reach requires the organisation's identity and at least one market (section 8: validation starts from a complete application). WITHDRAWN and EXPIRED can also be reached from DRAFT, so they require neither.",
+            "required": [
+              "submitted_at"
+            ],
+            "properties": {
+              "organisation_profile": {
+                "required": [
+                  "legal_name",
+                  "jurisdiction_of_incorporation",
+                  "registration_identifiers",
+                  "authorised_representative"
+                ],
+                "properties": {
+                  "registration_identifiers": {
+                    "minItems": 1
+                  }
+                }
+              },
+              "requested_markets": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "APPROVED",
+                  "REJECTED"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "decision",
+              "closed_at"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "decision"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "APPROVED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "decision": {
+                "properties": {
+                  "decision": {
+                    "const": "APPROVED"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "REJECTED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "decision": {
+                "properties": {
+                  "decision": {
+                    "const": "REJECTED"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "WITHDRAWN",
+                  "EXPIRED",
+                  "CANCELLED"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "closed_at"
+            ]
+          }
+        }
+      ]
+    },
+    "ClientApplicationDraft": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What an applicant writes when creating or editing a DRAFT (or answering an information request). It cannot carry status, channel, classification, verification, tenant or organisation identifiers: those are server-authoritative (sections 12, 24). An update replaces each supplied section whole and requires the version it was based on.",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Required on update; absent on create."
+        },
+        "organisation_profile": {
+          "$ref": "#/$defs/ApplicantOrganisationProfile"
+        },
+        "requirements": {
+          "$ref": "#/$defs/BusinessRequirements"
+        },
+        "requested_markets": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/requestedMarket"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "evidence_type",
+              "evidence_reference"
+            ],
+            "properties": {
+              "evidence_type": {
+                "$ref": "#/$defs/applicationEvidenceType"
+              },
+              "evidence_reference": {
+                "$ref": "../../organisation/v1/domain.schema.json#/$defs/evidenceReference"
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 500
+              }
+            }
+          }
+        }
+      }
+    },
+    "InformationRequestCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "message"
+      ],
+      "description": "A reviewer asks the applicant for more information.",
+      "properties": {
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      }
+    },
+    "ApplicantResponseCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "response"
+      ],
+      "description": "The applicant returns an INFORMATION_REQUIRED application to validation, after editing it.",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "response": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      }
+    },
+    "ClosureCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason"
+      ],
+      "description": "Withdrawal by the applicant, or cancellation by the platform.",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      }
+    },
+    "StaffApplicationCreateRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Only registered, authorised Control Plane platform staff may open an assisted or internal-group draft for an existing, ACTIVE human applicant principal. The staff operator and applicant must differ. This command records a DRAFT only: no verification, admission, tenant, entitlement or INTERNAL classification is granted. The staff action is audited and the independent admission decision is unchanged.",
+      "required": [
+        "application_channel",
+        "applicant_principal_id",
+        "reason",
+        "draft"
+      ],
+      "properties": {
+        "application_channel": {
+          "type": "string",
+          "enum": [
+            "ASSISTED_ENTERPRISE",
+            "INTERNAL_GROUP"
+          ]
+        },
+        "applicant_principal_id": {
+          "$ref": "#/$defs/principalId"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 15,
+          "maxLength": 2000
+        },
+        "draft": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/ClientApplicationDraft"
+            },
+            {
+              "not": {
+                "required": [
+                  "version"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

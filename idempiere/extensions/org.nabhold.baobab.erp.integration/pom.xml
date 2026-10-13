@@ -22,7 +22,17 @@
     of its own.
   </description>
 
+  <!-- Keep validator dependencies private in the shaded OSGi bundle. The
+       existing iDempiere Jackson wiring must not select a different version. -->
+  <dependencyManagement><dependencies><dependency>
+    <groupId>com.fasterxml.jackson</groupId><artifactId>jackson-bom</artifactId>
+    <version>2.22.3</version><type>pom</type><scope>import</scope>
+  </dependency></dependencies></dependencyManagement>
   <dependencies>
+    <dependency>
+      <groupId>com.networknt</groupId><artifactId>json-schema-validator</artifactId><version>2.0.4</version>
+      <exclusions><exclusion><groupId>com.fasterxml.jackson.dataformat</groupId><artifactId>jackson-dataformat-yaml</artifactId></exclusion></exclusions>
+    </dependency>
     <dependency>
       <groupId>org.osgi</groupId>
       <artifactId>org.osgi.core</artifactId>
@@ -34,7 +44,31 @@
   </dependencies>
 
   <build>
+    <testResources><testResource>
+      <directory>${project.basedir}/../../../tests/fixtures</directory>
+      <includes><include>authority-contract-cases.json</include></includes>
+    </testResource></testResources>
     <plugins>
+      <!-- Preserve the bnd OSGi manifest, merge service descriptors, and retain
+           meta-schema resources. No runtime dependency on external Jackson or
+           validator bundles; packaged-JAR checks run with an isolated loader. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId><artifactId>maven-shade-plugin</artifactId><version>3.6.2</version>
+        <executions><execution><phase>package</phase><goals><goal>shade</goal></goals><configuration>
+          <createDependencyReducedPom>false</createDependencyReducedPom>
+          <filters><filter><artifact>*:*</artifact><excludes>
+            <exclude>META-INF/*.SF</exclude><exclude>META-INF/*.RSA</exclude><exclude>META-INF/*.DSA</exclude>
+            <exclude>module-info.class</exclude><exclude>META-INF/versions/**/module-info.class</exclude>
+          </excludes></filter></filters>
+          <relocations>
+            <relocation><pattern>com.networknt</pattern><shadedPattern>org.nabhold.baobab.erp.integration.internal.networknt</shadedPattern></relocation>
+            <relocation><pattern>com.fasterxml.jackson</pattern><shadedPattern>org.nabhold.baobab.erp.integration.internal.jackson</shadedPattern></relocation>
+            <relocation><pattern>com.ethlo</pattern><shadedPattern>org.nabhold.baobab.erp.integration.internal.ethlo</shadedPattern></relocation>
+            <relocation><pattern>org.slf4j</pattern><shadedPattern>org.nabhold.baobab.erp.integration.internal.slf4j</shadedPattern></relocation>
+          </relocations>
+          <transformers><transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/></transformers>
+        </configuration></execution></executions>
+      </plugin>
       <plugin>
         <groupId>biz.aQute.bnd</groupId>
         <artifactId>bnd-maven-plugin</artifactId>
@@ -43,7 +77,7 @@
 Bundle-SymbolicName: org.nabhold.baobab.erp.integration
 Bundle-Vendor: Nabhold Group Africa
 Export-Package: org.nabhold.baobab.erp.integration
-Import-Package: *
+Import-Package: !com.networknt.*,!com.fasterxml.jackson.*,!com.ethlo.*,!org.slf4j.*,*
 ]]></bnd>
         </configuration>
       </plugin>

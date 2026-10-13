@@ -1,0 +1,292 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.baobab-platform.com/control-plane/v1/platform-context.schema.json",
+  "title": "Platform context resolution",
+  "description": "POST /v1/platform-context/resolve resolves and persists the trusted PlatformContext (always authority_purpose RUNTIME: no request can ask for another purpose) a workload redeems by context_id in capability resolution (capability/v1 resolution.schema.json). POST /v1/platform-context/validate lets a resource server ask whether a stored context belongs to the actual caller it authenticated (context-authority-for-workloads.md). POST /v1/resolve is the deprecated composed resolution that predates the context_id flow (ADR-BCP-004 section 52, ADR-BCP-016, ADR-BCP-018 ORG-10, ADR-BCP-024).",
+  "$defs": {
+    "organisationKind": {
+      "type": "string",
+      "enum": [
+        "ORGANISATION",
+        "BUYER_ORGANISATION",
+        "SUPPLIER_ORGANISATION"
+      ],
+      "description": "The organisation-kind canonical entity types (canonical-entity.schema.json canonicalEntityType) an organisation may be attested as."
+    },
+    "countryCode": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}$",
+      "description": "ISO 3166-1 alpha-2 country, the key of market participation (market-lifecycle.yaml participation)."
+    },
+    "PlatformContextResolveRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Every member is optional, and so is the body. The tenant, principal and legal entity come from the verified workload token; the Control Plane never takes a buyer context from a header alone (ADR-0010 section 36).",
+      "properties": {
+        "tenant_id": {
+          "$ref": "domain.schema.json#/$defs/tenantId",
+          "description": "Needed only when the workload token carries no tenant_id claim; when it does, the two must be equal (TENANT_CONTEXT_MISMATCH, 403)."
+        },
+        "organisation_id": {
+          "$ref": "domain.schema.json#/$defs/canonicalEntityId",
+          "description": "An organisation the caller asserts for its authenticated user. It is attested against the tenant, never trusted because it is well-formed (ADR-BCP-016)."
+        },
+        "iam_organization": {
+          "$ref": "../../organisation/v1/iam.schema.json#/$defs/IamOrganisationEvidence",
+          "description": "The alternative to organisation_id: IAM organisation evidence, resolved through an ACTIVE IamOrganisationReference and then attested (ADR-BCP-018 ORG-10). Evidence that does not resolve is ORGANISATION_NOT_RESOLVED (403)."
+        },
+        "expected_organisation_type": {
+          "$ref": "#/$defs/organisationKind",
+          "description": "Requests exact-kind attestation of the named organisation (ADR-BCP-024). Commands that grant kind-specific authority supply it."
+        },
+        "country_code": {
+          "$ref": "#/$defs/countryCode",
+          "description": "Selects the market participation the context resolves for, when the tenant participates in more than one country. It must be one of the tenant's ACTIVE participations (MARKET_CONTEXT_NOT_PARTICIPATING, 403); with several and none selected the context is MARKET_CONTEXT_AMBIGUOUS (403)."
+        }
+      },
+      "not": {
+        "required": [
+          "organisation_id",
+          "iam_organization"
+        ]
+      }
+    },
+    "PlatformContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "context_id",
+        "tenant_id",
+        "resolved_at"
+      ],
+      "properties": {
+        "context_id": {
+          "$ref": "domain.schema.json#/$defs/uuid",
+          "description": "The persisted context a capability resolution redeems. It is bound to the principal that resolved it (Context.PrincipalID): only that principal's own tokens can consume it, and another principal's attempt is indistinguishable from an unknown or expired context (CONTEXT_NOT_FOUND, 404). It is not a bearer credential."
+        },
+        "tenant_id": {
+          "$ref": "domain.schema.json#/$defs/tenantId"
+        },
+        "resolved_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the Control Plane bounds context lifetime (ADR-BCP-004 section 72). Absent means unbounded; an unbounded context is never valid cross-service authority (PlatformContextValidation requires expires_at)."
+        },
+        "country_code": {
+          "$ref": "#/$defs/countryCode",
+          "description": "The tenant's ACTIVE market participation the context resolved for. Absent when the tenant participates nowhere; capability resolution then denies, fail closed."
+        },
+        "market_id": {
+          "$ref": "market.schema.json#/$defs/marketId",
+          "description": "The country's primary registry market (market-lifecycle.yaml participation primary)."
+        },
+        "currency_code": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "The primary market's currency."
+        },
+        "organisation_id": {
+          "$ref": "domain.schema.json#/$defs/canonicalEntityId",
+          "description": "The attested organisation, when one was requested."
+        },
+        "organisation_type": {
+          "$ref": "#/$defs/organisationKind",
+          "description": "The kind the organisation was attested as, when expected_organisation_type was supplied."
+        }
+      },
+      "dependentRequired": {
+        "country_code": [
+          "market_id",
+          "currency_code"
+        ],
+        "market_id": [
+          "country_code"
+        ],
+        "currency_code": [
+          "country_code"
+        ]
+      }
+    },
+  "PlatformContextValidateRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["context_id", "subject_token"],
+      "description": "Asks the Control Plane whether a stored context belongs to the actual caller of a resource server. The request names the context and carries the caller's own access token as cryptographic evidence; it carries no principal, subject, client or audience assertion, because the Control Plane derives all of those from the verified tokens and the registered validator relationship (workload-registry validates_audiences), never from the request.",
+      "properties": {
+        "context_id": {
+          "$ref": "domain.schema.json#/$defs/uuid"
+        },
+        "subject_token": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 8192,
+          "writeOnly": true,
+          "description": "The access token that arrived at the resource server. Accepted only in this POST body over the validator's authenticated call; the Control Plane verifies it independently using the configured token profile (local cryptographic verification or trusted token introspection, including issuer, expiry, workload actor, and an audience equal to one the authenticated validator is registered to validate). It is never persisted, never logged and never placed in a trace, an error or an audit payload; audit records only the validator principal, the resolved subject principal, context_id, tenant_id, the decision and reason, and the correlation id."
+        }
+      }
+    },
+    "ContextAuthorityPurpose": {
+      "type": "string",
+      "enum": ["RUNTIME", "TENANT_PROVISIONING"],
+      "description": "What a stored context is authority for. RUNTIME is the context of POST /v1/platform-context/resolve: it acts for a tenant that is ACTIVE. TENANT_PROVISIONING is created only by the Control Plane's own provisioning execution, never through any HTTP operation, for the dedicated provisioner workload (workload-registry context_purposes), and is authority only for the operations one approved provisioning plan authorises while the tenant is not yet ACTIVE. It is not redeemable as RUNTIME authority: capability resolution, batch resolution and mapping resolution answer a TENANT_PROVISIONING context CONTEXT_NOT_FOUND (404), indistinguishable from an unknown one."
+    },
+    "ProvisioningContextAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tenant_provisioning_id", "plan_id", "plan_version", "plan_digest"],
+      "description": "The exact approved plan a TENANT_PROVISIONING context is bound to (ADR-BCP-021: an approval binds plan id, version and digest together). It is the same tuple an ERP provisioning request names in control_plane_authority, so a resource server compares them member by member.",
+      "properties": {
+        "tenant_provisioning_id": { "$ref": "domain.schema.json#/$defs/tenantProvisioningId" },
+        "plan_id": { "$ref": "domain.schema.json#/$defs/provisioningPlanId" },
+        "plan_version": { "type": "integer", "minimum": 1 },
+        "plan_digest": { "$ref": "domain.schema.json#/$defs/planDigest" }
+      }
+    },
+    "PlatformContextValidation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["context_id", "tenant_id", "resolved_at", "expires_at", "authority_purpose"],
+      "description": "Only the trusted facts a resource server needs. expires_at is required because a context that crosses a service boundary as authority must be bounded; a TENANT_PROVISIONING context is bounded to at most 15 minutes (PT15M). authority_purpose is always stated, never implied: RUNTIME for a context that acts for an ACTIVE tenant, TENANT_PROVISIONING for the pre-activation provisioning authority, which carries provisioning_authority and must not be accepted by a resource server for anything the approved plan does not authorise. legal_entity_id is deliberately absent: Context.LegalEntityID is the tenant's single registered legal entity, a degenerate derivation rather than an authoritative selection, and it is not added for a consumer's convenience.",
+      "properties": {
+        "context_id": { "$ref": "domain.schema.json#/$defs/uuid" },
+        "tenant_id": { "$ref": "domain.schema.json#/$defs/tenantId" },
+        "resolved_at": { "type": "string", "format": "date-time" },
+        "expires_at": { "type": "string", "format": "date-time" },
+        "market_id": { "$ref": "market.schema.json#/$defs/marketId" },
+        "organisation_id": { "$ref": "domain.schema.json#/$defs/canonicalEntityId" },
+        "authority_purpose": { "$ref": "#/$defs/ContextAuthorityPurpose" },
+        "provisioning_authority": { "$ref": "#/$defs/ProvisioningContextAuthority" }
+      },
+      "if": { "properties": { "authority_purpose": { "const": "TENANT_PROVISIONING" } }, "required": ["authority_purpose"] },
+      "then": { "required": ["provisioning_authority"] },
+      "else": { "not": { "required": ["provisioning_authority"] } }
+    },
+      "ComposedResolutionRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonical_entity_id",
+        "capability_key"
+      ],
+      "description": "Deprecated with POST /v1/resolve. It carries tenant_id in the body, which capability resolution never accepts; callers move to platform-context/resolve and then capability resolution by context_id.",
+      "properties": {
+        "tenant_id": {
+          "$ref": "domain.schema.json#/$defs/tenantId",
+          "description": "As in PlatformContextResolveRequest: only when the token carries no tenant_id, and equal to it when it does."
+        },
+        "canonical_entity_id": {
+          "$ref": "domain.schema.json#/$defs/canonicalEntityId"
+        },
+        "capability_key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "ComposedResolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tenant_id",
+        "capability_key",
+        "mapping",
+        "capability",
+        "policy",
+        "topology"
+      ],
+      "description": "Deprecated with POST /v1/resolve: the mapping, binding, policy and engine instance the composed pipeline chose. A request the pipeline cannot resolve is RESOLUTION_FAILED (400) with an opaque detail (ADR-0008 section 45).",
+      "properties": {
+        "tenant_id": {
+          "$ref": "domain.schema.json#/$defs/tenantId"
+        },
+        "capability_key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "mapping": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "status"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "status": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            }
+          }
+        },
+        "capability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "binding_mode",
+            "engine_instance_id"
+          ],
+          "properties": {
+            "binding_mode": {
+              "type": "string",
+              "enum": [
+                "PRIMARY",
+                "FALLBACK",
+                "SHADOW",
+                "MIGRATION",
+                "DISABLED"
+              ]
+            },
+            "engine_instance_id": {
+              "$ref": "domain.schema.json#/$defs/engineInstanceId"
+            }
+          }
+        },
+        "policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "allowed"
+          ],
+          "properties": {
+            "allowed": {
+              "type": "boolean"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 256
+            }
+          }
+        },
+        "topology": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "environment"
+          ],
+          "properties": {
+            "id": {
+              "$ref": "domain.schema.json#/$defs/engineInstanceId"
+            },
+            "environment": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            }
+          }
+        }
+      }
+    }
+  }
+}
