@@ -23,6 +23,6 @@ jobs:
       contents: read
       security-events: write
       packages: read
-    uses: baobab-platform/shared/.github/workflows/security-codeql.yml@6ddda104faecd4a5e43b3b1a4b85d1e62eb7991e # fix: explicit upload-sarif step (baobab-platform/shared#42)
+    uses: baobab-platform/shared/.github/workflows/security-codeql.yml@b9f497f247f1c19be9b02a0d5eedd538daf9d84b # fix: explicit upload-sarif step (baobab-platform/shared#42)
     with:
       languages: '["python", "java"]'
