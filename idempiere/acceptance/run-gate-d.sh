@@ -149,7 +149,7 @@ if [ "$(co_count)" = "$before" ] && { [ -z "$J" ] || not_posted "$J"; } && baoba
 else fail "no mandate" "a document completed"; fi
 
 # 3. Authority lost between draft and completion (revocation, other actor/tenant/market, expiry, documentary hold).
-for mode in revoked other_le other_tenant wrong_market expired documentary_hold; do
+for mode in revoked other_le other_tenant wrong_market wrong_activity expired documentary_hold; do
   run "draft_$mode" authorized action=journal complete=false post=false || true
   D=$(prop "draft_$mode" journal_id)
   if [ -z "$D" ]; then fail "$mode" "draft not created"; continue; fi
@@ -188,6 +188,24 @@ if [ -n "${J1:-}" ]; then
   run retry authorized action=repost journal_id="$J1" || true
   [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 224 AND record_id = $J1")" = "$facts" ] \
     && pass "retry after commit: Fact_Acct unchanged ($facts rows)" || fail "retry after commit" "ledger duplicated"
+fi
+
+# 7b. Background/batch posting: a forced repost runs in iDempiere's own posting transaction (the
+#     accounting-processor path). Under current authority the ledger is rebuilt, balanced and
+#     attributed afresh; once authority is revoked the repost is refused and the committed ledger
+#     is left exactly as it was (no partial delete).
+if [ -n "${J1:-}" ]; then
+  ledger() { sql "SELECT count(*) || ':' || sum(amtacctdr) || ':' || sum(amtacctcr) FROM fact_acct WHERE ad_table_id = 224 AND record_id = $J1"; }
+  attributions() { sql "SELECT count(DISTINCT txid) FROM baobab_native.finance_authority_attribution WHERE source_table = 'GL_Journal' AND source_record_id = $J1"; }
+  before=$(ledger); txids=$(attributions)
+  run batch_repost authorized action=repost journal_id="$J1" force=true || true
+  if [ "$(ledger)" = "$before" ] && posted_ok "$J1" && [ "$(attributions)" -gt "$txids" ]; then
+    pass "background forced repost under authority: ledger rebuilt ($before), newly attributed"
+  else fail "background forced repost" "ledger $(ledger) vs $before, attributions $(attributions) vs $txids"; fi
+  run batch_repost_revoked revoked action=repost journal_id="$J1" force=true || true
+  if [ "$(ledger)" = "$before" ] && [ "$(prop batch_repost_revoked post_error)" != "null" ]; then
+    pass "background forced repost after revocation: refused, committed ledger intact"
+  else fail "background forced repost after revocation" "ledger $(ledger) vs $before"; fi
 fi
 
 # 8. Direct SQL bypass of the JVM: refused at COMMIT by the database fence. Each statement

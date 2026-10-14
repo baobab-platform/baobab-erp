@@ -12,6 +12,7 @@ standing. The behaviour is selected by the text in <state>/mode:
   other_le          AUTHORIZED, but for another legal entity
   other_tenant      AUTHORIZED, but for another tenant
   wrong_market      AUTHORIZED, but for another market
+  wrong_activity    AUTHORIZED, but for another operation's role and activity
   expired           AUTHORIZED, but its lease has already passed
   documentary_hold  AUTHORIZED, documentary restriction blocked
 """
@@ -128,6 +129,9 @@ class Handler(BaseHTTPRequestHandler):
             d["tenant_id"] = "tn_othertenant01"
         if m == "wrong_market":
             d["market"] = "ZA" if d["market"] != "ZA" else "UG"
+        if m == "wrong_activity":
+            d["legal_actor_role"], d["activity"] = next(
+                v for k, v in ACTIVITIES.items() if v != (role, activity))
         if m == "expired":
             d["evaluated_at"] = stamp(t - timedelta(seconds=40))
             d["expires_at"] = stamp(t - timedelta(seconds=15))

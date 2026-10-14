@@ -223,14 +223,19 @@ public final class GateDDriver implements BundleActivator, Runnable {
         return out;
     }
 
-    /** Post an already posted journal again without force: the ledger must not duplicate. */
+    /**
+     * Post an already posted journal again. Without force the ledger must not
+     * duplicate; with force iDempiere deletes and rebuilds Fact_Acct in its OWN
+     * posting transaction, exactly as the background accounting processor does.
+     */
     private static Properties repost(Properties in) {
         Properties out = new Properties();
         int id = Integer.parseInt(in.getProperty("journal_id"));
+        boolean force = Boolean.parseBoolean(in.getProperty("force", "false"));
         Properties ctx = context(11);
         try {
             out.setProperty("post_error", String.valueOf(
-                    DocumentEngine.postImmediate(ctx, CLIENT, GL_JOURNAL_TABLE, id, false, null)));
+                    DocumentEngine.postImmediate(ctx, CLIENT, GL_JOURNAL_TABLE, id, force, null)));
         } catch (Exception failed) {
             out.setProperty("error", String.valueOf(failed.getMessage()));
         } finally {
