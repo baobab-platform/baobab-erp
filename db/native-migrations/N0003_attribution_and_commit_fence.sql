@@ -5,7 +5,8 @@
 --    decision, mandate lineage, placement and Finance baseline it relied on,
 --    so "which legal actor applied to this posting at time T" is answered
 --    from stored references (ADR-BCP-027 §10.2), never from today's mapping.
--- 2. Fact_Acct inserts and document completion (DocStatus -> CO/CL) of a
+-- 2. Fact_Acct inserts and document completion (DocStatus -> CO/CL, by update
+--    or by inserting an already completed row) of a
 --    placed client are checked at COMMIT: the transaction must hold a current
 --    attribution for the same source document. Direct SQL, import, scheduler
 --    or any route that bypasses the JVM veto therefore rolls back, and so does
@@ -31,6 +32,13 @@ ALTER TABLE baobab_native.finance_authority_attribution
   ADD COLUMN finance_baseline_version integer,
   ADD COLUMN received_at timestamptz DEFAULT clock_timestamp(),
   ADD COLUMN txid bigint DEFAULT txid_current();
+
+-- Evidence references follow the pinned erp/v2 contract (1-500 characters);
+-- the 0025 bound of 3-256 would refuse a contract-valid CP decision.
+ALTER TABLE baobab_native.finance_authority_attribution
+  DROP CONSTRAINT finance_authority_attribution_evidence_reference_check,
+  ADD CONSTRAINT finance_authority_attribution_evidence_reference_check
+    CHECK (length(btrim(evidence_reference)) BETWEEN 1 AND 500);
 
 -- Every attribution written from now on is complete. Pre-existing LA-05D9
 -- rows (if any) keep their original shape and are never rewritten.
@@ -122,7 +130,10 @@ CREATE CONSTRAINT TRIGGER baobab_fact_acct_commit_fence AFTER INSERT ON adempier
 CREATE FUNCTION baobab_native.document_completion_commit_fence() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE record_id integer;
 BEGIN
-  IF NEW.docstatus NOT IN ('CO', 'CL') OR OLD.docstatus IN ('CO', 'CL')
+  -- A row inserted already completed is fenced exactly like a completion:
+  -- direct SQL must not bypass the fence by skipping the draft state.
+  IF NEW.docstatus NOT IN ('CO', 'CL')
+     OR (TG_OP = 'UPDATE' AND OLD.docstatus IN ('CO', 'CL'))
      OR NOT baobab_native.client_is_placed(NEW.ad_client_id) THEN
     RETURN NULL;
   END IF;
@@ -142,7 +153,7 @@ BEGIN
       ('C_AllocationHdr', 'c_allocationhdr'), ('M_InOut', 'm_inout'), ('C_Order', 'c_order'),
       ('C_BankStatement', 'c_bankstatement'), ('C_Cash', 'c_cash')) AS t(native_table, relation)
   LOOP
-    EXECUTE format('CREATE CONSTRAINT TRIGGER baobab_completion_commit_fence AFTER UPDATE OF docstatus
+    EXECUTE format('CREATE CONSTRAINT TRIGGER baobab_completion_commit_fence AFTER INSERT OR UPDATE OF docstatus
       ON adempiere.%I DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
       EXECUTE FUNCTION baobab_native.document_completion_commit_fence(%L, %L)',
       doc.relation, doc.native_table, doc.relation || '_id');

@@ -183,6 +183,45 @@ class NativeFinancePostgresGateBTest {
     }
 
     @Test
+    void documentInsertedAlreadyCompletedIsRefusedAtCommit() throws Exception {
+        for (String status : new String[] {"CO", "CL"}) {
+            int id = IDS.incrementAndGet();
+            try (Connection c = transaction(); Statement s = c.createStatement()) {
+                s.execute("INSERT INTO adempiere.c_invoice (c_invoice_id, ad_client_id, ad_org_id, docstatus) VALUES ("
+                        + id + ", 11, 11, '" + status + "')");
+                SQLException e = assertThrows(SQLException.class, c::commit, status);
+                assertTrue(e.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"));
+            }
+            assertEquals(0, count("SELECT count(*) FROM adempiere.c_invoice WHERE c_invoice_id = " + id));
+        }
+    }
+
+    @Test
+    void contractLengthEvidenceIsStored() throws Exception {
+        for (int length : new int[] {1, 500}) {
+            int journal;
+            try (Connection c = transaction()) {
+                journal = newJournal(c);
+                c.commit();
+            }
+            try (Connection c = transaction()) {
+                NativeConnections same = trx -> c;
+                NativeOperation op = new NativeOperationResolver(same).classify(factLine(journal, "gate-b-ev").record());
+                NativePlacement p = new PlacementContextSource(same).currentPlacement(op);
+                var baseline = new BaselineFinanceReadiness(same).currentBaseline(op, p);
+                var d = decision(Instant.now().plusSeconds(25));
+                var evidence = new NativeFinanceAttribution.Decision(d.decisionId(), d.contextId(), d.mandateId(), null,
+                        "e".repeat(length), d.mandateEffectiveFrom(), d.usableUntil());
+                new NativeFinanceAttribution(same).append(op, p, evidence, baseline);
+                insertFact(c, journal);
+                c.commit();
+            }
+            assertEquals(1, count("SELECT count(*) FROM baobab_native.finance_authority_attribution "
+                    + "WHERE source_record_id = " + journal + " AND length(evidence_reference) = " + length));
+        }
+    }
+
+    @Test
     void expiredAuthorityIsRefusedAndLapsingAuthorityFailsAtCommit() throws Exception {
         int journal;
         try (Connection c = transaction()) {
