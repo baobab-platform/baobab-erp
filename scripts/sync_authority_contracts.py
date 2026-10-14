@@ -35,6 +35,8 @@ ENTRIES = {
     'context_response': ('control-plane/v1/platform-context.schema.json', 'PlatformContext'),
     'context_validation': ('control-plane/v1/platform-context.schema.json', 'PlatformContextValidation'),
     'erp_assignment': ('control-plane/v1/erp-assignment.schema.json', 'ErpAssignment'),
+    'posting_request': ('erp/v2/posting-authority.schema.json', 'PostingAuthorityRequest'),
+    'posting_decision': ('erp/v2/posting-authority.schema.json', 'PostingAuthorityDecision'),
 }
 
 

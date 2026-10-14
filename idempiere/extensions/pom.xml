@@ -57,6 +57,13 @@
         <scope>provided</scope>
       </dependency>
       <dependency>
+        <!-- Gate B only: drives the native providers over real PostgreSQL. Never bundled. -->
+        <groupId>org.postgresql</groupId>
+        <artifactId>postgresql</artifactId>
+        <version>42.7.8</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
         <groupId>org.junit.jupiter</groupId>
         <artifactId>junit-jupiter</artifactId>
         <version>${junit.jupiter.version}</version>

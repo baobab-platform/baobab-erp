@@ -47,8 +47,10 @@ class AuthorityConformanceTests(unittest.TestCase):
         staging = profiles['baobab-erp-legal-actor-assessor-staging']
         self.assertEqual(staging['status'], 'PROVISIONED')
         self.assertEqual(staging['context_purposes'], ['RUNTIME'])
-        self.assertEqual(set(staging['allowed_scopes']), {'context:resolve', 'legal-actor:assess', 'documentary:restriction-assess'})
+        self.assertEqual(set(staging['allowed_scopes']), {'context:resolve', 'legal-actor:assess',
+                                                          'documentary:restriction-assess',
+                                                          'erp-posting-authority:resolve'})
         production = profiles['baobab-erp-workload']
         self.assertEqual(production['status'], 'ACTIVE')
-        for scope in ['legal-actor:assess', 'documentary:restriction-assess']:
+        for scope in ['legal-actor:assess', 'documentary:restriction-assess', 'erp-posting-authority:resolve']:
             self.assertNotIn(scope, production['allowed_scopes'])

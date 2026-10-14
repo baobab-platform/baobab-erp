@@ -34,5 +34,6 @@ engine. Kept for history; do not follow them for new work.
 - [ADR-ERP-018: ERP reporting, analytics, data export and intelligence integration architecture](ADR-ERP-018%20—%20ERP%20Reporting%2C%20Analytics%2C%20Data%20Export%20and%20Intelligence%20Integration%20Architecture.md)
 - [ADR-ERP-019: ERP provisioning, tenant and legal-entity onboarding, migration and decommissioning architecture](ADR-ERP-019%20—%20ERP%20Provisioning%2C%20Tenant%20and%20Legal-Entity%20Onboarding%2C%20Migration%20and%20Decommissioning%20Architecture.md)
 - [ADR-ERP-020: ERP production readiness, governance and architecture conformance](ADR-ERP-020%20—%20ERP%20Production%20Readiness%2C%20Governance%20and%20Architecture%20Conformance.md)
+- [ADR-ERP-022: native placement, document provenance and posting-authority enforcement](ADR-ERP-022%20—%20Native%20Placement%2C%20Document%20Provenance%20and%20Posting-Authority%20Enforcement.md)
 
 See `architecture/conformance.yaml` for how far each of these is actually implemented.
