@@ -145,7 +145,8 @@ CREATE TABLE baobab_native.derived_write_attribution (
   ad_org_id integer NOT NULL CHECK (ad_org_id >= 0),
   m_product_id integer NOT NULL CHECK (m_product_id > 0),
   c_acctschema_id integer NOT NULL CHECK (c_acctschema_id > 0),
-  m_costelement_id integer NOT NULL CHECK (m_costelement_id >= 0)
+  m_costelement_id integer NOT NULL CHECK (m_costelement_id >= 0),
+  m_attributesetinstance_id integer NOT NULL DEFAULT 0 CHECK (m_attributesetinstance_id >= 0)
 );
 CREATE INDEX derived_write_attribution_txid_idx
   ON baobab_native.derived_write_attribution (txid, ad_client_id, m_product_id, c_acctschema_id);
@@ -182,19 +183,21 @@ END $$;
 CREATE TRIGGER derived_write_immutable BEFORE UPDATE OR DELETE ON baobab_native.derived_write_attribution
   FOR EACH ROW EXECUTE FUNCTION baobab_native.derived_write_immutable();
 
--- COMMIT fence on cost detail: it must be derived, in this transaction, from
--- the still-authorised sales shipment its own line belongs to.
+-- COMMIT fence on cost detail: inserting, changing or deleting one requires that it is derived, in this
+-- transaction, from the still-authorised sales shipment its own line belongs to.
 CREATE FUNCTION baobab_native.cost_detail_commit_fence() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE r adempiere.m_costdetail%ROWTYPE;
 BEGIN
-  IF NOT baobab_native.client_is_placed(NEW.ad_client_id::integer) THEN
+  IF TG_OP = 'DELETE' THEN r := OLD; ELSE r := NEW; END IF;
+  IF NOT baobab_native.client_is_placed(r.ad_client_id::integer) THEN
     RETURN NULL;
   END IF;
   IF NOT EXISTS (
        SELECT 1 FROM baobab_native.derived_write_attribution d
          JOIN adempiere.m_inoutline l ON l.m_inout_id = d.root_record_id
-        WHERE d.txid = txid_current() AND d.ad_client_id = NEW.ad_client_id::integer
-          AND d.m_product_id = NEW.m_product_id::integer AND d.c_acctschema_id = NEW.c_acctschema_id::integer
-          AND l.m_inoutline_id = NEW.m_inoutline_id
+        WHERE d.txid = txid_current() AND d.ad_client_id = r.ad_client_id::integer
+          AND d.m_product_id = r.m_product_id::integer AND d.c_acctschema_id = r.c_acctschema_id::integer
+          AND l.m_inoutline_id = r.m_inoutline_id
           AND baobab_native.has_governed_attribution(d.ad_client_id, d.root_table, d.root_record_id)) THEN
     RAISE EXCEPTION 'BAOBAB_NATIVE_FINANCE_DENIED: cost detail without an authorised root at COMMIT'
       USING ERRCODE = '42501';
@@ -202,27 +205,69 @@ BEGIN
   RETURN NULL;
 END $$;
 
-CREATE CONSTRAINT TRIGGER baobab_cost_detail_commit_fence AFTER INSERT OR UPDATE ON adempiere.m_costdetail
+CREATE CONSTRAINT TRIGGER baobab_cost_detail_commit_fence AFTER INSERT OR UPDATE OR DELETE ON adempiere.m_costdetail
   DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION baobab_native.cost_detail_commit_fence();
 
--- COMMIT fence on aggregate cost: only a cost detail derived in this
--- transaction for the same client, product and schema (org or client level).
+-- True when this transaction derived a cost detail that covers exactly this aggregate cost bucket:
+-- same client, product and schema; the schema's own cost type; the detail's attribute set instance (or 0
+-- at client/org costing level); the detail's cost element, or, for a detail without one, a material
+-- costing-method element (iDempiere then updates each costing method's element).
+CREATE FUNCTION baobab_native.cost_bucket_covered(p_client integer, p_org integer, p_product integer,
+  p_schema integer, p_costtype integer, p_element integer, p_asi integer)
+RETURNS boolean LANGUAGE sql STABLE AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM baobab_native.derived_write_attribution d
+      JOIN adempiere.c_acctschema s ON s.c_acctschema_id = d.c_acctschema_id
+     WHERE d.txid = txid_current() AND d.ad_client_id = p_client AND d.m_product_id = p_product
+       AND d.c_acctschema_id = p_schema AND (d.ad_org_id = p_org OR p_org = 0)
+       AND s.m_costtype_id = p_costtype
+       AND (p_asi = 0 OR p_asi = d.m_attributesetinstance_id)
+       AND (d.m_costelement_id = p_element
+            OR d.m_costelement_id = 0 AND EXISTS (
+              SELECT 1 FROM adempiere.m_costelement ce WHERE ce.m_costelement_id = p_element
+                 AND ce.costelementtype = 'M' AND ce.costingmethod IS NOT NULL))
+       AND baobab_native.has_governed_attribution(d.ad_client_id, d.root_table, d.root_record_id))
+$$;
+
+-- COMMIT fence on aggregate cost: inserting, changing or deleting a bucket requires a cost detail derived
+-- in this transaction for exactly that bucket.
 CREATE FUNCTION baobab_native.cost_commit_fence() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE r adempiere.m_cost%ROWTYPE;
 BEGIN
-  IF NOT baobab_native.client_is_placed(NEW.ad_client_id::integer) THEN
+  IF TG_OP = 'DELETE' THEN r := OLD; ELSE r := NEW; END IF;
+  IF NOT baobab_native.client_is_placed(r.ad_client_id::integer) THEN
     RETURN NULL;
   END IF;
-  IF NOT EXISTS (
-       SELECT 1 FROM baobab_native.derived_write_attribution d
-        WHERE d.txid = txid_current() AND d.ad_client_id = NEW.ad_client_id::integer
-          AND d.m_product_id = NEW.m_product_id::integer AND d.c_acctschema_id = NEW.c_acctschema_id::integer
-          AND (d.ad_org_id = NEW.ad_org_id::integer OR NEW.ad_org_id = 0)
-          AND baobab_native.has_governed_attribution(d.ad_client_id, d.root_table, d.root_record_id)) THEN
+  IF NOT baobab_native.cost_bucket_covered(r.ad_client_id::integer, r.ad_org_id::integer, r.m_product_id::integer,
+       r.c_acctschema_id::integer, r.m_costtype_id::integer, r.m_costelement_id::integer,
+       r.m_attributesetinstance_id::integer) THEN
     RAISE EXCEPTION 'BAOBAB_NATIVE_FINANCE_DENIED: cost update without an authorised root at COMMIT'
       USING ERRCODE = '42501';
   END IF;
   RETURN NULL;
 END $$;
 
-CREATE CONSTRAINT TRIGGER baobab_cost_commit_fence AFTER INSERT OR UPDATE ON adempiere.m_cost
+CREATE CONSTRAINT TRIGGER baobab_cost_commit_fence AFTER INSERT OR UPDATE OR DELETE ON adempiere.m_cost
   DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION baobab_native.cost_commit_fence();
+
+-- Allocation lines decide the allocation's direction: any line change of a placed client's allocation
+-- needs current authority for that allocation in this transaction, with every line still joining only
+-- sales invoices and receipts at COMMIT (a completed allocation cannot be re-pointed by direct SQL).
+CREATE FUNCTION baobab_native.allocation_line_commit_fence() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE r adempiere.c_allocationline%ROWTYPE;
+BEGIN
+  IF TG_OP = 'DELETE' THEN r := OLD; ELSE r := NEW; END IF;
+  IF NOT baobab_native.client_is_placed(r.ad_client_id::integer) THEN
+    RETURN NULL;
+  END IF;
+  IF NOT baobab_native.has_governed_attribution(r.ad_client_id::integer, 'C_AllocationHdr',
+                                                r.c_allocationhdr_id::integer) THEN
+    RAISE EXCEPTION 'BAOBAB_NATIVE_FINANCE_DENIED: allocation line change without current authority at COMMIT'
+      USING ERRCODE = '42501';
+  END IF;
+  RETURN NULL;
+END $$;
+
+CREATE CONSTRAINT TRIGGER baobab_allocation_line_commit_fence AFTER INSERT OR UPDATE OR DELETE
+  ON adempiere.c_allocationline DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+  EXECUTE FUNCTION baobab_native.allocation_line_commit_fence();

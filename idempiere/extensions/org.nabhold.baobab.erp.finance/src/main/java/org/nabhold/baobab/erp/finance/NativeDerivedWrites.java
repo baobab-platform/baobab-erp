@@ -17,21 +17,16 @@ final class NativeDerivedWrites {
     private static final String APPEND = """
         INSERT INTO baobab_native.derived_write_attribution
         (root_table, root_record_id, decision_id, derived_table, ad_client_id, ad_org_id,
-         m_product_id, c_acctschema_id, m_costelement_id)
-        SELECT ?, ?, a.decision_id, ?, ?, ?, ?, ?, ?
+         m_product_id, c_acctschema_id, m_costelement_id, m_attributesetinstance_id)
+        SELECT ?, ?, a.decision_id, ?, ?, ?, ?, ?, ?, ?
           FROM baobab_native.finance_authority_attribution a
          WHERE a.txid = txid_current() AND a.ad_client_id = ? AND a.decision_id IS NOT NULL
            AND lower(a.source_table) = lower(?) AND a.source_record_id = ?
            AND a.authority_expires_at > clock_timestamp()
          ORDER BY a.received_at DESC LIMIT 1
         """;
-    private static final String COST_COVERED = """
-        SELECT EXISTS (
-          SELECT 1 FROM baobab_native.derived_write_attribution d
-           WHERE d.txid = txid_current() AND d.ad_client_id = ? AND d.m_product_id = ?
-             AND d.c_acctschema_id = ? AND (d.ad_org_id = ? OR ? = 0)
-             AND baobab_native.has_current_attribution(d.ad_client_id, d.root_table, d.root_record_id))
-        """;
+    /** The exact cost bucket (client, org, product, schema, cost type, element, ASI): one rule with the COMMIT fence. */
+    private static final String COST_COVERED = "SELECT baobab_native.cost_bucket_covered(?, ?, ?, ?, ?, ?, ?)";
 
     private final NativeConnections connections;
 
@@ -57,27 +52,36 @@ final class NativeDerivedWrites {
             s.setInt(6, product);
             s.setInt(7, schema);
             s.setInt(8, Math.max(record.intValue("M_CostElement_ID"), 0));
-            s.setInt(9, record.adClientId());
-            s.setString(10, root.sourceTable());
-            s.setInt(11, root.sourceRecordId());
+            s.setInt(9, Math.max(record.intValue("M_AttributeSetInstance_ID"), 0));
+            s.setInt(10, record.adClientId());
+            s.setString(11, root.sourceTable());
+            s.setInt(12, root.sourceRecordId());
             if (s.executeUpdate() != 1) {
                 throw new SQLException("cost detail has no current root attribution in this transaction");
             }
         }
     }
 
-    /** An M_Cost write is covered only by a cost detail already derived in this transaction. */
+    /** An M_Cost write is covered only by a cost detail already derived in this transaction for its exact bucket. */
     boolean costCovered(NativeRecord record) throws Exception {
         int product = record.intValue("M_Product_ID");
         int schema = record.intValue("C_AcctSchema_ID");
-        if (product <= 0 || schema <= 0 || record.adClientId() <= 0 || record.adOrgId() < 0) return false;
+        int costType = record.intValue("M_CostType_ID");
+        int element = record.intValue("M_CostElement_ID");
+        int asi = Math.max(record.intValue("M_AttributeSetInstance_ID"), 0);
+        if (product <= 0 || schema <= 0 || costType <= 0 || element <= 0
+                || record.adClientId() <= 0 || record.adOrgId() < 0) {
+            return false;
+        }
         Connection db = NativeConnections.transactional(connections, record.transactionName());
         try (PreparedStatement s = db.prepareStatement(COST_COVERED)) {
             s.setInt(1, record.adClientId());
-            s.setInt(2, product);
-            s.setInt(3, schema);
-            s.setInt(4, record.adOrgId());
-            s.setInt(5, record.adOrgId());
+            s.setInt(2, record.adOrgId());
+            s.setInt(3, product);
+            s.setInt(4, schema);
+            s.setInt(5, costType);
+            s.setInt(6, element);
+            s.setInt(7, asi);
             try (ResultSet r = s.executeQuery()) {
                 return r.next() && r.getBoolean(1);
             }

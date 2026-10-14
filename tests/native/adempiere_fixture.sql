@@ -41,10 +41,17 @@ CREATE TABLE adempiere.c_allocationline (c_allocationline_id numeric(10) PRIMARY
   ad_client_id numeric(10) NOT NULL, ad_org_id numeric(10) NOT NULL);
 CREATE TABLE adempiere.m_costdetail (m_costdetail_id numeric(10) PRIMARY KEY, ad_client_id numeric(10) NOT NULL,
   ad_org_id numeric(10) NOT NULL, m_product_id numeric(10) NOT NULL, c_acctschema_id numeric(10) NOT NULL,
-  m_costelement_id numeric(10), m_inoutline_id numeric(10), issotrx char(1) NOT NULL DEFAULT 'Y',
+  m_costelement_id numeric(10), m_attributesetinstance_id numeric(10) NOT NULL DEFAULT 0,
+  m_inoutline_id numeric(10), issotrx char(1) NOT NULL DEFAULT 'Y',
   amt numeric NOT NULL DEFAULT 0, qty numeric NOT NULL DEFAULT 0);
+CREATE TABLE adempiere.m_costelement (m_costelement_id numeric(10) PRIMARY KEY, ad_client_id numeric(10) NOT NULL,
+  costelementtype char(1) NOT NULL, costingmethod char(1));
+INSERT INTO adempiere.m_costelement VALUES (601, 11, 'M', 'A'), (602, 11, 'M', 'S'), (603, 11, 'B', 'S'), (604, 11, 'M', NULL);
+ALTER TABLE adempiere.c_acctschema ADD COLUMN m_costtype_id numeric(10) NOT NULL DEFAULT 100;
 CREATE TABLE adempiere.m_cost (ad_client_id numeric(10) NOT NULL, ad_org_id numeric(10) NOT NULL,
-  m_product_id numeric(10) NOT NULL, c_acctschema_id numeric(10) NOT NULL, m_costelement_id numeric(10) NOT NULL,
+  m_product_id numeric(10) NOT NULL, c_acctschema_id numeric(10) NOT NULL, m_costtype_id numeric(10) NOT NULL DEFAULT 100,
+  m_costelement_id numeric(10) NOT NULL, m_attributesetinstance_id numeric(10) NOT NULL DEFAULT 0,
   currentcostprice numeric NOT NULL DEFAULT 0, currentqty numeric NOT NULL DEFAULT 0,
-  PRIMARY KEY (ad_client_id, ad_org_id, m_product_id, c_acctschema_id, m_costelement_id));
+  PRIMARY KEY (ad_client_id, ad_org_id, m_product_id, c_acctschema_id, m_costtype_id, m_costelement_id,
+    m_attributesetinstance_id));
 INSERT INTO adempiere.ad_table VALUES (319, 'M_InOut'), (735, 'C_AllocationHdr');

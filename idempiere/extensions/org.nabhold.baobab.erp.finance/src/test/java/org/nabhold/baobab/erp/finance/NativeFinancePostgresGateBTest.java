@@ -483,7 +483,8 @@ class NativeFinancePostgresGateBTest {
                     + ", 11, 11, 501, 101, 601, " + line + ")");
             s.execute("INSERT INTO adempiere.m_cost (ad_client_id, ad_org_id, m_product_id, c_acctschema_id, "
                     + "m_costelement_id, currentqty) VALUES (11, 0, 501, 101, 601, -1) ON CONFLICT "
-                    + "(ad_client_id, ad_org_id, m_product_id, c_acctschema_id, m_costelement_id) "
+                    + "(ad_client_id, ad_org_id, m_product_id, c_acctschema_id, m_costtype_id, m_costelement_id, "
+                    + "m_attributesetinstance_id) "
                     + "DO UPDATE SET currentqty = adempiere.m_cost.currentqty - 1");
         }
     }
@@ -505,9 +506,11 @@ class NativeFinancePostgresGateBTest {
             new NativeFinanceAttribution(same).append(root, p, decision(Instant.now().plusSeconds(25)),
                     new NativeFinanceReadiness.FinanceBaseline(LE, 1));
             new NativeDerivedWrites(same).appendCostDetail(root);
-            NativeRecord aggregate = new NativeRecord("M_Cost", CLIENT, 0, 0, "model:TYPE_BEFORE_CHANGE", "gate-b-cost",
-                    col -> switch (col) { case "M_Product_ID" -> 501; case "C_AcctSchema_ID" -> 101; default -> null; });
-            assertTrue(new NativeDerivedWrites(same).costCovered(aggregate), "client-level aggregate cost is covered");
+            NativeDerivedWrites derived = new NativeDerivedWrites(same);
+            assertTrue(derived.costCovered(bucket(601, 100, 0)), "the cost detail's own bucket is covered");
+            assertFalse(derived.costCovered(bucket(602, 100, 0)), "another cost element is not covered");
+            assertFalse(derived.costCovered(bucket(601, 999, 0)), "another cost type is not covered");
+            assertFalse(derived.costCovered(bucket(601, 100, 77)), "another attribute set instance is not covered");
             writeCost(c, line);
             c.commit();
         }
@@ -563,5 +566,86 @@ class NativeFinancePostgresGateBTest {
             denied(c);
         }
         assertEquals(0, count("SELECT count(*) FROM adempiere.m_costdetail WHERE m_inoutline_id = " + line));
+    }
+
+    private static NativeRecord bucket(int element, int costType, int asi) {
+        return new NativeRecord("M_Cost", CLIENT, 0, 0, "model:TYPE_BEFORE_CHANGE", "gate-b-cost", col -> switch (col) {
+            case "M_Product_ID" -> 501; case "C_AcctSchema_ID" -> 101; case "M_CostElement_ID" -> element;
+            case "M_CostType_ID" -> costType; case "M_AttributeSetInstance_ID" -> asi; default -> null; });
+    }
+
+    @Test
+    void anotherCostBucketCannotPiggybackOnAShipmentCostDetail() throws Exception {
+        int line;
+        try (Connection c = transaction()) {
+            line = shipmentLine(c, "Y");
+            c.commit();
+        }
+        try (Connection c = transaction()) {
+            NativeConnections same = trx -> c;
+            NativeOperation root = new NativeOperationResolver(same).classify(costDetail(line, "Y", "gate-b-bucket"));
+            new NativeFinanceAttribution(same).append(root, new PlacementContextSource(same).currentPlacement(root),
+                    decision(Instant.now().plusSeconds(25)), new NativeFinanceReadiness.FinanceBaseline(LE, 1));
+            new NativeDerivedWrites(same).appendCostDetail(root);
+            writeCost(c, line);
+            try (Statement s = c.createStatement()) {
+                s.execute("INSERT INTO adempiere.m_cost (ad_client_id, ad_org_id, m_product_id, c_acctschema_id, "
+                        + "m_costelement_id, currentcostprice) VALUES (11, 0, 501, 101, 602, 99) ON CONFLICT DO NOTHING");
+                s.execute("UPDATE adempiere.m_cost SET currentcostprice = 98 WHERE m_costelement_id = 602 AND m_product_id = 501");
+            }
+            denied(c);
+        }
+    }
+
+    @Test
+    void deletingCostRowsWithoutAuthorityIsRefusedAtCommit() throws Exception {
+        int line;
+        try (Connection c = transaction()) {
+            line = shipmentLine(c, "Y");
+            c.commit();
+        }
+        try (Connection c = transaction()) {
+            NativeConnections same = trx -> c;
+            NativeOperation root = new NativeOperationResolver(same).classify(costDetail(line, "Y", "gate-b-del"));
+            new NativeFinanceAttribution(same).append(root, new PlacementContextSource(same).currentPlacement(root),
+                    decision(Instant.now().plusSeconds(25)), new NativeFinanceReadiness.FinanceBaseline(LE, 1));
+            new NativeDerivedWrites(same).appendCostDetail(root);
+            writeCost(c, line);
+            c.commit();
+        }
+        for (String sql : new String[] {
+                "DELETE FROM adempiere.m_costdetail WHERE m_inoutline_id = " + line,
+                "DELETE FROM adempiere.m_cost WHERE m_product_id = 501 AND m_costelement_id = 601"}) {
+            try (Connection c = transaction(); Statement s = c.createStatement()) {
+                assertTrue(s.executeUpdate(sql) > 0, sql);
+                denied(c);
+            }
+        }
+        assertEquals(1, count("SELECT count(*) FROM adempiere.m_costdetail WHERE m_inoutline_id = " + line));
+    }
+
+    @Test
+    void completedAllocationCannotBeRepointedByDirectSql() throws Exception {
+        int allocation = IDS.incrementAndGet();
+        int vendorInvoice;
+        int receipt;
+        try (Connection c = transaction(); Statement s = c.createStatement()) {
+            vendorInvoice = insertDoc(c, "c_invoice", "issotrx", "N");
+            receipt = insertDoc(c, "c_payment", "isreceipt", "Y");
+            s.execute("INSERT INTO adempiere.c_allocationhdr (c_allocationhdr_id, ad_client_id, ad_org_id) VALUES ("
+                    + allocation + ", 11, 11)");
+            c.commit();
+        }
+        for (String sql : new String[] {
+                "INSERT INTO adempiere.c_allocationline VALUES (" + IDS.incrementAndGet() + ", " + allocation + ", "
+                        + vendorInvoice + ", " + receipt + ", 11, 11)",
+                "INSERT INTO adempiere.c_allocationline VALUES (" + IDS.incrementAndGet() + ", " + allocation + ", NULL, "
+                        + receipt + ", 11, 11)"}) {
+            try (Connection c = transaction(); Statement s = c.createStatement()) {
+                s.execute(sql);
+                denied(c);
+            }
+        }
+        assertEquals(0, count("SELECT count(*) FROM adempiere.c_allocationline WHERE c_allocationhdr_id = " + allocation));
     }
 }

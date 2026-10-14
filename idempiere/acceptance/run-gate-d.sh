@@ -410,6 +410,16 @@ if [ -n "${S:-}" ]; then
       SELECT c.m_cost_uu FROM adempiere.m_cost c JOIN adempiere.m_costdetail cd ON cd.m_product_id = c.m_product_id
         AND cd.c_acctschema_id = c.c_acctschema_id JOIN adempiere.m_inoutline l ON l.m_inoutline_id = cd.m_inoutline_id
        WHERE l.m_inout_id = $S AND c.ad_client_id = 11 LIMIT 1)" "UPDATE 1"
+  fenced "direct SQL M_Cost delete" "DELETE FROM adempiere.m_cost WHERE m_cost_uu = (
+      SELECT c.m_cost_uu FROM adempiere.m_cost c JOIN adempiere.m_costdetail cd ON cd.m_product_id = c.m_product_id
+        AND cd.c_acctschema_id = c.c_acctschema_id JOIN adempiere.m_inoutline l ON l.m_inoutline_id = cd.m_inoutline_id
+       WHERE l.m_inout_id = $S AND c.ad_client_id = 11 LIMIT 1)" "DELETE 1"
+fi
+if [ -n "${A:-}" ] && [ -n "${VI:-}" ]; then
+  fenced "direct SQL re-point of a completed allocation to a vendor invoice" "INSERT INTO adempiere.c_allocationline
+      SELECT (jsonb_populate_record(al, jsonb_build_object('c_allocationline_id', (SELECT max(c_allocationline_id) + 1
+        FROM adempiere.c_allocationline), 'c_allocationline_uu', gen_random_uuid()::text, 'c_invoice_id', $VI))).*
+        FROM adempiere.c_allocationline al WHERE al.c_allocationhdr_id = $A LIMIT 1" "INSERT 0 1"
 fi
 
 note "Gate D failures: $FAILURES"
