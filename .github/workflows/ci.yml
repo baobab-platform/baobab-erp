@@ -123,7 +123,7 @@ jobs:
           -Dtest=NativeFinancePostgresGateBTest -Dsurefire.failIfNoSpecifiedTests=false
       - name: Gate B must have run, not skipped
         run: >-
-          grep -q 'tests="9"[^>]*skipped="0"'
+          grep -q 'tests="10"[^>]*skipped="0"'
           idempiere/extensions/org.nabhold.baobab.erp.finance/target/surefire-reports/TEST-org.nabhold.baobab.erp.finance.NativeFinancePostgresGateBTest.xml
 
   build-image:

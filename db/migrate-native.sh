@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Applies db/native-migrations/*.sql once each to the iDempiere database,
+# Applies db/native-migrations/*.sql once each, atomically, to the iDempiere database,
 # tracked in baobab.schema_migrations as native/<file>. Run AFTER the iDempiere
 # seed/upgrade (the adempiere schema must exist) and AFTER db/migrate.sh, and
 # BEFORE the iDempiere finance routes are exposed (ADR-ERP-022).
@@ -27,7 +27,9 @@ for migration in "${repo_root}"/db/native-migrations/*.sql; do
     continue
   fi
   echo "apply ${filename}"
-  psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -f "${migration}"
-  psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -c \
-    "INSERT INTO baobab.schema_migrations (filename) VALUES ('${filename}')"
+  # The migration and its tracking row commit in ONE transaction: a failed or
+  # interrupted run leaves neither, so a rerun never meets half-applied DDL.
+  psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 --single-transaction \
+    -f "${migration}" \
+    -c "INSERT INTO baobab.schema_migrations (filename) VALUES ('${filename}')"
 done

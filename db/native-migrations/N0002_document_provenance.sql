@@ -6,7 +6,6 @@
 -- governed header table, so UI, REST, import, scheduler and direct SQL routes
 -- all receive it. A placed AD_Client cannot create a governed document in an
 -- AD_Org without a current placement: that would be unattributable.
-BEGIN;
 
 CREATE TABLE baobab_native.document_provenance (
   native_table text NOT NULL CHECK (native_table ~ '^[A-Za-z_]{3,60}$'),
@@ -101,4 +100,3 @@ BEGIN
 END $$;
 
 REVOKE ALL ON baobab_native.document_provenance FROM PUBLIC;
-COMMIT;

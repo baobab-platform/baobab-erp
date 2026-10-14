@@ -300,6 +300,30 @@ class NativeFinancePostgresGateBTest {
     }
 
     @Test
+    void anotherClientsOpenPeriodDoesNotMakeThisClientReady() throws Exception {
+        try (Connection c = transaction()) {
+            try (Statement s = c.createStatement()) {
+                s.execute("INSERT INTO adempiere.c_period VALUES (302, 12, current_date - 1, current_date + 1)");
+                s.execute("INSERT INTO adempiere.c_periodcontrol (c_period_id, docbasetype, periodstatus) VALUES (302, 'GLJ', 'O')");
+            }
+            int journal = newJournal(c);
+            NativeOperation foreignPeriod = new NativeOperation(NativeOperation.GL_JOURNAL, "GL_Journal", journal,
+                    new NativeRecord("Fact_Acct", CLIENT, ORG, 0, "model:TYPE_BEFORE_NEW", "gate-b-period",
+                            col -> switch (col) {
+                                case "AD_Table_ID" -> 224;
+                                case "Record_ID" -> journal;
+                                case "C_Period_ID" -> 302;
+                                default -> null;
+                            }));
+            NativePlacement p = new PlacementContextSource(trx -> c).currentPlacement(foreignPeriod);
+            assertNotNull(p);
+            assertNull(new BaselineFinanceReadiness(trx -> c).currentBaseline(foreignPeriod, p));
+            assertNotNull(new BaselineFinanceReadiness(trx -> c).currentBaseline(factLine(journal, "gate-b-period"), p));
+            c.rollback();
+        }
+    }
+
+    @Test
     void withdrawnBaselineIsNotReady() throws Exception {
         try (Connection c = transaction()) {
             int journal = newJournal(c);

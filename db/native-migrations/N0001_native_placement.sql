@@ -10,7 +10,6 @@
 -- never inferred from AD_Org names, a tenant default or group ownership.
 -- Append-only and versioned: the only permitted change is closing the open
 -- window of a version, once, never into the past.
-BEGIN;
 CREATE SCHEMA IF NOT EXISTS baobab_native;
 
 CREATE TABLE baobab_native.native_placement (
@@ -91,4 +90,3 @@ CREATE TRIGGER native_placement_guard BEFORE INSERT OR UPDATE OR DELETE
   ON baobab_native.native_placement FOR EACH ROW EXECUTE FUNCTION baobab_native.native_placement_guard();
 
 REVOKE ALL ON baobab_native.native_placement FROM PUBLIC;
-COMMIT;

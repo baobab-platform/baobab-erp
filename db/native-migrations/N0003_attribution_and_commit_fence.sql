@@ -16,7 +16,6 @@
 -- min(expires_at, ERP receipt + 30 seconds); a revocation therefore takes
 -- effect within 30 seconds. Database atomicity and CP freshness are separate
 -- guarantees; both are required.
-BEGIN;
 
 ALTER TABLE baobab_native.finance_authority_attribution
   ADD COLUMN decision_id uuid,
@@ -159,5 +158,3 @@ BEGIN
       doc.relation, doc.native_table, doc.relation || '_id');
   END LOOP;
 END $$;
-
-COMMIT;

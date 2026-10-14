@@ -81,10 +81,14 @@ final class BaselineFinanceReadiness implements NativeFinanceReadiness {
         }
         if (baseType == null) return false;
         try (PreparedStatement s = db.prepareStatement("""
-                SELECT 1 FROM adempiere.c_periodcontrol
-                 WHERE c_period_id = ? AND docbasetype = ? AND periodstatus = 'O'""")) {
+                SELECT 1 FROM adempiere.c_periodcontrol pc
+                  JOIN adempiere.c_period p ON p.c_period_id = pc.c_period_id
+                 WHERE pc.c_period_id = ? AND p.ad_client_id = ?
+                   AND pc.docbasetype = ? AND pc.periodstatus = 'O'""")) {
+            // Another client's open period never makes this client ready.
             s.setInt(1, period);
-            s.setString(2, baseType);
+            s.setInt(2, operation.record().adClientId());
+            s.setString(3, baseType);
             try (ResultSet r = s.executeQuery()) {
                 return r.next();
             }
