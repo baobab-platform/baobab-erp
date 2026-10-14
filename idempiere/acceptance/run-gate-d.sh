@@ -87,7 +87,12 @@ docker exec gd-erp test -s /opt/idempiere/.baobab/native-finance-veto-active \
 "$REPO/db/migrate-native.sh" >> "$WORK/migrate.log"
 PLACEMENT=0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q <<SQL
--- An accounting operator opens the current GL period for GardenWorld (seed ships it never-opened).
+-- An accounting operator puts GardenWorld under STANDARD period control (C_PeriodControl, which
+-- Baobab readiness checks, ADR-ERP-008). The seed ships Automatic Period Control, under which
+-- iDempiere ignores C_PeriodControl and rewrites C_AcctSchema.C_Period_ID from MPeriod.isOpen in
+-- its own autocommit transaction: a configuration write the native veto refuses (Gate D finding).
+UPDATE adempiere.c_acctschema SET autoperiodcontrol = 'N' WHERE ad_client_id = 11;
+-- ...and opens the current GL period (seed ships it never-opened).
 UPDATE adempiere.c_periodcontrol pc SET periodstatus = 'O'
   FROM adempiere.c_period p
  WHERE p.c_period_id = pc.c_period_id AND p.ad_client_id = 11 AND pc.docbasetype = 'GLJ'
