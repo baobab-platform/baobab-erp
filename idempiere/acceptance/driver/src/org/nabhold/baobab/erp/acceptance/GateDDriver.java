@@ -89,8 +89,9 @@ public final class GateDDriver implements BundleActivator, Runnable {
         Files.delete(request);
         String name = request.getFileName().toString().replace(".properties", "");
         Properties out = new Properties();
-        int parallel = Integer.parseInt(in.getProperty("parallel", "1"));
         try {
+            // Every parse is inside this try: a malformed request is reported, never kills the driver.
+            int parallel = Integer.parseInt(in.getProperty("parallel", "1"));
             String action = in.getProperty("action", "journal");
             if ("complete".equals(action)) {
                 out.putAll(completeExisting(in));
