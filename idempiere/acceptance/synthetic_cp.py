@@ -141,6 +141,7 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     server = ThreadingHTTPServer(("0.0.0.0", 8443), Handler)
     tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    tls.minimum_version = ssl.TLSVersion.TLSv1_2
     tls.load_cert_chain(os.environ["GATE_D_CERT"], os.environ["GATE_D_KEY"])
     server.socket = tls.wrap_socket(server.socket, server_side=True)
     print("synthetic CP/IAM listening on 8443 (CI only)", flush=True)
