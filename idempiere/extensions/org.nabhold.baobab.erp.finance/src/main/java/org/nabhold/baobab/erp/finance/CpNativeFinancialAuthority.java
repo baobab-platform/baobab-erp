@@ -44,6 +44,7 @@ public final class CpNativeFinancialAuthority implements NativeFinancialAuthorit
     private final Supplier<NativeFinancialContextSource> placementSource;
     private final Supplier<NativeFinanceReadiness> readiness;
     private final NativeFinanceAttribution attribution;
+    private final NativeDerivedWrites derived;
 
     public CpNativeFinancialAuthority(
             String cpUrl, Supplier<String> token, boolean allowTestLoopback,
@@ -77,6 +78,7 @@ public final class CpNativeFinancialAuthority implements NativeFinancialAuthorit
         this.placementSource = Objects.requireNonNull(placementSource);
         this.readiness = Objects.requireNonNull(readiness);
         this.attribution = Objects.requireNonNull(attribution);
+        this.derived = attribution.derivedWrites();
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2))
                 .followRedirects(HttpClient.Redirect.NEVER).build();
     }
@@ -248,9 +250,13 @@ public final class CpNativeFinancialAuthority implements NativeFinancialAuthorit
             NativeFinanceReadiness finance = readiness.get();
             if (operations == null || placements == null || finance == null || record == null
                     || record.transactionName() == null || record.transactionName().isBlank()
-                    || record.adClientId() <= 0 || record.adOrgId() <= 0 || record.recordId() < 0) {
+                    || record.adClientId() <= 0 || record.recordId() < 0
+                    || record.adOrgId() < 0 || record.adOrgId() == 0 && !NativeFinancePolicy.costing(record.table())) {
                 return false;
             }
+            // Aggregate cost is never an operation: only a cost detail already
+            // derived from an authorised root in this transaction covers it.
+            if ("M_Cost".equals(record.table())) return derived.costCovered(record);
             NativeOperation operation = operations.classify(record);
             if (operation == null) return false;
             String reference = operation.operationReference();
@@ -260,7 +266,7 @@ public final class CpNativeFinancialAuthority implements NativeFinancialAuthorit
             // Same transaction, same source document, still within its lease by
             // the database clock: the authority already attributed covers this
             // write (an exact-match, bounded PEP reuse; never across transactions).
-            if (attribution.hasCurrent(operation)) return true;
+            if (attribution.hasCurrent(operation)) return derivedRecorded(operation);
             String context = issueCurrentCpContext(placement);
             NativeFinanceAttribution.Decision decision = postingAuthority(context, placement, operation, reference);
             documentaryClear(context, placement, operation, reference);
@@ -273,10 +279,20 @@ public final class CpNativeFinancialAuthority implements NativeFinancialAuthorit
             // Until this succeeds in native Trx, even an authorized actor
             // CANNOT enter the financial mutation path.
             attribution.append(operation, placement, refreshed, baseline);
-            return true;
+            return derivedRecorded(operation);
         } catch (Exception invalid) {
             // Never leak mandates, financial source data or IAM tokens in logs.
             return false;
         }
+    }
+
+    /**
+     * A cost detail records that it is a consequence of its now-authorised root
+     * (the root's own CP decision, never a costing-specific one) before it may
+     * be written; the database refuses the record without that attribution.
+     */
+    private boolean derivedRecorded(NativeOperation operation) throws Exception {
+        if ("M_CostDetail".equals(operation.record().table())) derived.appendCostDetail(operation);
+        return true;
     }
 }

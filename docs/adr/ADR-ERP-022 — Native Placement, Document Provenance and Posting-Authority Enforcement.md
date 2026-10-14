@@ -46,9 +46,41 @@ ambiguous and denied.
 ## 4. Classification
 
 ERP alone maps native writes to Shared operation classes: headers by table (sales side only for invoices,
-shipments and orders), lines by their header, ledger lines (`Fact_Acct`) by `AD_Table_ID`/`Record_ID`.
-Purchase-side documents and accounting configuration (schema, chart, tax, costing, bank accounts) have no
-class yet and stay denied in protected runtimes. No vendor identifier crosses the Shared boundary.
+shipments and orders; receipts only for payments), lines by their header, ledger lines (`Fact_Acct`) by
+`AD_Table_ID`/`Record_ID`, cost details by their root (§4.2). Purchase-side documents, outbound payments,
+bank statements, cash journals and accounting configuration (schema, chart, tax, bank accounts) have no class
+yet and stay denied in protected runtimes. No vendor identifier crosses the Shared boundary.
+
+### 4.1 Direction (amendment, P0-04B-05, owner decision 2026-10-14)
+
+Permission to record money received is not permission to disburse it, and sales-side authority never covers
+purchases. A `C_Payment` classifies as `erp.payment.record` only when its own value, and for an existing
+payment its transaction-visible stored row, has `IsReceipt='Y'`; a missing or `'N'` value denies on every
+route (header, lines, `Fact_Acct`, repost, scheduled processing). An allocation classifies only when every
+line joins a sales invoice and a receipt. `C_BankStatement` and `C_Cash` no longer map to `payment.record`.
+In the database (N0005), completion and ledger posting require an attribution of the source table's **own**
+class with the governed direction still holding at COMMIT, and a governed document's `IsReceipt`/`IsSOTrx`
+cannot change. Vendor disbursement needs a separate catalogued operation (for example
+`erp.vendor-payment.disburse`) with its own legal actor, activity and payment controls.
+
+### 4.2 Derived costing writes (amendment, P0-04B-05, owner decision 2026-10-14)
+
+> A native costing write MAY inherit authorization from a catalogued root ERP operation only when ERP proves
+> that the costing write is a deterministic consequence of that operation within the same database
+> transaction and under the same native placement, provenance and legal-actor attribution. Costing writes
+> without such provenance are denied. Independent costing or revaluation operations require their own
+> catalogued authority.
+
+`M_CostDetail` and `M_Cost` are iDempiere implementation structures, not Baobab operations, and never earn
+their own CP decision. iDempiere writes a sales shipment's cost detail while posting it
+(`Doc_InOut.createFacts` → `MCostDetail.createShipment`, `M_InOutLine_ID` and `IsSOTrx` set) and then updates
+the aggregate `M_Cost` in the same transaction. ERP therefore classifies a cost detail as the
+`erp.shipment.complete` operation of the sales `M_InOut` its single source line belongs to (same client; its
+org or 0), reuses that root's current same-transaction attribution, or obtains the root's own decision, and
+appends an immutable `derived_write_attribution` row bound to it. `M_Cost` is allowed only when this
+transaction already derived a cost detail for the same client, product and schema. N0005 fences both tables
+at COMMIT. Material receipts, inventory, movement, production, landed cost and cost adjustment or
+revaluation stay denied until catalogued.
 
 ## 5. Freshness and atomicity
 
@@ -66,7 +98,7 @@ Within one transaction a still-current attribution for the same source document 
 ## 6. Deployment order
 
 `db/migrate.sh` (application schema, 0025) → iDempiere seed/upgrade → `db/migrate-native.sh`
-(N0001–N0004; refuses without the adempiere schema) → start iDempiere with the finance bundle → expose routes.
+(N0001–N0005; refuses without the adempiere schema) → start iDempiere with the finance bundle → expose routes.
 Every governed `AD_Client` must use **standard** period control (`C_AcctSchema.AutoPeriodControl = 'N'`):
 Baobab readiness governs periods through `C_PeriodControl`, and under Automatic Period Control iDempiere
 rewrites `C_AcctSchema.C_Period_ID` from `MPeriod.isOpen` in its own transaction, a configuration write the
@@ -93,7 +125,8 @@ the BEFORE topics, see LA-05D8); and the automatic-period-control configuration 
 
 - Real placements, mandates and IAM workload admission are owner actions.
 - Purchase-side and configuration operation classes need a Shared catalogue revision (ADR-SHARED-033 keys).
-- Costing writes (`M_Cost`, `M_CostDetail`) caused by shipments remain unclassified. Gate D covers GL
-  journals only; shipment, invoice and payment documents need their own Gate D scenarios before those
-  classes are certified.
+- Costing caused by a sales shipment is a derived write (§4.2); every other costing origin stays denied until
+  it has its own catalogued class. Gate D covers GL journals and the sales flow (order, shipment with costing,
+  customer invoice, receipt, allocation) as of P0-04B-05.
+- Bank reconciliation, the cash journal and vendor disbursement need Shared catalogue revisions (§4.1).
 - The Python order-to-cash layer is not yet wired to this path.

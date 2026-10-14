@@ -31,6 +31,7 @@ it also fixed three defects that only a real runtime exposed (ADR-ERP-022 §7).
 | B | `NativeFinancePostgresGateBTest` in CI job `native-finance-postgres`: atomic commit, rollback, direct-SQL ledger/completion refused at COMMIT, expired and lapsing authority, no cross-transaction reuse, concurrent transactions, unplaced org, closed placement, purchase side, withdrawn baseline |
 | C | `build-extensions`, `build-image` |
 | D | CI job `idempiere-posting-integration` (`idempiere/acceptance/run-gate-d.sh`): real iDempiere 13 + PostgreSQL GL-journal posting through the shipped veto and COMMIT fence. Certified only from a green CI run of that job, recorded in the receipt |
+| D (P0-04B-05) | Same job, extended to the sales flow: sales order, shipment with derived costing, customer invoice, receipt and allocation. Each class has valid and denial scenarios, plus receipts-only and sales-only enforcement and direct-SQL costing fences (ADR-ERP-022 §4.1–4.2) |
 | E | **Open** — operational acceptance, real placements/mandates, IAM admission |
 
 ## Not included
