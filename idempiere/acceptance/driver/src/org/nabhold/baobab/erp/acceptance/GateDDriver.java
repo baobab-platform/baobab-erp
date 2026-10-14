@@ -159,8 +159,10 @@ public final class GateDDriver implements BundleActivator, Runnable {
             j.saveEx();
             id = j.get_ID();
             out.setProperty(prefix + "journal_id", String.valueOf(id));
-            line(j, "11110", amount, true);
-            line(j, "11100", amount, false);
+            // Two ordinary GL accounts: active, non-summary, actual-posting and
+            // NOT document-controlled (bank/AR/AP accounts reject manual journals).
+            line(j, 0, amount, true);
+            line(j, 1, amount, false);
             if (complete) {
                 boolean ok = j.processIt(DocAction.ACTION_Complete);
                 out.setProperty(prefix + "complete_ok", String.valueOf(ok));
@@ -237,12 +239,21 @@ public final class GateDDriver implements BundleActivator, Runnable {
         return out;
     }
 
-    private static void line(MJournal j, String accountValue, BigDecimal amount, boolean debit) {
+    private static void line(MJournal j, int rank, BigDecimal amount, boolean debit) {
         int combination = DB.getSQLValueEx(null, """
-                SELECT MIN(vc.C_ValidCombination_ID) FROM C_ValidCombination vc
+                SELECT x.id FROM (
+                SELECT DISTINCT ON (ev.Value) vc.C_ValidCombination_ID AS id, ev.Value AS v FROM C_ValidCombination vc
                   JOIN C_ElementValue ev ON ev.C_ElementValue_ID = vc.Account_ID
-                 WHERE vc.AD_Client_ID=? AND vc.AD_Org_ID=? AND vc.C_AcctSchema_ID=? AND ev.Value=? AND vc.IsActive='Y'""",
-                CLIENT, j.getAD_Org_ID(), j.getC_AcctSchema_ID(), accountValue);
+                 WHERE vc.AD_Client_ID=? AND vc.AD_Org_ID IN (0, ?) AND vc.C_AcctSchema_ID=?
+                   AND vc.IsActive='Y' AND ev.IsActive='Y' AND ev.IsSummary='N'
+                   AND ev.IsDocControlled='N' AND ev.PostActual='Y'
+                   AND vc.C_BPartner_ID IS NULL AND vc.M_Product_ID IS NULL AND vc.C_Project_ID IS NULL
+                 ORDER BY ev.Value, vc.AD_Org_ID DESC, vc.C_ValidCombination_ID) x
+                 ORDER BY x.v OFFSET ? LIMIT 1""",
+                CLIENT, j.getAD_Org_ID(), j.getC_AcctSchema_ID(), rank);
+        if (combination <= 0) {
+            throw new IllegalStateException("no ordinary GL account combination for rank " + rank);
+        }
         MJournalLine l = new MJournalLine(j);
         l.setC_ValidCombination_ID(combination);
         if (debit) l.setAmtSourceDr(amount); else l.setAmtSourceCr(amount);

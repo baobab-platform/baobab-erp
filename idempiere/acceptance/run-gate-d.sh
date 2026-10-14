@@ -122,6 +122,7 @@ not_posted() { # journal_id: never completed and no ledger
   [ "$(sql "SELECT count(*) FROM gl_journal WHERE gl_journal_id = $id AND docstatus IN ('CO','CL')")" = "0" ] &&
   [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 224 AND record_id = $id")" = "0" ]
 }
+baobab_denied() { grep -q "BAOBAB_NATIVE_FINANCE_DENIED" "$WORK/gate-d/results/$1.properties"; }
 co_count() { sql "SELECT count(*) FROM gl_journal WHERE ad_client_id = 11 AND docstatus = 'CO'"; }
 
 # 1. Current exact authority: real completion and Doc_GLJournal posting commit with attribution.
@@ -134,7 +135,7 @@ else fail "valid authority" "journal ${J1:-none} not completed/posted/attributed
 before=$(co_count)
 run no_mandate no_mandate action=journal complete=true post=true || true
 J=$(prop no_mandate journal_id)
-if [ "$(co_count)" = "$before" ] && { [ -z "$J" ] || not_posted "$J"; }; then pass "no mandate: refused, no completion or ledger"
+if [ "$(co_count)" = "$before" ] && { [ -z "$J" ] || not_posted "$J"; } && baobab_denied no_mandate; then pass "no mandate: refused, no completion or ledger"
 else fail "no mandate" "a document completed"; fi
 
 # 3. Authority lost between draft and completion (revocation, other actor/tenant/market, expiry, documentary hold).
@@ -143,14 +144,14 @@ for mode in revoked other_le other_tenant wrong_market expired documentary_hold;
   D=$(prop "draft_$mode" journal_id)
   if [ -z "$D" ]; then fail "$mode" "draft not created"; continue; fi
   run "complete_$mode" "$mode" action=complete journal_id="$D" || true
-  if not_posted "$D"; then pass "$mode at completion: refused, no CO and no Fact_Acct (journal $D)"
+  if not_posted "$D" && baobab_denied "complete_$mode"; then pass "$mode at completion: refused, no CO and no Fact_Acct (journal $D)"
   else fail "$mode at completion" "journal $D completed or posted"; fi
 done
 
 # 4. Native org without a placement: the document cannot even be created.
 run unplaced authorized action=journal org=12 complete=true post=true || true
 J=$(prop unplaced journal_id)
-if [ -z "$J" ] || [ "$(sql "SELECT count(*) FROM gl_journal WHERE gl_journal_id = $J")" = "0" ]; then
+if { [ -z "$J" ] || [ "$(sql "SELECT count(*) FROM gl_journal WHERE gl_journal_id = $J")" = "0" ]; } && baobab_denied unplaced; then
   pass "unplaced AD_Org: creation refused"
 else fail "unplaced AD_Org" "document $J exists"; fi
 
@@ -179,19 +180,28 @@ if [ -n "${J1:-}" ]; then
     && pass "retry after commit: Fact_Acct unchanged ($facts rows)" || fail "retry after commit" "ledger duplicated"
 fi
 
-# 8. Direct SQL bypass of the JVM: refused at COMMIT by the database fence.
+# 8. Direct SQL bypass of the JVM: refused at COMMIT by the database fence. Each statement
+#    must really change one row before COMMIT, so a vacuous no-op can never pass.
+fenced() { # label sql expected-tag
+  local out
+  out=$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "BEGIN" -c "$2" -c "COMMIT" 2>&1 || true)
+  echo "$out" | sed 's/^/    /' >> "$REPORT"
+  if echo "$out" | grep -q "^$3\$" && echo "$out" | grep -q "BAOBAB_NATIVE_FINANCE_DENIED"; then
+    pass "$1: refused at COMMIT"
+  else fail "$1" "not refused by the COMMIT fence"; fi
+}
 if [ -n "${J1:-}" ]; then
-  if psql "$DATABASE_URL" -q -c "INSERT INTO adempiere.fact_acct SELECT * FROM adempiere.fact_acct WHERE ad_table_id = 224 AND record_id = $J1 LIMIT 1" >/dev/null 2>&1 \
-     || psql "$DATABASE_URL" -q -c "INSERT INTO adempiere.fact_acct (fact_acct_id, ad_client_id, ad_org_id, isactive, created, createdby, updated, updatedby, c_acctschema_id, account_id, datetrx, dateacct, c_period_id, ad_table_id, record_id, line_id, gl_category_id, gl_budget_id, c_tax_id, m_locator_id, postingtype, c_currency_id, amtsourcedr, amtsourcecr, amtacctdr, amtacctcr, c_uom_id, qty) SELECT nextid(fact_acct_id::int, 'N')::int, ad_client_id, ad_org_id, isactive, now(), createdby, now(), updatedby, c_acctschema_id, account_id, datetrx, dateacct, c_period_id, ad_table_id, record_id, line_id, gl_category_id, gl_budget_id, c_tax_id, m_locator_id, postingtype, c_currency_id, 1, 0, 1, 0, c_uom_id, qty FROM adempiere.fact_acct WHERE ad_table_id = 224 AND record_id = $J1 LIMIT 1" >/dev/null 2>&1; then
-    fail "direct SQL ledger insert" "committed without authority"
-  else pass "direct SQL Fact_Acct insert: refused at COMMIT"; fi
+  fenced "direct SQL Fact_Acct insert" "INSERT INTO adempiere.fact_acct SELECT (jsonb_populate_record(f, jsonb_build_object(
+      'fact_acct_id', (SELECT max(fact_acct_id) + 1 FROM adempiere.fact_acct),
+      'fact_acct_uu', gen_random_uuid()::text))).*
+      FROM adempiere.fact_acct f WHERE ad_table_id = 224 AND record_id = $J1 LIMIT 1" "INSERT 0 1"
 fi
 run bypass_draft authorized action=journal complete=false post=false || true
 B=$(prop bypass_draft journal_id)
 if [ -n "$B" ]; then
-  if psql "$DATABASE_URL" -q -c "UPDATE adempiere.gl_journal SET docstatus = 'CO' WHERE gl_journal_id = $B" >/dev/null 2>&1; then
-    fail "direct SQL completion" "journal $B completed without authority"
-  else pass "direct SQL completion: refused at COMMIT"; fi
+  fenced "direct SQL completion" "UPDATE adempiere.gl_journal SET docstatus = 'CO', processed = 'Y' WHERE gl_journal_id = $B" "UPDATE 1"
+  [ "$(sql "SELECT docstatus FROM gl_journal WHERE gl_journal_id = $B")" = "DR" ] \
+    && pass "direct SQL completion left journal $B in DR" || fail "direct SQL completion" "journal $B not DR"
 fi
 
 note "Gate D failures: $FAILURES"

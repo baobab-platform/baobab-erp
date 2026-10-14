@@ -14,7 +14,9 @@ RUN mkdir -p /cp /out \
  && jar cfm /driver.jar /src/MANIFEST.MF -C /out .
 
 FROM base
-COPY --from=driver /driver.jar /opt/idempiere/plugins/org.nabhold.baobab.erp.acceptance_0.1.0.jar
+USER root
+COPY --from=driver --chown=idempiere:idempiere /driver.jar /opt/idempiere/plugins/org.nabhold.baobab.erp.acceptance_0.1.0.jar
 RUN echo "org.nabhold.baobab.erp.acceptance,0.1.0,plugins/org.nabhold.baobab.erp.acceptance_0.1.0.jar,5,true" \
       >> /opt/idempiere/configuration/org.eclipse.equinox.simpleconfigurator/bundles.info \
- && mkdir -p /opt/idempiere/.baobab/gate-d
+ && install -d -m 0770 -o idempiere -g idempiere /opt/idempiere/.baobab /opt/idempiere/.baobab/gate-d
+USER idempiere
