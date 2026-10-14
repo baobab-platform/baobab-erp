@@ -92,19 +92,27 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q <<SQL
 -- iDempiere ignores C_PeriodControl and rewrites C_AcctSchema.C_Period_ID from MPeriod.isOpen in
 -- its own autocommit transaction: a configuration write the native veto refuses (Gate D finding).
 UPDATE adempiere.c_acctschema SET autoperiodcontrol = 'N' WHERE ad_client_id = 11;
--- Costing follows the Finance-approved baseline below (STANDARD): the seed's schemas say Average PO but
--- hold only standard costs, so every shipment would fail with "No Costs". The secondary schema gets the
--- primary's standard costs. Done before the placement exists, as operator setup.
-UPDATE adempiere.c_acctschema SET costingmethod = 'S' WHERE ad_client_id = 11;
+-- Opening inventory valuation (operator setup, before the placement exists): the seed's schemas cost by
+-- Average PO but hold only standard costs and no average-cost quantity, so every shipment would fail
+-- ("No Costs" / negative average quantity). Each stocked product gets an Average PO cost at its standard
+-- material cost with its client-wide quantity on hand, in every schema of the client.
 INSERT INTO adempiere.m_cost
-SELECT (jsonb_populate_record(c, jsonb_build_object('c_acctschema_id', s.c_acctschema_id,
-          'm_cost_uu', gen_random_uuid()::text))).*
+SELECT (jsonb_populate_record(c, jsonb_build_object(
+          'c_acctschema_id', s.c_acctschema_id, 'm_cost_uu', gen_random_uuid()::text,
+          'm_costelement_id', ae.m_costelement_id,
+          'currentqty', q.qty, 'cumulatedqty', q.qty, 'cumulatedamt', q.qty * c.currentcostprice))).*
   FROM adempiere.m_cost c
-  JOIN adempiere.c_acctschema s ON s.ad_client_id = 11 AND s.c_acctschema_id <> c.c_acctschema_id
- WHERE c.ad_client_id = 11 AND c.c_acctschema_id = (SELECT c_acctschema1_id FROM adempiere.ad_clientinfo WHERE ad_client_id = 11)
+  JOIN adempiere.m_costelement se ON se.m_costelement_id = c.m_costelement_id AND se.costingmethod = 'S'
+   AND se.costelementtype = 'M'
+  JOIN adempiere.m_costelement ae ON ae.ad_client_id = 11 AND ae.costingmethod = 'A' AND ae.isactive = 'Y'
+  JOIN adempiere.c_acctschema s ON s.ad_client_id = 11
+  JOIN (SELECT st.m_product_id, sum(st.qtyonhand) AS qty FROM adempiere.m_storageonhand st
+         WHERE st.ad_client_id = 11 GROUP BY st.m_product_id) q ON q.m_product_id = c.m_product_id
+ WHERE c.ad_client_id = 11 AND c.currentcostprice > 0 AND q.qty > 0
+   AND c.c_acctschema_id = (SELECT c_acctschema1_id FROM adempiere.ad_clientinfo WHERE ad_client_id = 11)
    AND NOT EXISTS (SELECT 1 FROM adempiere.m_cost x WHERE x.c_acctschema_id = s.c_acctschema_id
-     AND x.ad_client_id = c.ad_client_id AND x.ad_org_id = c.ad_org_id AND x.m_product_id = c.m_product_id
-     AND x.m_costtype_id = c.m_costtype_id AND x.m_costelement_id = c.m_costelement_id
+     AND x.ad_client_id = 11 AND x.ad_org_id = c.ad_org_id AND x.m_product_id = c.m_product_id
+     AND x.m_costtype_id = c.m_costtype_id AND x.m_costelement_id = ae.m_costelement_id
      AND x.m_attributesetinstance_id = c.m_attributesetinstance_id);
 -- ...and opens the current period for the governed sales-side document types (seed ships them never-opened).
 UPDATE adempiere.c_periodcontrol pc SET periodstatus = 'O'
@@ -122,7 +130,7 @@ INSERT INTO baobab.financial_configuration_baseline (legal_entity_id, version, f
   fiscal_year_start_month, chart_of_accounts_template, accounting_schema, tax_profile, costing_method,
   effective_from, approved_by, approved_at, evidence_reference)
 VALUES ('$LE', 1, 'USD', 1, 'synthetic-gardenworld', 'synthetic-gardenworld', 'synthetic-gardenworld',
-  'STANDARD', current_date - 30, 'Synthetic Finance Approver', now(), 'synthetic:gate-d/baseline');
+  'AVERAGE_PO', current_date - 30, 'Synthetic Finance Approver', now(), 'synthetic:gate-d/baseline');
 SQL
 
 # --- Driver protocol ----------------------------------------------------------------------------
