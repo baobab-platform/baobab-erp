@@ -193,8 +193,8 @@ fenced() { # label sql expected-tag
 if [ -n "${J1:-}" ]; then
   fenced "direct SQL Fact_Acct insert" "INSERT INTO adempiere.fact_acct SELECT (jsonb_populate_record(f, jsonb_build_object(
       'fact_acct_id', (SELECT max(fact_acct_id) + 1 FROM adempiere.fact_acct),
-      'fact_acct_uu', gen_random_uuid()::text))).*
-      FROM adempiere.fact_acct f WHERE ad_table_id = 224 AND record_id = $J1 LIMIT 1" "INSERT 0 1"
+      'fact_acct_uu', gen_random_uuid()::text, 'ad_table_id', 224, 'record_id', $J1))).*
+      FROM adempiere.fact_acct f WHERE ad_client_id = 11 ORDER BY fact_acct_id LIMIT 1" "INSERT 0 1"
 fi
 run bypass_draft authorized action=journal complete=false post=false || true
 B=$(prop bypass_draft journal_id)
