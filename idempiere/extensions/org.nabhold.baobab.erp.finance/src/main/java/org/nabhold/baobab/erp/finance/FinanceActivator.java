@@ -214,11 +214,17 @@ public final class FinanceActivator implements BundleActivator {
                             return null;
                         }
                     });
-            return NativeFinancePolicy.requireBeforeMutation(
+            String verdict = NativeFinancePolicy.requireBeforeMutation(
                     record,
                     NativeFinancePolicy.protectedRuntime(
                         System.getProperty("baobab.erp.native.environment")),
                     authorities == null ? null : authorities.getService());
+            if (verdict != null) {
+                // Operator evidence: native identifiers only, never CP responses or credentials.
+                LOG.log(Level.WARNING, "native finance veto: {0} {1} client={2} org={3} record={4} trx={5}: {6}",
+                        table, record.action(), client, org, nativeId, trxName == null ? "none" : "present", verdict);
+            }
+            return verdict;
         } catch (ReflectiveOperationException | RuntimeException badRecord) {
             return "BAOBAB_NATIVE_FINANCE_DENIED: native record context unavailable";
         }

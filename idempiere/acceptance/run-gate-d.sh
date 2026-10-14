@@ -23,8 +23,11 @@ REPORT="$WORK/gate-d-report.txt"
 cleanup() {
   docker logs gd-erp > "$WORK/idempiere.log" 2>&1 || true
   docker logs gd-cp > "$WORK/synthetic-cp.log" 2>&1 || true
-  docker rm -f gd-erp gd-cp gd-pg >/dev/null 2>&1 || true
-  docker network rm "$NET" >/dev/null 2>&1 || true
+  # GATE_D_KEEP=1 leaves the containers up for local diagnosis (never in CI).
+  if [ "${GATE_D_KEEP:-0}" != 1 ]; then
+    docker rm -f gd-erp gd-cp gd-pg >/dev/null 2>&1 || true
+    docker network rm "$NET" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 
@@ -49,6 +52,8 @@ keytool -importcert -noprompt -alias gate-d-ca -file "$WORK/tls/ca.pem" -keystor
 chmod 0644 "$WORK/tls/"*
 
 # --- Fresh PostgreSQL (the upstream entrypoint imports GardenWorld) ------------------------------
+docker rm -f gd-erp gd-cp gd-pg >/dev/null 2>&1 || true
+docker network rm "$NET" >/dev/null 2>&1 || true
 docker network create "$NET" >/dev/null
 docker run -d --name gd-pg --network "$NET" -p "${PG_PORT}:5432" -e POSTGRES_PASSWORD=postgres "$PG_IMAGE" >/dev/null
 until docker exec gd-pg pg_isready -U postgres -q; do sleep 1; done
