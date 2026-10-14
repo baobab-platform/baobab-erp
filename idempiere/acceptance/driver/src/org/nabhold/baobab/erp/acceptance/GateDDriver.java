@@ -38,8 +38,9 @@ import org.osgi.framework.BundleContext;
  * database fence. The CI job reads the outcomes and asserts persisted state.
  *
  * Protocol: a request file requests/<name>.properties (action=journal, org,
- * amount, complete, post, rollbackAfterPost, parallel) produces
- * results/<name>.properties.
+ * amount, complete, post, rollbackAfterPost, parallel; or action=doc with
+ * kind=order|shipment|invoice|payment|allocation, completeDoc and repostDoc
+ * with table and id, see SalesFlow) produces results/<name>.properties.
  */
 public final class GateDDriver implements BundleActivator, Runnable {
     private static final Path ROOT = Path.of("/opt/idempiere/.baobab/gate-d");
@@ -93,7 +94,17 @@ public final class GateDDriver implements BundleActivator, Runnable {
             // Every parse is inside this try: a malformed request is reported, never kills the driver.
             int parallel = Integer.parseInt(in.getProperty("parallel", "1"));
             String action = in.getProperty("action", "journal");
-            if ("complete".equals(action)) {
+            if ("doc".equals(action) || "completeDoc".equals(action) || "repostDoc".equals(action)) {
+                // P0-04B-05: the other catalogued classes, on the real sales flow.
+                Properties ctx = context(Integer.parseInt(in.getProperty("org", "11")));
+                try {
+                    out.putAll("doc".equals(action) ? SalesFlow.document(in, ctx)
+                            : "completeDoc".equals(action) ? SalesFlow.completeExisting(in, ctx)
+                            : SalesFlow.repost(in, ctx));
+                } finally {
+                    ServerContext.dispose();
+                }
+            } else if ("complete".equals(action)) {
                 out.putAll(completeExisting(in));
             } else if ("repost".equals(action)) {
                 out.putAll(repost(in));

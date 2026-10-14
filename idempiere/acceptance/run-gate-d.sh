@@ -92,10 +92,25 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q <<SQL
 -- iDempiere ignores C_PeriodControl and rewrites C_AcctSchema.C_Period_ID from MPeriod.isOpen in
 -- its own autocommit transaction: a configuration write the native veto refuses (Gate D finding).
 UPDATE adempiere.c_acctschema SET autoperiodcontrol = 'N' WHERE ad_client_id = 11;
--- ...and opens the current GL period (seed ships it never-opened).
+-- Costing follows the Finance-approved baseline below (STANDARD): the seed's schemas say Average PO but
+-- hold only standard costs, so every shipment would fail with "No Costs". The secondary schema gets the
+-- primary's standard costs. Done before the placement exists, as operator setup.
+UPDATE adempiere.c_acctschema SET costingmethod = 'S' WHERE ad_client_id = 11;
+INSERT INTO adempiere.m_cost
+SELECT (jsonb_populate_record(c, jsonb_build_object('c_acctschema_id', s.c_acctschema_id,
+          'm_cost_uu', gen_random_uuid()::text))).*
+  FROM adempiere.m_cost c
+  JOIN adempiere.c_acctschema s ON s.ad_client_id = 11 AND s.c_acctschema_id <> c.c_acctschema_id
+ WHERE c.ad_client_id = 11 AND c.c_acctschema_id = (SELECT c_acctschema1_id FROM adempiere.ad_clientinfo WHERE ad_client_id = 11)
+   AND NOT EXISTS (SELECT 1 FROM adempiere.m_cost x WHERE x.c_acctschema_id = s.c_acctschema_id
+     AND x.ad_client_id = c.ad_client_id AND x.ad_org_id = c.ad_org_id AND x.m_product_id = c.m_product_id
+     AND x.m_costtype_id = c.m_costtype_id AND x.m_costelement_id = c.m_costelement_id
+     AND x.m_attributesetinstance_id = c.m_attributesetinstance_id);
+-- ...and opens the current period for the governed sales-side document types (seed ships them never-opened).
 UPDATE adempiere.c_periodcontrol pc SET periodstatus = 'O'
   FROM adempiere.c_period p
- WHERE p.c_period_id = pc.c_period_id AND p.ad_client_id = 11 AND pc.docbasetype = 'GLJ'
+ WHERE p.c_period_id = pc.c_period_id AND p.ad_client_id = 11
+   AND pc.docbasetype IN ('GLJ', 'SOO', 'MMS', 'ARI', 'ARR', 'CMA')
    AND current_date BETWEEN p.startdate AND p.enddate;
 INSERT INTO baobab_native.native_placement (placement_id, version, tenant_id, engine_instance_id,
   operating_organisation_id, legal_entity_id, market, ad_client_id, ad_org_id, effective_from,
@@ -230,6 +245,163 @@ if [ -n "$B" ]; then
   fenced "direct SQL completion" "UPDATE adempiere.gl_journal SET docstatus = 'CO', processed = 'Y' WHERE gl_journal_id = $B" "UPDATE 1"
   [ "$(sql "SELECT docstatus FROM gl_journal WHERE gl_journal_id = $B")" = "DR" ] \
     && pass "direct SQL completion left journal $B in DR" || fail "direct SQL completion" "journal $B not DR"
+fi
+
+# ---------------------------------------------------------------------------------------------
+# P0-04B-05: the other catalogued classes on the real sales flow, receipts-only payments,
+# sales-only allocations and derived shipment costing.
+# ---------------------------------------------------------------------------------------------
+drun() { local name=$1 mode=$2; shift 2; run "$name" "$mode" action=doc "$@"; }
+attributed() { # table id class
+  [ "$(sql "SELECT count(*) > 0 FROM baobab_native.finance_authority_attribution WHERE lower(source_table) = lower('$1') AND source_record_id = $2 AND operation_class = '$3' AND decision_id IS NOT NULL")" = "t" ]
+}
+balanced() { # ad_table_id id
+  [ "$(sql "SELECT count(*) > 0 AND sum(amtacctdr) = sum(amtacctcr) FROM fact_acct WHERE ad_table_id = $1 AND record_id = $2")" = "t" ]
+}
+doc_status() { sql "SELECT docstatus || posted FROM $1 WHERE $1_id = $2"; }
+doc_posted() { # relation table_id id class
+  [ "$(doc_status "$1" "$3")" = "COY" ] && balanced "$2" "$3" && attributed "$1" "$3" "$4"
+}
+doc_refused() { # relation table_id id result-name
+  [ "$(sql "SELECT count(*) FROM $1 WHERE $1_id = $3 AND docstatus IN ('CO','CL')")" = "0" ] &&
+  [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = $2 AND record_id = $3")" = "0" ] && baobab_denied "$4"
+}
+cost_details() { sql "SELECT count(*) FROM m_costdetail cd JOIN m_inoutline l ON l.m_inoutline_id = cd.m_inoutline_id WHERE l.m_inout_id = $1"; }
+derived_rows() { sql "SELECT count(*) FROM baobab_native.derived_write_attribution WHERE root_table = 'M_InOut' AND root_record_id = $1"; }
+
+# S1. Valid sales flow: order -> shipment (with derived costing) -> invoice -> receipt (+ allocation).
+drun so authorized kind=order qty=2 || true; O=$(prop so id)
+if [ -n "$O" ] && [ "$(sql "SELECT docstatus FROM c_order WHERE c_order_id = $O")" = "CO" ] \
+   && attributed C_Order "$O" erp.sales-order.complete; then pass "sales order: CO, attributed (order $O)"
+else fail "sales order" "order ${O:-none} not completed/attributed"; fi
+if [ -n "$O" ]; then
+  drun ship authorized kind=shipment order_id="$O" || true; S=$(prop ship id)
+  if [ -n "$S" ] && doc_posted m_inout 319 "$S" erp.shipment.complete; then
+    pass "shipment: CO, posted, balanced Fact_Acct, attributed (shipment $S)"
+  else fail "shipment" "shipment ${S:-none} not completed/posted/attributed"; fi
+  if [ -n "$S" ] && [ "$(cost_details "$S")" -gt 0 ] && [ "$(derived_rows "$S")" -gt 0 ] \
+     && [ "$(sql "SELECT count(*) FROM baobab_native.finance_authority_attribution WHERE native_table = 'M_CostDetail' AND NOT (operation_class = 'erp.shipment.complete' AND source_table = 'M_InOut' AND source_record_id = $S) AND source_record_id = $S")" = "0" ] \
+     && [ "$(sql "SELECT count(*) FROM baobab_native.finance_authority_attribution WHERE operation_class NOT IN ('erp.gl-journal.post','erp.customer-invoice.issue','erp.payment.record','erp.allocation.record','erp.shipment.complete','erp.sales-order.complete')")" = "0" ]; then
+    pass "shipment costing: $(cost_details "$S") cost detail(s) derived from the shipment's own authority, no costing decision"
+  else fail "shipment costing" "cost details $( [ -n "$S" ] && cost_details "$S"), derived rows $( [ -n "$S" ] && derived_rows "$S")"; fi
+  drun inv authorized kind=invoice order_id="$O" || true; I=$(prop inv id)
+  if [ -n "$I" ] && doc_posted c_invoice 318 "$I" erp.customer-invoice.issue; then
+    pass "customer invoice: CO, posted, balanced Fact_Acct, attributed (invoice $I)"
+  else fail "customer invoice" "invoice ${I:-none} not completed/posted/attributed"; fi
+  if [ -n "$I" ]; then
+    drun rcpt authorized kind=payment invoice_id="$I" || true; R=$(prop rcpt id)
+    if [ -n "$R" ] && doc_posted c_payment 335 "$R" erp.payment.record; then
+      pass "receipt: CO, posted, balanced Fact_Acct, attributed (payment $R)"
+    else fail "receipt" "payment ${R:-none} not completed/posted/attributed"; fi
+    AH=$(sql "SELECT max(c_allocationhdr_id) FROM c_allocationline WHERE c_payment_id = ${R:-0}")
+    if [ -n "$AH" ] && [ "$(sql "SELECT docstatus FROM c_allocationhdr WHERE c_allocationhdr_id = $AH")" = "CO" ] \
+       && attributed C_AllocationHdr "$AH" erp.allocation.record && [ "$(sql "SELECT ispaid FROM c_invoice WHERE c_invoice_id = $I")" = "Y" ]; then
+      pass "receipt allocation: CO under its own allocation authority, invoice paid (allocation $AH)"
+    else fail "receipt allocation" "allocation ${AH:-none}"; fi
+  fi
+fi
+
+# S2. Explicit allocation of an unallocated receipt against a second invoice.
+drun so2 authorized kind=order qty=1 || true; O2=$(prop so2 id)
+drun inv2 authorized kind=invoice order_id="${O2:-0}" || true; I2=$(prop inv2 id)
+GT2=$(sql "SELECT grandtotal FROM c_invoice WHERE c_invoice_id = ${I2:-0}")
+drun rcpt2 authorized kind=payment amount="${GT2:-1}" || true; R2=$(prop rcpt2 id)
+drun alloc authorized kind=allocation invoice_id="${I2:-0}" payment_id="${R2:-0}" || true; A=$(prop alloc id)
+if [ -n "$A" ] && [ "$(sql "SELECT docstatus FROM c_allocationhdr WHERE c_allocationhdr_id = $A")" = "CO" ] \
+   && attributed C_AllocationHdr "$A" erp.allocation.record; then pass "manual allocation: CO, attributed (allocation $A)"
+else fail "manual allocation" "allocation ${A:-none} ($(prop alloc error))"; fi
+
+# S3. Authority lost between draft and completion, for every class.
+drun so3 authorized kind=order qty=1 || true; O3=$(prop so3 id)
+for mode in revoked wrong_activity other_le expired documentary_hold; do
+  drun "d_ord_$mode" authorized kind=order qty=1 complete=false || true
+  drun "d_shp_$mode" authorized kind=shipment order_id="${O3:-0}" complete=false || true
+  drun "d_inv_$mode" authorized kind=invoice order_id="${O3:-0}" complete=false || true
+  drun "d_pay_$mode" authorized kind=payment amount=5 complete=false || true
+  for pair in "ord:c_order:259:C_Order" "shp:m_inout:319:M_InOut" "inv:c_invoice:318:C_Invoice" "pay:c_payment:335:C_Payment"; do
+    IFS=: read -r k rel tid tbl <<< "$pair"
+    D=$(prop "d_${k}_$mode" id)
+    if [ -z "$D" ]; then fail "$mode $tbl" "draft not created ($(prop "d_${k}_$mode" error))"; continue; fi
+    run "c_${k}_$mode" "$mode" action=completeDoc table="$tbl" id="$D" || true
+    if doc_refused "$rel" "$tid" "$D" "c_${k}_$mode" && { [ "$k" != shp ] || [ "$(cost_details "$D")" = "0" ]; }; then
+      pass "$mode at $tbl completion: refused, no CO, no ledger$( [ "$k" = shp ] && echo ', no costing')"
+    else fail "$mode at $tbl completion" "$tbl $D completed, posted or costed"; fi
+  done
+done
+
+# S4. Injected failure after ledger AND cost rows, before commit: nothing survives.
+drun shp_fail authorized kind=shipment order_id="${O3:-0}" rollbackAfterPost=true || true
+SF=$(prop shp_fail id); FF=$(prop shp_fail facts_before_rollback); CF=$(prop shp_fail costs_before_rollback)
+if [ -n "$SF" ] && [ "${FF:-0}" -gt 0 ] && [ "${CF:-0}" -gt 0 ] && [ "$(sql "SELECT count(*) FROM m_inout WHERE m_inout_id = $SF")" = "0" ] \
+   && [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $SF")" = "0" ] \
+   && [ "$(cost_details "$SF")" = "0" ] && [ "$(derived_rows "$SF")" = "0" ]; then
+  pass "injected failure after $FF Fact_Acct and $CF cost rows: no shipment, ledger, costing or attribution survives"
+else fail "injected shipment failure" "shipment ${SF:-?} facts ${FF:-?} costs ${CF:-?} ($(prop shp_fail error))"; fi
+
+# S5. Retry and background repost of the posted shipment.
+if [ -n "${S:-}" ]; then
+  F0=$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $S"); C0=$(cost_details "$S"); D0=$(derived_rows "$S")
+  run shp_retry authorized action=repostDoc table=M_InOut id="$S" || true
+  [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $S")" = "$F0" ] && [ "$(cost_details "$S")" = "$C0" ] \
+    && pass "shipment retry after commit: ledger ($F0) and costing ($C0) unchanged" || fail "shipment retry" "duplicated"
+  run shp_force authorized action=repostDoc table=M_InOut id="$S" force=true || true
+  if [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $S")" = "$F0" ] && balanced 319 "$S" \
+     && [ "$(cost_details "$S")" = "$C0" ]; then
+    pass "background forced shipment repost under authority: ledger rebuilt ($F0), cost detail not duplicated"
+  else fail "background forced shipment repost" "facts/costs changed ($(prop shp_force post_error))"; fi
+  run shp_force_rev revoked action=repostDoc table=M_InOut id="$S" force=true || true
+  [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $S")" = "$F0" ] && [ "$(cost_details "$S")" = "$C0" ] \
+    && [ "$(prop shp_force_rev post_error)" != "null" ] \
+    && pass "background forced shipment repost after revocation: refused, ledger and costing intact" \
+    || fail "background forced shipment repost after revocation" "state changed"
+fi
+
+# S6. Money out and purchase side stay denied on every route.
+drun pay_out authorized kind=payment direction=out amount=10 || true
+if baobab_denied pay_out && [ -z "$(prop pay_out id)" ] \
+   && [ "$(sql "SELECT count(*) FROM c_payment WHERE isreceipt = 'N' AND description LIKE 'Baobab Gate D%'")" = "0" ]; then
+  pass "outbound vendor payment: refused at creation"
+else fail "outbound vendor payment" "created ($(prop pay_out id))"; fi
+VP=$(sql "SELECT min(c_payment_id) FROM c_payment WHERE ad_client_id = 11 AND isreceipt = 'N' AND docstatus IN ('CO','CL')")
+if [ -n "$VP" ]; then
+  VF=$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 335 AND record_id = $VP")
+  run vp_repost authorized action=repostDoc table=C_Payment id="$VP" force=true || true
+  [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 335 AND record_id = $VP")" = "$VF" ] && [ "$(prop vp_repost post_error)" != "null" ] \
+    && pass "outbound payment posting (accounting path): refused, ledger unchanged" || fail "outbound payment posting" "ledger changed"
+fi
+VI=$(sql "SELECT min(c_invoice_id) FROM c_invoice WHERE ad_client_id = 11 AND issotrx = 'N' AND docstatus = 'CO' AND ispaid = 'N'")
+if [ -n "$VI" ] && [ -n "${R2:-}" ]; then
+  drun alloc_vendor authorized kind=allocation invoice_id="$VI" payment_id="$R2" amount=1 || true
+  baobab_denied alloc_vendor && [ "$(sql "SELECT count(*) FROM c_allocationline WHERE c_invoice_id = $VI AND c_payment_id = $R2")" = "0" ] \
+    && pass "allocation against a vendor invoice: refused" || fail "vendor allocation" "allocated"
+fi
+MR=$(sql "SELECT min(m_inout_id) FROM m_inout WHERE ad_client_id = 11 AND issotrx = 'N' AND docstatus IN ('CO','CL')")
+if [ -n "$MR" ]; then
+  MF=$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $MR")
+  run mr_repost authorized action=repostDoc table=M_InOut id="$MR" force=true || true
+  [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $MR")" = "$MF" ] && [ "$(prop mr_repost post_error)" != "null" ] \
+    && pass "purchase material receipt posting: refused, ledger unchanged" || fail "purchase receipt posting" "ledger changed"
+fi
+
+# S7. Direction is immutable; direct SQL costing, outbound completion and payment ledger are fenced.
+if [ -n "${R:-}" ]; then
+  out=$(psql "$DATABASE_URL" -c "UPDATE adempiere.c_payment SET isreceipt = 'N' WHERE c_payment_id = $R" 2>&1 || true)
+  echo "$out" | grep -q "cannot change direction" && pass "receipt direction flip by SQL: refused" || fail "direction flip" "$out"
+  fenced "direct SQL outbound completed payment" "INSERT INTO adempiere.c_payment SELECT (jsonb_populate_record(p, jsonb_build_object(
+      'c_payment_id', (SELECT max(c_payment_id) + 1 FROM adempiere.c_payment), 'c_payment_uu', gen_random_uuid()::text,
+      'isreceipt', 'N', 'docstatus', 'CO', 'documentno', 'GATE-D-OUT'))).* FROM adempiere.c_payment p WHERE c_payment_id = $R" "INSERT 0 1"
+  fenced "direct SQL payment Fact_Acct insert" "INSERT INTO adempiere.fact_acct SELECT (jsonb_populate_record(f, jsonb_build_object(
+      'fact_acct_id', (SELECT max(fact_acct_id) + 1 FROM adempiere.fact_acct), 'fact_acct_uu', gen_random_uuid()::text))).*
+      FROM adempiere.fact_acct f WHERE ad_table_id = 335 AND record_id = $R LIMIT 1" "INSERT 0 1"
+fi
+if [ -n "${S:-}" ]; then
+  fenced "direct SQL M_CostDetail insert" "INSERT INTO adempiere.m_costdetail SELECT (jsonb_populate_record(cd, jsonb_build_object(
+      'm_costdetail_id', (SELECT max(m_costdetail_id) + 1 FROM adempiere.m_costdetail), 'm_costdetail_uu', gen_random_uuid()::text))).*
+      FROM adempiere.m_costdetail cd JOIN adempiere.m_inoutline l ON l.m_inoutline_id = cd.m_inoutline_id WHERE l.m_inout_id = $S LIMIT 1" "INSERT 0 1"
+  fenced "direct SQL M_Cost update" "UPDATE adempiere.m_cost c SET currentqty = currentqty + 1 FROM adempiere.m_costdetail cd
+      JOIN adempiere.m_inoutline l ON l.m_inoutline_id = cd.m_inoutline_id
+      WHERE l.m_inout_id = $S AND c.m_product_id = cd.m_product_id AND c.c_acctschema_id = cd.c_acctschema_id
+        AND c.m_costelement_id = cd.m_costelement_id AND c.ad_client_id = 11 AND c.ad_org_id = 0 AND c.m_attributesetinstance_id = 0" "UPDATE 1"
 fi
 
 note "Gate D failures: $FAILURES"
