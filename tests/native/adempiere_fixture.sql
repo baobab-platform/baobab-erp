@@ -32,3 +32,19 @@ CREATE TABLE adempiere.fact_acct (fact_acct_id numeric(10) PRIMARY KEY, ad_clien
   c_period_id numeric(10), dateacct date NOT NULL DEFAULT current_date,
   amtacctdr numeric NOT NULL DEFAULT 0, amtacctcr numeric NOT NULL DEFAULT 0);
 INSERT INTO adempiere.ad_table VALUES (224, 'GL_Journal'), (318, 'C_Invoice'), (335, 'C_Payment');
+-- P0-04B-05: direction and derived costing columns/tables the native fences read.
+ALTER TABLE adempiere.c_payment ADD COLUMN isreceipt char(1) NOT NULL DEFAULT 'Y';
+CREATE TABLE adempiere.m_inoutline (m_inoutline_id numeric(10) PRIMARY KEY, m_inout_id numeric(10) NOT NULL,
+  ad_client_id numeric(10) NOT NULL, ad_org_id numeric(10) NOT NULL);
+CREATE TABLE adempiere.c_allocationline (c_allocationline_id numeric(10) PRIMARY KEY,
+  c_allocationhdr_id numeric(10) NOT NULL, c_invoice_id numeric(10), c_payment_id numeric(10),
+  ad_client_id numeric(10) NOT NULL, ad_org_id numeric(10) NOT NULL);
+CREATE TABLE adempiere.m_costdetail (m_costdetail_id numeric(10) PRIMARY KEY, ad_client_id numeric(10) NOT NULL,
+  ad_org_id numeric(10) NOT NULL, m_product_id numeric(10) NOT NULL, c_acctschema_id numeric(10) NOT NULL,
+  m_costelement_id numeric(10), m_inoutline_id numeric(10), issotrx char(1) NOT NULL DEFAULT 'Y',
+  amt numeric NOT NULL DEFAULT 0, qty numeric NOT NULL DEFAULT 0);
+CREATE TABLE adempiere.m_cost (ad_client_id numeric(10) NOT NULL, ad_org_id numeric(10) NOT NULL,
+  m_product_id numeric(10) NOT NULL, c_acctschema_id numeric(10) NOT NULL, m_costelement_id numeric(10) NOT NULL,
+  currentcostprice numeric NOT NULL DEFAULT 0, currentqty numeric NOT NULL DEFAULT 0,
+  PRIMARY KEY (ad_client_id, ad_org_id, m_product_id, c_acctschema_id, m_costelement_id));
+INSERT INTO adempiere.ad_table VALUES (319, 'M_InOut'), (735, 'C_AllocationHdr');

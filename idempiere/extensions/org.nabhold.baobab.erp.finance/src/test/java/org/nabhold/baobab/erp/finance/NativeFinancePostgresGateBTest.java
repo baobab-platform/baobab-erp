@@ -340,4 +340,228 @@ class NativeFinancePostgresGateBTest {
             c.rollback();
         }
     }
+
+    // ---- P0-04B-05: direction and derived costing --------------------------------------------
+
+    private static int insertDoc(Connection c, String relation, String direction, String value) throws SQLException {
+        int id = IDS.incrementAndGet();
+        try (Statement s = c.createStatement()) {
+            s.execute("INSERT INTO adempiere." + relation + " (" + relation + "_id, ad_client_id, ad_org_id, c_doctype_id, "
+                    + direction + ") VALUES (" + id + ", 11, 11, 201, '" + value + "')");
+        }
+        return id;
+    }
+
+    private static NativeRecord header(String table, int id, String trx, String direction, String value) {
+        return new NativeRecord(table, CLIENT, ORG, id, "document:TIMING_BEFORE_COMPLETE", trx,
+                col -> col.equals(direction) ? value : null);
+    }
+
+    private static void denied(Connection c) {
+        SQLException e = assertThrows(SQLException.class, c::commit);
+        assertTrue(e.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"), e.getMessage());
+    }
+
+    @Test
+    void outboundPaymentHasNoClassAndForgedAuthorityCannotCompleteOrPostIt() throws Exception {
+        int payment;
+        try (Connection c = transaction()) {
+            payment = insertDoc(c, "c_payment", "isreceipt", "N");
+            c.commit();
+        }
+        try (Connection c = transaction()) {
+            var resolver = new NativeOperationResolver(trx -> c);
+            assertNull(resolver.classify(header("C_Payment", payment, "gate-b-out", "IsReceipt", "N")));
+            assertNull(resolver.classify(header("C_Payment", payment, "gate-b-out", "IsReceipt", null)),
+                    "a missing direction denies");
+            assertNull(resolver.classify(new NativeRecord("Fact_Acct", CLIENT, ORG, 0, "model:TYPE_BEFORE_NEW", "gate-b-out",
+                    col -> switch (col) { case "AD_Table_ID" -> 335; case "Record_ID" -> payment; default -> null; })),
+                    "an outbound payment's ledger has no class");
+            // Even an attribution forged for payment.record cannot complete it at COMMIT.
+            NativeOperation forged = new NativeOperation(NativeOperation.PAYMENT, "C_Payment", payment,
+                    header("C_Payment", payment, "gate-b-out", "IsReceipt", "N"));
+            NativeConnections same = trx -> c;
+            NativePlacement p = new PlacementContextSource(same).currentPlacement(forged);
+            new NativeFinanceAttribution(same).append(forged, p, decision(Instant.now().plusSeconds(25)),
+                    new NativeFinanceReadiness.FinanceBaseline(LE, 1));
+            try (Statement s = c.createStatement()) {
+                s.execute("UPDATE adempiere.c_payment SET docstatus = 'CO' WHERE c_payment_id = " + payment);
+            }
+            denied(c);
+        }
+        assertEquals(0, count("SELECT count(*) FROM adempiere.c_payment WHERE docstatus = 'CO' AND c_payment_id = " + payment));
+    }
+
+    @Test
+    void governedDirectionCannotBeChanged() throws Exception {
+        int receipt;
+        int invoice;
+        try (Connection c = transaction()) {
+            receipt = insertDoc(c, "c_payment", "isreceipt", "Y");
+            invoice = insertDoc(c, "c_invoice", "issotrx", "Y");
+            c.commit();
+        }
+        for (String sql : new String[] {
+                "UPDATE adempiere.c_payment SET isreceipt = 'N' WHERE c_payment_id = " + receipt,
+                "UPDATE adempiere.c_invoice SET issotrx = 'N' WHERE c_invoice_id = " + invoice}) {
+            try (Connection c = transaction(); Statement s = c.createStatement()) {
+                SQLException e = assertThrows(SQLException.class, () -> s.execute(sql));
+                assertTrue(e.getMessage().contains("cannot change direction"), e.getMessage());
+            }
+        }
+    }
+
+    @Test
+    void completionNeedsAnAttributionOfTheDocumentsOwnClass() throws Exception {
+        int invoice;
+        try (Connection c = transaction()) {
+            invoice = insertDoc(c, "c_invoice", "issotrx", "Y");
+            c.commit();
+        }
+        try (Connection c = transaction()) {
+            // A current attribution of ANOTHER class for this invoice is not authority to issue it.
+            NativeOperation wrongClass = new NativeOperation(NativeOperation.GL_JOURNAL, "C_Invoice", invoice,
+                    header("C_Invoice", invoice, "gate-b-class", "IsSOTrx", "Y"));
+            NativeConnections same = trx -> c;
+            NativePlacement p = new PlacementContextSource(same).currentPlacement(wrongClass);
+            new NativeFinanceAttribution(same).append(wrongClass, p, decision(Instant.now().plusSeconds(25)),
+                    new NativeFinanceReadiness.FinanceBaseline(LE, 1));
+            try (Statement s = c.createStatement()) {
+                s.execute("UPDATE adempiere.c_invoice SET docstatus = 'CO' WHERE c_invoice_id = " + invoice);
+            }
+            denied(c);
+        }
+    }
+
+    @Test
+    void allocationToAVendorInvoiceHasNoClass() throws Exception {
+        try (Connection c = transaction()) {
+            int vendorInvoice = insertDoc(c, "c_invoice", "issotrx", "N");
+            int receipt = insertDoc(c, "c_payment", "isreceipt", "Y");
+            int allocation = IDS.incrementAndGet();
+            try (Statement s = c.createStatement()) {
+                s.execute("INSERT INTO adempiere.c_allocationhdr (c_allocationhdr_id, ad_client_id, ad_org_id) VALUES ("
+                        + allocation + ", 11, 11)");
+                s.execute("INSERT INTO adempiere.c_allocationline VALUES (" + IDS.incrementAndGet() + ", " + allocation
+                        + ", " + vendorInvoice + ", " + receipt + ", 11, 11)");
+            }
+            var resolver = new NativeOperationResolver(trx -> c);
+            assertNull(resolver.classify(new NativeRecord("C_AllocationHdr", CLIENT, ORG, allocation,
+                    "document:TIMING_BEFORE_COMPLETE", "gate-b-alloc", col -> null)));
+            assertNull(resolver.classify(new NativeRecord("C_AllocationLine", CLIENT, ORG, 0, "model:TYPE_BEFORE_NEW",
+                    "gate-b-alloc", col -> switch (col) {
+                        case "C_AllocationHdr_ID" -> allocation; case "C_Invoice_ID" -> vendorInvoice;
+                        case "C_Payment_ID" -> receipt; default -> null; })));
+            c.rollback();
+        }
+    }
+
+    private static NativeRecord costDetail(int line, String soTrx, String trx) {
+        return new NativeRecord("M_CostDetail", CLIENT, ORG, 0, "model:TYPE_BEFORE_NEW", trx, col -> switch (col) {
+            case "M_InOutLine_ID" -> line;
+            case "IsSOTrx" -> soTrx;
+            case "M_Product_ID" -> 501;
+            case "C_AcctSchema_ID" -> 101;
+            case "M_CostElement_ID" -> 601;
+            default -> null;
+        });
+    }
+
+    private static int shipmentLine(Connection c, String soTrx) throws SQLException {
+        int shipment = insertDoc(c, "m_inout", "issotrx", soTrx);
+        int line = IDS.incrementAndGet();
+        try (Statement s = c.createStatement()) {
+            s.execute("INSERT INTO adempiere.m_inoutline VALUES (" + line + ", " + shipment + ", 11, 11)");
+        }
+        return line;
+    }
+
+    private static void writeCost(Connection c, int line) throws SQLException {
+        try (Statement s = c.createStatement()) {
+            s.execute("INSERT INTO adempiere.m_costdetail (m_costdetail_id, ad_client_id, ad_org_id, m_product_id, "
+                    + "c_acctschema_id, m_costelement_id, m_inoutline_id) VALUES (" + IDS.incrementAndGet()
+                    + ", 11, 11, 501, 101, 601, " + line + ")");
+            s.execute("INSERT INTO adempiere.m_cost (ad_client_id, ad_org_id, m_product_id, c_acctschema_id, "
+                    + "m_costelement_id, currentqty) VALUES (11, 0, 501, 101, 601, -1) ON CONFLICT "
+                    + "(ad_client_id, ad_org_id, m_product_id, c_acctschema_id, m_costelement_id) "
+                    + "DO UPDATE SET currentqty = adempiere.m_cost.currentqty - 1");
+        }
+    }
+
+    @Test
+    void shipmentCostingCommitsOnlyAsAConsequenceOfItsAuthorisedRoot() throws Exception {
+        int line;
+        try (Connection c = transaction()) {
+            line = shipmentLine(c, "Y");
+            c.commit();
+        }
+        try (Connection c = transaction()) {
+            NativeConnections same = trx -> c;
+            NativeOperation root = new NativeOperationResolver(same).classify(costDetail(line, "Y", "gate-b-cost"));
+            assertNotNull(root, "a sales shipment line roots its cost detail");
+            assertEquals(NativeOperation.SHIPMENT, root.operationClass());
+            assertEquals("M_InOut", root.sourceTable());
+            NativePlacement p = new PlacementContextSource(same).currentPlacement(root);
+            new NativeFinanceAttribution(same).append(root, p, decision(Instant.now().plusSeconds(25)),
+                    new NativeFinanceReadiness.FinanceBaseline(LE, 1));
+            new NativeDerivedWrites(same).appendCostDetail(root);
+            NativeRecord aggregate = new NativeRecord("M_Cost", CLIENT, 0, 0, "model:TYPE_BEFORE_CHANGE", "gate-b-cost",
+                    col -> switch (col) { case "M_Product_ID" -> 501; case "C_AcctSchema_ID" -> 101; default -> null; });
+            assertTrue(new NativeDerivedWrites(same).costCovered(aggregate), "client-level aggregate cost is covered");
+            writeCost(c, line);
+            c.commit();
+        }
+        assertEquals(1, count("SELECT count(*) FROM adempiere.m_costdetail WHERE m_inoutline_id = " + line));
+    }
+
+    @Test
+    void costingWithoutAnAuthorisedRootIsDenied() throws Exception {
+        int salesLine;
+        int purchaseLine;
+        try (Connection c = transaction()) {
+            salesLine = shipmentLine(c, "Y");
+            purchaseLine = shipmentLine(c, "N");
+            c.commit();
+        }
+        try (Connection c = transaction()) {
+            var resolver = new NativeOperationResolver(trx -> c);
+            assertNull(resolver.classify(costDetail(purchaseLine, "N", "gate-b-nocost")), "a material receipt is not catalogued");
+            assertNull(resolver.classify(costDetail(salesLine, "N", "gate-b-nocost")), "the cost detail's own direction must hold");
+            NativeRecord twoSources = new NativeRecord("M_CostDetail", CLIENT, ORG, 0, "model:TYPE_BEFORE_NEW", "gate-b-nocost",
+                    col -> switch (col) { case "M_InOutLine_ID" -> salesLine; case "C_InvoiceLine_ID" -> 9; case "IsSOTrx" -> "Y";
+                        default -> null; });
+            assertNull(resolver.classify(twoSources), "an ambiguous cost source denies");
+            // Without the root's attribution in this transaction nothing derives.
+            NativeOperation root = resolver.classify(costDetail(salesLine, "Y", "gate-b-nocost"));
+            assertThrows(SQLException.class, () -> new NativeDerivedWrites(trx -> c).appendCostDetail(root));
+            c.rollback();
+        }
+        // Direct SQL costing is refused at COMMIT.
+        try (Connection c = transaction()) {
+            writeCost(c, salesLine);
+            denied(c);
+        }
+        assertEquals(0, count("SELECT count(*) FROM adempiere.m_costdetail WHERE m_inoutline_id = " + salesLine));
+    }
+
+    @Test
+    void expiringRootRollsBackItsCosting() throws Exception {
+        int line;
+        try (Connection c = transaction()) {
+            line = shipmentLine(c, "Y");
+            c.commit();
+        }
+        try (Connection c = transaction()) {
+            NativeConnections same = trx -> c;
+            NativeOperation root = new NativeOperationResolver(same).classify(costDetail(line, "Y", "gate-b-lapse"));
+            NativePlacement p = new PlacementContextSource(same).currentPlacement(root);
+            new NativeFinanceAttribution(same).append(root, p, decision(Instant.now().plusMillis(1500)),
+                    new NativeFinanceReadiness.FinanceBaseline(LE, 1));
+            new NativeDerivedWrites(same).appendCostDetail(root);
+            writeCost(c, line);
+            Thread.sleep(2000);
+            denied(c);
+        }
+        assertEquals(0, count("SELECT count(*) FROM adempiere.m_costdetail WHERE m_inoutline_id = " + line));
+    }
 }

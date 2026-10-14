@@ -43,6 +43,11 @@ final class NativeFinanceAttribution {
         this.connections = connections;
     }
 
+    /** Derived costing writes bind to these attributions on the same native transactions. */
+    NativeDerivedWrites derivedWrites() {
+        return new NativeDerivedWrites(connections);
+    }
+
     /** True when this transaction already holds current authority for the source document. */
     boolean hasCurrent(NativeOperation operation) throws Exception {
         if (operation.sourceRecordId() <= 0) return false;

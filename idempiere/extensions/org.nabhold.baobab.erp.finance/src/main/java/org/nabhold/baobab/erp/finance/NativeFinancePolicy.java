@@ -31,7 +31,10 @@ public final class NativeFinancePolicy {
         if (!protectedRuntime) {
             return null; // only explicitly configured isolated synthetic local test runtimes
         }
-        if (record.adClientId() <= 0 || record.adOrgId() <= 0 || record.recordId() < 0
+        // Client-level costing keeps aggregate cost at org 0; every other
+        // governed write needs a real org (its placement depends on it).
+        if (record.adClientId() <= 0 || record.adOrgId() < 0 || record.adOrgId() == 0 && !costing(record.table())
+                || record.recordId() < 0
                 || record.action() == null || record.action().isBlank() || record.transactionName() == null
                 || record.transactionName().isBlank() || provider == null) {
             return "BAOBAB_NATIVE_FINANCE_DENIED: current CP/IAM/financial authority unavailable";
@@ -44,6 +47,11 @@ public final class NativeFinancePolicy {
             // Intentionally do not include the possibly sensitive exception in the veto.
         }
         return "BAOBAB_NATIVE_FINANCE_DENIED: operation-specific native authority denied";
+    }
+
+    /** Costing rows: never operations of their own, only consequences of an authorised root. */
+    static boolean costing(String table) {
+        return "M_Cost".equals(table) || "M_CostDetail".equals(table);
     }
 
     public static Set<String> protectedTables() {
