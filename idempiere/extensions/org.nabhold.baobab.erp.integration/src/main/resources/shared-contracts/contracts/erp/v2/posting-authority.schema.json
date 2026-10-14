@@ -1,0 +1,401 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.baobab-platform.com/erp/v2/posting-authority.schema.json",
+  "title": "ERP posting authority resolution (P0-04B ERP, ADR-SHARED-034)",
+  "description": "Joins Control Plane legal-actor authority to an ERP-owned native placement at the moment of one accounting operation. CP owns the tenant, operating Organisation, market, verified legal entity, mandate, role, activity and engine-instance binding; ERP owns the native placement and accounting execution. The request can only name a previously resolved principal-owned RUNTIME context, the ERP engine instance, a catalogued operation class and an opaque ERP placement reference: it cannot select a tenant, Organisation, legal entity, mandate, role, market or decision time. Native vendor identifiers never cross this boundary. An AUTHORIZED decision is a short-lived fact for exactly one operation reference, never a provider permission, a cached grant or proof of finance readiness.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {},
+  "$defs": {
+    "operationClass": {
+      "type": "string",
+      "enum": [
+        "erp.gl-journal.post",
+        "erp.customer-invoice.issue",
+        "erp.payment.record",
+        "erp.allocation.record",
+        "erp.shipment.complete",
+        "erp.sales-order.complete"
+      ],
+      "description": "Closed vocabulary; posting-operations.yaml maps each class to exactly one legal-actor role and activity. Extensions require a versioned contract revision."
+    },
+    "nativePlacementReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "placement_id",
+        "placement_version"
+      ],
+      "description": "Opaque reference to one approved version of an ERP-owned native placement (ADR-ERP-021). It identifies where ERP placed the operating Organisation; it never creates authority and never carries native client or organisation identifiers.",
+      "properties": {
+        "placement_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "placement_version": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "operationReference": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[\\x21-\\x7E]+$",
+      "description": "Exact ERP operation and transaction the decision is bound to. A decision for one reference is never valid for another."
+    },
+    "PostingAuthorityRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "context_id",
+        "engine_instance_id",
+        "operation_class",
+        "native_placement_reference",
+        "operation_reference"
+      ],
+      "properties": {
+        "context_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "engine_instance_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/engineInstanceId"
+        },
+        "operation_class": {
+          "$ref": "#/$defs/operationClass"
+        },
+        "native_placement_reference": {
+          "$ref": "#/$defs/nativePlacementReference"
+        },
+        "operation_reference": {
+          "$ref": "#/$defs/operationReference"
+        }
+      }
+    },
+    "PostingAuthorityDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision_id",
+        "context_id",
+        "engine_instance_id",
+        "operation_class",
+        "native_placement_reference",
+        "operation_reference",
+        "outcome",
+        "evaluated_at",
+        "policy_reference",
+        "provider_permissions_granted"
+      ],
+      "properties": {
+        "decision_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Identifier of the immutable decision record CP retains, so a posting can later answer which legal actor applied at its time (ADR-BCP-027 §10.2)."
+        },
+        "context_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "engine_instance_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/engineInstanceId"
+        },
+        "operation_class": {
+          "$ref": "#/$defs/operationClass"
+        },
+        "native_placement_reference": {
+          "$ref": "#/$defs/nativePlacementReference"
+        },
+        "operation_reference": {
+          "$ref": "#/$defs/operationReference"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "AUTHORIZED",
+            "NO_APPLICABLE_MANDATE",
+            "AMBIGUOUS",
+            "REVOKED_OR_EXPIRED",
+            "ACTOR_NOT_VERIFIED",
+            "ENGINE_INSTANCE_NOT_BOUND",
+            "CONTEXT_NOT_USABLE"
+          ]
+        },
+        "tenant_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/tenantId"
+        },
+        "operating_organisation_id": {
+          "$ref": "../../organisation/v2/domain.schema.json#/$defs/organisationId"
+        },
+        "market": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$"
+        },
+        "legal_actor_role": {
+          "$ref": "../../organisation/v2/legal-actor-mandate.schema.json#/$defs/legalActorRole"
+        },
+        "activity": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "capability_key": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 120
+        },
+        "mandate_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "CP mandates are immutable; a change is a new mandate, so this identifier pins the exact mandate version that applied."
+        },
+        "supersedes_mandate_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "responsible_legal_entity_id": {
+          "$ref": "../../control-plane/v1/domain.schema.json#/$defs/canonicalLegalEntityId"
+        },
+        "evidence_references": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "mandate_effective_from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "mandate_effective_to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "evaluated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "At most 30 seconds after evaluated_at and never after the RUNTIME context or mandate end (semantic rule 1). ERP must deny at its database COMMIT once min(expires_at, local receipt + 30 s) has passed."
+        },
+        "policy_reference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "provider_permissions_granted": {
+          "const": false
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "AUTHORIZED"
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          },
+          "then": {
+            "required": [
+              "tenant_id",
+              "operating_organisation_id",
+              "market",
+              "legal_actor_role",
+              "activity",
+              "mandate_id",
+              "responsible_legal_entity_id",
+              "evidence_references",
+              "mandate_effective_from",
+              "expires_at"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "mandate_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "supersedes_mandate_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "responsible_legal_entity_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "evidence_references"
+                  ]
+                },
+                {
+                  "required": [
+                    "mandate_effective_from"
+                  ]
+                },
+                {
+                  "required": [
+                    "mandate_effective_to"
+                  ]
+                },
+                {
+                  "required": [
+                    "expires_at"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation_class": {
+                "const": "erp.gl-journal.post"
+              }
+            },
+            "required": [
+              "operation_class"
+            ]
+          },
+          "then": {
+            "properties": {
+              "legal_actor_role": {
+                "const": "ACCOUNTING_ENTITY"
+              },
+              "activity": {
+                "const": "GENERAL_LEDGER_POSTING"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation_class": {
+                "const": "erp.customer-invoice.issue"
+              }
+            },
+            "required": [
+              "operation_class"
+            ]
+          },
+          "then": {
+            "properties": {
+              "legal_actor_role": {
+                "const": "INVOICE_ISSUER"
+              },
+              "activity": {
+                "const": "CUSTOMER_INVOICE_ISSUANCE"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation_class": {
+                "const": "erp.payment.record"
+              }
+            },
+            "required": [
+              "operation_class"
+            ]
+          },
+          "then": {
+            "properties": {
+              "legal_actor_role": {
+                "const": "ACCOUNTING_ENTITY"
+              },
+              "activity": {
+                "const": "PAYMENT_RECORDING"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation_class": {
+                "const": "erp.allocation.record"
+              }
+            },
+            "required": [
+              "operation_class"
+            ]
+          },
+          "then": {
+            "properties": {
+              "legal_actor_role": {
+                "const": "ACCOUNTING_ENTITY"
+              },
+              "activity": {
+                "const": "PAYMENT_ALLOCATION"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation_class": {
+                "const": "erp.shipment.complete"
+              }
+            },
+            "required": [
+              "operation_class"
+            ]
+          },
+          "then": {
+            "properties": {
+              "legal_actor_role": {
+                "const": "CONTRACTING_PARTY"
+              },
+              "activity": {
+                "const": "GOODS_DELIVERY"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation_class": {
+                "const": "erp.sales-order.complete"
+              }
+            },
+            "required": [
+              "operation_class"
+            ]
+          },
+          "then": {
+            "properties": {
+              "legal_actor_role": {
+                "const": "CONTRACTING_PARTY"
+              },
+              "activity": {
+                "const": "SALES_ORDER_COMMITMENT"
+              }
+            }
+          }
+        }
+      ],
+      "description": "CP's decision for one operation. Semantic rules every consumer MUST check before trusting an AUTHORIZED decision, because JSON Schema cannot compare values: (1) evaluated_at < expires_at <= evaluated_at + 30 seconds; (2) context_id, engine_instance_id, operation_class, native_placement_reference and operation_reference equal the request's; (3) the consumer bounds its own use to min(expires_at, local receipt time + 30 seconds) and denies at its database COMMIT once that has passed. Role and activity are bound to operation_class by this schema and mirror posting-operations.yaml."
+    }
+  }
+}

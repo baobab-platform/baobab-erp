@@ -36,6 +36,8 @@ public final class FinanceActivator implements BundleActivator {
     private ServiceTracker<NativeFinancialContextSource, NativeFinancialContextSource> runtimeContexts;
     private ServiceTracker<NativeFinanceReadiness, NativeFinanceReadiness> financeReadiness;
     private ServiceRegistration<NativeFinancialAuthority> cpAdapterRegistration;
+    private ServiceRegistration<NativeFinancialContextSource> placementRegistration;
+    private ServiceRegistration<NativeFinanceReadiness> readinessRegistration;
     private final List<Registration> registrations = new ArrayList<>();
     private Object nativeEngine;
     private Class<?> validatorClass;
@@ -52,6 +54,13 @@ public final class FinanceActivator implements BundleActivator {
         financeReadiness = new ServiceTracker<>(context, NativeFinanceReadiness.class, null);
         financeReadiness.open();
         try {
+            // P0-04B ERP: the platform-owned placement and Finance readiness
+            // providers read only governed tables on the native transaction.
+            // They confer no authority; CP still decides every operation.
+            placementRegistration = context.registerService(NativeFinancialContextSource.class,
+                    new PlacementContextSource(NativeConnections.IDEMPIERE), null);
+            readinessRegistration = context.registerService(NativeFinanceReadiness.class,
+                    new BaselineFinanceReadiness(NativeConnections.IDEMPIERE), null);
             registerCpAuthority(context);
             ClassLoader loader = FinanceActivator.class.getClassLoader();
             Class<?> engineClass = Class.forName("org.compiere.model.ModelValidationEngine", true, loader);
@@ -99,7 +108,7 @@ public final class FinanceActivator implements BundleActivator {
         }
         WorkloadTokenProvider token = new WorkloadTokenProvider(
                 tokenUrl, client, secret,
-                "context:resolve legal-actor:assess documentary:restriction-assess");
+                "context:resolve erp-posting-authority:resolve documentary:restriction-assess");
         CpNativeFinancialAuthority service = new CpNativeFinancialAuthority(
                 cp, () -> {
                     try {
@@ -107,9 +116,9 @@ public final class FinanceActivator implements BundleActivator {
                     } catch (Exception unavailable) {
                         throw new IllegalStateException("IAM workload authentication unavailable");
                     }
-                }, loopbackTest, runtimeContexts, financeReadiness,
-                new NativeFinanceAttribution(
-                        NativeFinanceAttribution.NATIVE_TRANSACTION_CONNECTION));
+                }, loopbackTest, new NativeOperationResolver(NativeConnections.IDEMPIERE),
+                runtimeContexts, financeReadiness,
+                new NativeFinanceAttribution(NativeConnections.IDEMPIERE));
         cpAdapterRegistration = context.registerService(NativeFinancialAuthority.class, service, null);
     }
 
@@ -149,10 +158,19 @@ public final class FinanceActivator implements BundleActivator {
                     int org = (Integer) po.getClass().getMethod("getAD_Org_ID").invoke(po);
                     int nativeId = (Integer) po.getClass().getMethod("get_ID").invoke(po);
                     String trxName = (String) po.getClass().getMethod("get_TrxName").invoke(po);
-                    String verdict = NativeFinancePolicy.requireBeforeMutation(
-                            table, client, org, nativeId,
+                    Method getValue = po.getClass().getMethod("get_Value", String.class);
+                    // Column values come from the native PO being saved, never from a caller.
+                    NativeRecord record = new NativeRecord(table, client, org, nativeId,
                             document ? "document:" + constantName(timing, document) : "model:" + constantName(timing, document),
-                            trxName,
+                            trxName, column -> {
+                                try {
+                                    return getValue.invoke(po, column);
+                                } catch (ReflectiveOperationException unreadable) {
+                                    return null;
+                                }
+                            });
+                    String verdict = NativeFinancePolicy.requireBeforeMutation(
+                            record,
                             NativeFinancePolicy.protectedRuntime(
                                 System.getProperty("baobab.erp.native.environment")),
                             authorities == null ? null : authorities.getService());
@@ -232,6 +250,14 @@ public final class FinanceActivator implements BundleActivator {
         if (cpAdapterRegistration != null) {
             cpAdapterRegistration.unregister();
             cpAdapterRegistration = null;
+        }
+        if (placementRegistration != null) {
+            placementRegistration.unregister();
+            placementRegistration = null;
+        }
+        if (readinessRegistration != null) {
+            readinessRegistration.unregister();
+            readinessRegistration = null;
         }
         if (runtimeContexts != null) {
             runtimeContexts.close();

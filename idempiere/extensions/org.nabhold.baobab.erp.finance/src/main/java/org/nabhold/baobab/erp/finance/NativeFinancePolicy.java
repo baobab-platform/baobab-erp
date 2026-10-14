@@ -24,21 +24,20 @@ public final class NativeFinancePolicy {
     }
 
     public static String requireBeforeMutation(
-            String table, int client, int org, int nativeId, String action,
-            String trxName, boolean protectedRuntime, NativeFinancialAuthority provider) {
-        if (!FINANCIAL_TABLES.contains(table)) {
+            NativeRecord record, boolean protectedRuntime, NativeFinancialAuthority provider) {
+        if (record == null || !FINANCIAL_TABLES.contains(record.table())) {
             return null;
         }
         if (!protectedRuntime) {
             return null; // only explicitly configured isolated synthetic local test runtimes
         }
-        if (client <= 0 || org <= 0 || nativeId < 0
-                || action == null || action.isBlank() || trxName == null
-                || trxName.isBlank() || provider == null) {
+        if (record.adClientId() <= 0 || record.adOrgId() <= 0 || record.recordId() < 0
+                || record.action() == null || record.action().isBlank() || record.transactionName() == null
+                || record.transactionName().isBlank() || provider == null) {
             return "BAOBAB_NATIVE_FINANCE_DENIED: current CP/IAM/financial authority unavailable";
         }
         try {
-            if (provider.currentlyAuthorised(table, client, org, nativeId, action, trxName)) {
+            if (provider.currentlyAuthorised(record)) {
                 return null;
             }
         } catch (RuntimeException unavailable) {

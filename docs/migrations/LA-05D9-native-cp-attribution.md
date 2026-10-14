@@ -30,3 +30,14 @@ and readiness checks. The native client bounds retained bytes and the complete
 response deadline; malformed or unavailable facts cannot reach attribution.
 This convergence grants no workload admission or protected execution support.
 See the [contract-convergence maintenance plan](../plans/P0-04A-erp-contract-convergence.md).
+
+## P0-04B ERP follow-up (14 October 2026)
+
+The two trusted ports now have platform-owned providers backed by governed tables
+(`PlacementContextSource`, `BaselineFinanceReadiness`), and the authority calls the
+ADR-SHARED-034 posting-authority resolver instead of the bare legal assessment.
+Attribution records CP decision, mandate lineage, placement and Finance baseline, and
+`db/native-migrations` adds the database COMMIT fence. Required acceptance items 1 and 3
+are implemented and proven on PostgreSQL (Gate B); a real iDempiere run (Gate D), IAM
+admission and real placements/mandates remain open. See ADR-ERP-022 and
+[the P0-04B ERP plan](../plans/P0-04B-ERP-posting-authority.md).

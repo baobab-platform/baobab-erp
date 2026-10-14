@@ -81,6 +81,51 @@ jobs:
       - name: Verify packaged schema bytes and installed validators
         run: python scripts/verify_contract_artifacts.py --wheel /tmp/erp-wheel/*.whl --runtime-python /tmp/erp-wheel-runtime/bin/python
 
+  native-finance-postgres:
+    # EA v2.1 Gate B (P0-04B ERP): the real JVM placement, readiness, operation and
+    # attribution providers and the native COMMIT fence, over JDBC on PostgreSQL.
+    # The adempiere schema is a minimal fixture; this is not an iDempiere run (Gate D).
+    runs-on: ubuntu-26.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: baobab_native_test
+          POSTGRES_USER: baobab
+          POSTGRES_PASSWORD: baobab
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U baobab -d baobab_native_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://baobab:baobab@localhost:5432/baobab_native_test
+      BAOBAB_NATIVE_TEST_JDBC_URL: jdbc:postgresql://localhost:5432/baobab_native_test?user=baobab&password=baobab
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Create the minimal adempiere fixture schema
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/native/adempiere_fixture.sql
+      - name: Apply application and native migrations
+        run: ./db/migrate.sh && ./db/migrate-native.sh
+      - name: Native migrations are idempotent
+        run: ./db/migrate-native.sh
+      - name: Gate B native finance providers and COMMIT fence on PostgreSQL
+        run: >-
+          mvn -q -B -f idempiere/extensions -pl org.nabhold.baobab.erp.finance -am test
+          -Dtest=NativeFinancePostgresGateBTest -Dsurefire.failIfNoSpecifiedTests=false
+      - name: Gate B must have run, not skipped
+        run: >-
+          grep -q 'tests="7"[^>]*skipped="0"'
+          idempiere/extensions/org.nabhold.baobab.erp.finance/target/surefire-reports/TEST-org.nabhold.baobab.erp.finance.NativeFinancePostgresGateBTest.xml
+
   build-image:
     runs-on: ubuntu-26.04
     steps:

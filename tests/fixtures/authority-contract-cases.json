@@ -2884,5 +2884,576 @@
     "contract": "context_uuid",
     "instance": [],
     "valid": false
+  },
+  {
+    "name": "posting_request/valid",
+    "contract": "posting_request",
+    "instance": {
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "engine_instance_id": "ei_erpstaging01",
+      "operation_class": "erp.gl-journal.post",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      },
+      "operation_reference": "erp/gl-journal/placement-0b6d1f9a/v2/record-1000234/complete/trx-7f3a"
+    },
+    "valid": true
+  },
+  {
+    "name": "posting_request/missing/context_id",
+    "contract": "posting_request",
+    "instance": {
+      "engine_instance_id": "ei_erpstaging01",
+      "operation_class": "erp.gl-journal.post",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      },
+      "operation_reference": "erp/gl-journal/placement-0b6d1f9a/v2/record-1000234/complete/trx-7f3a"
+    },
+    "valid": false
+  },
+  {
+    "name": "posting_request/missing/engine_instance_id",
+    "contract": "posting_request",
+    "instance": {
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "operation_class": "erp.gl-journal.post",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      },
+      "operation_reference": "erp/gl-journal/placement-0b6d1f9a/v2/record-1000234/complete/trx-7f3a"
+    },
+    "valid": false
+  },
+  {
+    "name": "posting_request/missing/operation_class",
+    "contract": "posting_request",
+    "instance": {
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "engine_instance_id": "ei_erpstaging01",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      },
+      "operation_reference": "erp/gl-journal/placement-0b6d1f9a/v2/record-1000234/complete/trx-7f3a"
+    },
+    "valid": false
+  },
+  {
+    "name": "posting_request/missing/native_placement_reference",
+    "contract": "posting_request",
+    "instance": {
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "engine_instance_id": "ei_erpstaging01",
+      "operation_class": "erp.gl-journal.post",
+      "operation_reference": "erp/gl-journal/placement-0b6d1f9a/v2/record-1000234/complete/trx-7f3a"
+    },
+    "valid": false
+  },
+  {
+    "name": "posting_request/missing/operation_reference",
+    "contract": "posting_request",
+    "instance": {
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "engine_instance_id": "ei_erpstaging01",
+      "operation_class": "erp.gl-journal.post",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "posting_request/caller-selected/tenant_id",
+    "contract": "posting_request",
+    "instance": {
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "engine_instance_id": "ei_erpstaging01",
+      "operation_class": "erp.gl-journal.post",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      },
+      "operation_reference": "erp/gl-journal/placement-0b6d1f9a/v2/record-1000234/complete/trx-7f3a",
+      "tenant_id": "tn_forged"
+    },
+    "valid": false
+  },
+  {
+    "name": "posting_request/caller-selected/legal_actor_role",
+    "contract": "posting_request",
+    "instance": {
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "engine_instance_id": "ei_erpstaging01",
+      "operation_class": "erp.gl-journal.post",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      },
+      "operation_reference": "erp/gl-journal/placement-0b6d1f9a/v2/record-1000234/complete/trx-7f3a",
+      "legal_actor_role": "ACCOUNTING_ENTITY"
+    },
+    "valid": false
+  },
+  {
+    "name": "posting_request/caller-selected/market",
+    "contract": "posting_request",
+    "instance": {
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "engine_instance_id": "ei_erpstaging01",
+      "operation_class": "erp.gl-journal.post",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      },
+      "operation_reference": "erp/gl-journal/placement-0b6d1f9a/v2/record-1000234/complete/trx-7f3a",
+      "market": "UG"
+    },
+    "valid": false
+  },
+  {
+    "name": "posting_request/caller-selected/ad_client_id",
+    "contract": "posting_request",
+    "instance": {
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "engine_instance_id": "ei_erpstaging01",
+      "operation_class": "erp.gl-journal.post",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      },
+      "operation_reference": "erp/gl-journal/placement-0b6d1f9a/v2/record-1000234/complete/trx-7f3a",
+      "ad_client_id": 11
+    },
+    "valid": false
+  },
+  {
+    "name": "posting_request/uncatalogued-class",
+    "contract": "posting_request",
+    "instance": {
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "engine_instance_id": "ei_erpstaging01",
+      "operation_class": "erp.anything.post",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      },
+      "operation_reference": "erp/gl-journal/placement-0b6d1f9a/v2/record-1000234/complete/trx-7f3a"
+    },
+    "valid": false
+  },
+  {
+    "name": "posting_decision/valid-authorized",
+    "contract": "posting_decision",
+    "instance": {
+      "decision_id": "a3e9c7d1-5b2f-4e6a-8c1d-9f0b7e3a2c54",
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "engine_instance_id": "ei_erpstaging01",
+      "operation_class": "erp.gl-journal.post",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      },
+      "operation_reference": "erp/gl-journal/placement-0b6d1f9a/v2/record-1000234/complete/trx-7f3a",
+      "outcome": "AUTHORIZED",
+      "tenant_id": "tn_synthetic01",
+      "operating_organisation_id": "2c8e4f6a-1b3d-4e5f-8a7c-9d0e1f2a3b4c",
+      "market": "UG",
+      "legal_actor_role": "ACCOUNTING_ENTITY",
+      "activity": "GENERAL_LEDGER_POSTING",
+      "mandate_id": "7d2b9e4f-6a1c-4f3e-b8d5-0c9a8e7f6d21",
+      "supersedes_mandate_id": "1e8f7d6c-5b4a-4392-8170-6f5e4d3c2b1a",
+      "responsible_legal_entity_id": "SYNTHETIC-LE-01",
+      "evidence_references": [
+        "synthetic:mandate-evidence/01"
+      ],
+      "mandate_effective_from": "2026-10-01T00:00:00Z",
+      "mandate_effective_to": "2026-12-31T23:59:59Z",
+      "evaluated_at": "2026-10-14T06:00:00Z",
+      "expires_at": "2026-10-14T06:00:30Z",
+      "policy_reference": "ADR-SHARED-034/erp-posting-authority:v1",
+      "provider_permissions_granted": false
+    },
+    "valid": true
+  },
+  {
+    "name": "posting_decision/valid-denied",
+    "contract": "posting_decision",
+    "instance": {
+      "decision_id": "c4f0d8e2-6c3a-4f7b-9d2e-0a1c8f4b3d65",
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "engine_instance_id": "ei_erpstaging01",
+      "operation_class": "erp.customer-invoice.issue",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      },
+      "operation_reference": "erp/customer-invoice/placement-0b6d1f9a/v2/record-1000877/complete/trx-91bc",
+      "outcome": "NO_APPLICABLE_MANDATE",
+      "tenant_id": "tn_synthetic01",
+      "operating_organisation_id": "2c8e4f6a-1b3d-4e5f-8a7c-9d0e1f2a3b4c",
+      "market": "UG",
+      "legal_actor_role": "INVOICE_ISSUER",
+      "activity": "CUSTOMER_INVOICE_ISSUANCE",
+      "evaluated_at": "2026-10-14T06:00:00Z",
+      "policy_reference": "ADR-SHARED-034/erp-posting-authority:v1",
+      "provider_permissions_granted": false
+    },
+    "valid": true
+  },
+  {
+    "name": "posting_decision/authorized-missing/decision_id",
+    "contract": "posting_decision",
+    "instance": {
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "engine_instance_id": "ei_erpstaging01",
+      "operation_class": "erp.gl-journal.post",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      },
+      "operation_reference": "erp/gl-journal/placement-0b6d1f9a/v2/record-1000234/complete/trx-7f3a",
+      "outcome": "AUTHORIZED",
+      "tenant_id": "tn_synthetic01",
+      "operating_organisation_id": "2c8e4f6a-1b3d-4e5f-8a7c-9d0e1f2a3b4c",
+      "market": "UG",
+      "legal_actor_role": "ACCOUNTING_ENTITY",
+      "activity": "GENERAL_LEDGER_POSTING",
+      "mandate_id": "7d2b9e4f-6a1c-4f3e-b8d5-0c9a8e7f6d21",
+      "supersedes_mandate_id": "1e8f7d6c-5b4a-4392-8170-6f5e4d3c2b1a",
+      "responsible_legal_entity_id": "SYNTHETIC-LE-01",
+      "evidence_references": [
+        "synthetic:mandate-evidence/01"
+      ],
+      "mandate_effective_from": "2026-10-01T00:00:00Z",
+      "mandate_effective_to": "2026-12-31T23:59:59Z",
+      "evaluated_at": "2026-10-14T06:00:00Z",
+      "expires_at": "2026-10-14T06:00:30Z",
+      "policy_reference": "ADR-SHARED-034/erp-posting-authority:v1",
+      "provider_permissions_granted": false
+    },
+    "valid": false
+  },
+  {
+    "name": "posting_decision/authorized-missing/mandate_id",
+    "contract": "posting_decision",
+    "instance": {
+      "decision_id": "a3e9c7d1-5b2f-4e6a-8c1d-9f0b7e3a2c54",
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "engine_instance_id": "ei_erpstaging01",
+      "operation_class": "erp.gl-journal.post",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      },
+      "operation_reference": "erp/gl-journal/placement-0b6d1f9a/v2/record-1000234/complete/trx-7f3a",
+      "outcome": "AUTHORIZED",
+      "tenant_id": "tn_synthetic01",
+      "operating_organisation_id": "2c8e4f6a-1b3d-4e5f-8a7c-9d0e1f2a3b4c",
+      "market": "UG",
+      "legal_actor_role": "ACCOUNTING_ENTITY",
+      "activity": "GENERAL_LEDGER_POSTING",
+      "supersedes_mandate_id": "1e8f7d6c-5b4a-4392-8170-6f5e4d3c2b1a",
+      "responsible_legal_entity_id": "SYNTHETIC-LE-01",
+      "evidence_references": [
+        "synthetic:mandate-evidence/01"
+      ],
+      "mandate_effective_from": "2026-10-01T00:00:00Z",
+      "mandate_effective_to": "2026-12-31T23:59:59Z",
+      "evaluated_at": "2026-10-14T06:00:00Z",
+      "expires_at": "2026-10-14T06:00:30Z",
+      "policy_reference": "ADR-SHARED-034/erp-posting-authority:v1",
+      "provider_permissions_granted": false
+    },
+    "valid": false
+  },
+  {
+    "name": "posting_decision/authorized-missing/responsible_legal_entity_id",
+    "contract": "posting_decision",
+    "instance": {
+      "decision_id": "a3e9c7d1-5b2f-4e6a-8c1d-9f0b7e3a2c54",
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "engine_instance_id": "ei_erpstaging01",
+      "operation_class": "erp.gl-journal.post",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      },
+      "operation_reference": "erp/gl-journal/placement-0b6d1f9a/v2/record-1000234/complete/trx-7f3a",
+      "outcome": "AUTHORIZED",
+      "tenant_id": "tn_synthetic01",
+      "operating_organisation_id": "2c8e4f6a-1b3d-4e5f-8a7c-9d0e1f2a3b4c",
+      "market": "UG",
+      "legal_actor_role": "ACCOUNTING_ENTITY",
+      "activity": "GENERAL_LEDGER_POSTING",
+      "mandate_id": "7d2b9e4f-6a1c-4f3e-b8d5-0c9a8e7f6d21",
+      "supersedes_mandate_id": "1e8f7d6c-5b4a-4392-8170-6f5e4d3c2b1a",
+      "evidence_references": [
+        "synthetic:mandate-evidence/01"
+      ],
+      "mandate_effective_from": "2026-10-01T00:00:00Z",
+      "mandate_effective_to": "2026-12-31T23:59:59Z",
+      "evaluated_at": "2026-10-14T06:00:00Z",
+      "expires_at": "2026-10-14T06:00:30Z",
+      "policy_reference": "ADR-SHARED-034/erp-posting-authority:v1",
+      "provider_permissions_granted": false
+    },
+    "valid": false
+  },
+  {
+    "name": "posting_decision/authorized-missing/expires_at",
+    "contract": "posting_decision",
+    "instance": {
+      "decision_id": "a3e9c7d1-5b2f-4e6a-8c1d-9f0b7e3a2c54",
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "engine_instance_id": "ei_erpstaging01",
+      "operation_class": "erp.gl-journal.post",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      },
+      "operation_reference": "erp/gl-journal/placement-0b6d1f9a/v2/record-1000234/complete/trx-7f3a",
+      "outcome": "AUTHORIZED",
+      "tenant_id": "tn_synthetic01",
+      "operating_organisation_id": "2c8e4f6a-1b3d-4e5f-8a7c-9d0e1f2a3b4c",
+      "market": "UG",
+      "legal_actor_role": "ACCOUNTING_ENTITY",
+      "activity": "GENERAL_LEDGER_POSTING",
+      "mandate_id": "7d2b9e4f-6a1c-4f3e-b8d5-0c9a8e7f6d21",
+      "supersedes_mandate_id": "1e8f7d6c-5b4a-4392-8170-6f5e4d3c2b1a",
+      "responsible_legal_entity_id": "SYNTHETIC-LE-01",
+      "evidence_references": [
+        "synthetic:mandate-evidence/01"
+      ],
+      "mandate_effective_from": "2026-10-01T00:00:00Z",
+      "mandate_effective_to": "2026-12-31T23:59:59Z",
+      "evaluated_at": "2026-10-14T06:00:00Z",
+      "policy_reference": "ADR-SHARED-034/erp-posting-authority:v1",
+      "provider_permissions_granted": false
+    },
+    "valid": false
+  },
+  {
+    "name": "posting_decision/authorized-missing/mandate_effective_from",
+    "contract": "posting_decision",
+    "instance": {
+      "decision_id": "a3e9c7d1-5b2f-4e6a-8c1d-9f0b7e3a2c54",
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "engine_instance_id": "ei_erpstaging01",
+      "operation_class": "erp.gl-journal.post",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      },
+      "operation_reference": "erp/gl-journal/placement-0b6d1f9a/v2/record-1000234/complete/trx-7f3a",
+      "outcome": "AUTHORIZED",
+      "tenant_id": "tn_synthetic01",
+      "operating_organisation_id": "2c8e4f6a-1b3d-4e5f-8a7c-9d0e1f2a3b4c",
+      "market": "UG",
+      "legal_actor_role": "ACCOUNTING_ENTITY",
+      "activity": "GENERAL_LEDGER_POSTING",
+      "mandate_id": "7d2b9e4f-6a1c-4f3e-b8d5-0c9a8e7f6d21",
+      "supersedes_mandate_id": "1e8f7d6c-5b4a-4392-8170-6f5e4d3c2b1a",
+      "responsible_legal_entity_id": "SYNTHETIC-LE-01",
+      "evidence_references": [
+        "synthetic:mandate-evidence/01"
+      ],
+      "mandate_effective_to": "2026-12-31T23:59:59Z",
+      "evaluated_at": "2026-10-14T06:00:00Z",
+      "expires_at": "2026-10-14T06:00:30Z",
+      "policy_reference": "ADR-SHARED-034/erp-posting-authority:v1",
+      "provider_permissions_granted": false
+    },
+    "valid": false
+  },
+  {
+    "name": "posting_decision/denied-discloses-mandate",
+    "contract": "posting_decision",
+    "instance": {
+      "decision_id": "c4f0d8e2-6c3a-4f7b-9d2e-0a1c8f4b3d65",
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "engine_instance_id": "ei_erpstaging01",
+      "operation_class": "erp.customer-invoice.issue",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      },
+      "operation_reference": "erp/customer-invoice/placement-0b6d1f9a/v2/record-1000877/complete/trx-91bc",
+      "outcome": "NO_APPLICABLE_MANDATE",
+      "tenant_id": "tn_synthetic01",
+      "operating_organisation_id": "2c8e4f6a-1b3d-4e5f-8a7c-9d0e1f2a3b4c",
+      "market": "UG",
+      "legal_actor_role": "INVOICE_ISSUER",
+      "activity": "CUSTOMER_INVOICE_ISSUANCE",
+      "evaluated_at": "2026-10-14T06:00:00Z",
+      "policy_reference": "ADR-SHARED-034/erp-posting-authority:v1",
+      "provider_permissions_granted": false,
+      "mandate_id": "7d2b9e4f-6a1c-4f3e-b8d5-0c9a8e7f6d21"
+    },
+    "valid": false
+  },
+  {
+    "name": "posting_decision/invented-grant",
+    "contract": "posting_decision",
+    "instance": {
+      "decision_id": "a3e9c7d1-5b2f-4e6a-8c1d-9f0b7e3a2c54",
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "engine_instance_id": "ei_erpstaging01",
+      "operation_class": "erp.gl-journal.post",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      },
+      "operation_reference": "erp/gl-journal/placement-0b6d1f9a/v2/record-1000234/complete/trx-7f3a",
+      "outcome": "AUTHORIZED",
+      "tenant_id": "tn_synthetic01",
+      "operating_organisation_id": "2c8e4f6a-1b3d-4e5f-8a7c-9d0e1f2a3b4c",
+      "market": "UG",
+      "legal_actor_role": "ACCOUNTING_ENTITY",
+      "activity": "GENERAL_LEDGER_POSTING",
+      "mandate_id": "7d2b9e4f-6a1c-4f3e-b8d5-0c9a8e7f6d21",
+      "supersedes_mandate_id": "1e8f7d6c-5b4a-4392-8170-6f5e4d3c2b1a",
+      "responsible_legal_entity_id": "SYNTHETIC-LE-01",
+      "evidence_references": [
+        "synthetic:mandate-evidence/01"
+      ],
+      "mandate_effective_from": "2026-10-01T00:00:00Z",
+      "mandate_effective_to": "2026-12-31T23:59:59Z",
+      "evaluated_at": "2026-10-14T06:00:00Z",
+      "expires_at": "2026-10-14T06:00:30Z",
+      "policy_reference": "ADR-SHARED-034/erp-posting-authority:v1",
+      "provider_permissions_granted": true
+    },
+    "valid": false
+  },
+  {
+    "name": "posting_decision/role-not-bound-to-class",
+    "contract": "posting_decision",
+    "instance": {
+      "decision_id": "a3e9c7d1-5b2f-4e6a-8c1d-9f0b7e3a2c54",
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "engine_instance_id": "ei_erpstaging01",
+      "operation_class": "erp.gl-journal.post",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      },
+      "operation_reference": "erp/gl-journal/placement-0b6d1f9a/v2/record-1000234/complete/trx-7f3a",
+      "outcome": "AUTHORIZED",
+      "tenant_id": "tn_synthetic01",
+      "operating_organisation_id": "2c8e4f6a-1b3d-4e5f-8a7c-9d0e1f2a3b4c",
+      "market": "UG",
+      "legal_actor_role": "INVOICE_ISSUER",
+      "activity": "GENERAL_LEDGER_POSTING",
+      "mandate_id": "7d2b9e4f-6a1c-4f3e-b8d5-0c9a8e7f6d21",
+      "supersedes_mandate_id": "1e8f7d6c-5b4a-4392-8170-6f5e4d3c2b1a",
+      "responsible_legal_entity_id": "SYNTHETIC-LE-01",
+      "evidence_references": [
+        "synthetic:mandate-evidence/01"
+      ],
+      "mandate_effective_from": "2026-10-01T00:00:00Z",
+      "mandate_effective_to": "2026-12-31T23:59:59Z",
+      "evaluated_at": "2026-10-14T06:00:00Z",
+      "expires_at": "2026-10-14T06:00:30Z",
+      "policy_reference": "ADR-SHARED-034/erp-posting-authority:v1",
+      "provider_permissions_granted": false
+    },
+    "valid": false
+  },
+  {
+    "name": "posting_decision/activity-not-bound-to-class",
+    "contract": "posting_decision",
+    "instance": {
+      "decision_id": "a3e9c7d1-5b2f-4e6a-8c1d-9f0b7e3a2c54",
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "engine_instance_id": "ei_erpstaging01",
+      "operation_class": "erp.gl-journal.post",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      },
+      "operation_reference": "erp/gl-journal/placement-0b6d1f9a/v2/record-1000234/complete/trx-7f3a",
+      "outcome": "AUTHORIZED",
+      "tenant_id": "tn_synthetic01",
+      "operating_organisation_id": "2c8e4f6a-1b3d-4e5f-8a7c-9d0e1f2a3b4c",
+      "market": "UG",
+      "legal_actor_role": "ACCOUNTING_ENTITY",
+      "activity": "CUSTOMER_INVOICE_ISSUANCE",
+      "mandate_id": "7d2b9e4f-6a1c-4f3e-b8d5-0c9a8e7f6d21",
+      "supersedes_mandate_id": "1e8f7d6c-5b4a-4392-8170-6f5e4d3c2b1a",
+      "responsible_legal_entity_id": "SYNTHETIC-LE-01",
+      "evidence_references": [
+        "synthetic:mandate-evidence/01"
+      ],
+      "mandate_effective_from": "2026-10-01T00:00:00Z",
+      "mandate_effective_to": "2026-12-31T23:59:59Z",
+      "evaluated_at": "2026-10-14T06:00:00Z",
+      "expires_at": "2026-10-14T06:00:30Z",
+      "policy_reference": "ADR-SHARED-034/erp-posting-authority:v1",
+      "provider_permissions_granted": false
+    },
+    "valid": false
+  },
+  {
+    "name": "posting_decision/valid-uncapped-evidence",
+    "contract": "posting_decision",
+    "instance": {
+      "decision_id": "a3e9c7d1-5b2f-4e6a-8c1d-9f0b7e3a2c54",
+      "context_id": "6f1c2a9e-4b7d-4c1e-9a3f-2d5e8b7c1a40",
+      "engine_instance_id": "ei_erpstaging01",
+      "operation_class": "erp.gl-journal.post",
+      "native_placement_reference": {
+        "placement_id": "0b6d1f9a-3c2e-4a8b-9d7f-5e4c3b2a1908",
+        "placement_version": 2
+      },
+      "operation_reference": "erp/gl-journal/placement-0b6d1f9a/v2/record-1000234/complete/trx-7f3a",
+      "outcome": "AUTHORIZED",
+      "tenant_id": "tn_synthetic01",
+      "operating_organisation_id": "2c8e4f6a-1b3d-4e5f-8a7c-9d0e1f2a3b4c",
+      "market": "UG",
+      "legal_actor_role": "ACCOUNTING_ENTITY",
+      "activity": "GENERAL_LEDGER_POSTING",
+      "mandate_id": "7d2b9e4f-6a1c-4f3e-b8d5-0c9a8e7f6d21",
+      "supersedes_mandate_id": "1e8f7d6c-5b4a-4392-8170-6f5e4d3c2b1a",
+      "responsible_legal_entity_id": "SYNTHETIC-LE-01",
+      "evidence_references": [
+        "synthetic:evidence/0",
+        "synthetic:evidence/1",
+        "synthetic:evidence/2",
+        "synthetic:evidence/3",
+        "synthetic:evidence/4",
+        "synthetic:evidence/5",
+        "synthetic:evidence/6",
+        "synthetic:evidence/7",
+        "synthetic:evidence/8",
+        "synthetic:evidence/9",
+        "synthetic:evidence/10",
+        "synthetic:evidence/11",
+        "synthetic:evidence/12",
+        "synthetic:evidence/13",
+        "synthetic:evidence/14",
+        "synthetic:evidence/15",
+        "synthetic:evidence/16",
+        "synthetic:evidence/17",
+        "synthetic:evidence/18",
+        "synthetic:evidence/19",
+        "synthetic:evidence/20",
+        "synthetic:evidence/21",
+        "synthetic:evidence/22",
+        "synthetic:evidence/23",
+        "synthetic:evidence/24"
+      ],
+      "mandate_effective_from": "2026-10-01T00:00:00Z",
+      "mandate_effective_to": "2026-12-31T23:59:59Z",
+      "evaluated_at": "2026-10-14T06:00:00Z",
+      "expires_at": "2026-10-14T06:00:30Z",
+      "policy_reference": "ADR-SHARED-034/erp-posting-authority:v1",
+      "provider_permissions_granted": false
+    },
+    "valid": true
   }
 ]

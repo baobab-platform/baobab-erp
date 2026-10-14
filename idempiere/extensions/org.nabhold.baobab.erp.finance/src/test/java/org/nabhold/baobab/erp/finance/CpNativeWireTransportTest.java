@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class CpNativeWireTransportTest {
     private CpNativeFinancialAuthority client(HttpServer server, AtomicInteger tokens) {
         return new CpNativeFinancialAuthority("http://127.0.0.1:" + server.getAddress().getPort(),
-                () -> { tokens.incrementAndGet(); return "synthetic-token"; }, true, null, null,
+                () -> { tokens.incrementAndGet(); return "synthetic-token"; }, true, null, () -> null, () -> null,
                 new NativeFinanceAttribution(name -> { throw new AssertionError("No native attribution in wire test"); }));
     }
     private Object current(CpNativeFinancialAuthority client, String route) throws Exception {
