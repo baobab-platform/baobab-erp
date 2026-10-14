@@ -13,6 +13,7 @@
   <dependencies>
     <dependency><groupId>org.osgi</groupId><artifactId>org.osgi.core</artifactId></dependency>
     <dependency><groupId>org.osgi</groupId><artifactId>org.osgi.util.tracker</artifactId></dependency>
+    <dependency><groupId>org.osgi</groupId><artifactId>org.osgi.service.event</artifactId></dependency>
     <dependency><groupId>org.nabhold.baobab.erp</groupId><artifactId>org.nabhold.baobab.erp.integration</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId></dependency>
     <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId></dependency>

@@ -1,0 +1,9 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-SymbolicName: org.nabhold.baobab.erp.acceptance
+Bundle-Name: Baobab ERP Gate D driver (CI only, never shipped)
+Bundle-Version: 0.1.0
+Bundle-Activator: org.nabhold.baobab.erp.acceptance.GateDDriver
+Bundle-RequiredExecutionEnvironment: JavaSE-17
+Import-Package: org.osgi.framework
+DynamicImport-Package: org.compiere,org.compiere.model,org.compiere.process,org.compiere.util,org.adempiere.util

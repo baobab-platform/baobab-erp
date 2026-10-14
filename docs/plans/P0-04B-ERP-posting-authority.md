@@ -2,7 +2,8 @@
 
 **Date:** 14 October 2026. **Shared pin:** `8733be2` (shared#304, ADR-SHARED-034). **CP counterpart:** baobab-cp#393.
 **Governing:** ADR-ERP-022, ADR-SHARED-034, ADR-BCP-027 LA-05/LA-07. **Evidence gates:** EA v2.1 A–C on this PR;
-Gate D (real iDempiere posting) is a separate harness PR and is required before atomic posting is claimed.
+Gate D (real iDempiere posting) is a separate harness PR and is required before atomic posting is claimed;
+it also fixed three defects that only a real runtime exposed (ADR-ERP-022 §7).
 
 ## What changes
 
@@ -29,7 +30,7 @@ Gate D (real iDempiere posting) is a separate harness PR and is required before 
 | A | `CpNativePostingAuthorityTest` (synthetic loopback CP: every acceptance and denial rule, no-CP denials, reuse), attribution, policy, wire, activator tests; Python conformance (erp/v2 vectors) |
 | B | `NativeFinancePostgresGateBTest` in CI job `native-finance-postgres`: atomic commit, rollback, direct-SQL ledger/completion refused at COMMIT, expired and lapsing authority, no cross-transaction reuse, concurrent transactions, unplaced org, closed placement, purchase side, withdrawn baseline |
 | C | `build-extensions`, `build-image` |
-| D | **Open** — separate PR: real iDempiere 13 + PostgreSQL posting run |
+| D | CI job `idempiere-posting-integration` (`idempiere/acceptance/run-gate-d.sh`): real iDempiere 13 + PostgreSQL GL-journal posting through the shipped veto and COMMIT fence. Certified only from a green CI run of that job, recorded in the receipt |
 | E | **Open** — operational acceptance, real placements/mandates, IAM admission |
 
 ## Not included

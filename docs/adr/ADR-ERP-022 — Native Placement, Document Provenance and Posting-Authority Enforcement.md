@@ -66,7 +66,11 @@ Within one transaction a still-current attribution for the same source document 
 ## 6. Deployment order
 
 `db/migrate.sh` (application schema, 0025) → iDempiere seed/upgrade → `db/migrate-native.sh`
-(N0001–N0003; refuses without the adempiere schema) → start iDempiere with the finance bundle → expose routes.
+(N0001–N0004; refuses without the adempiere schema) → start iDempiere with the finance bundle → expose routes.
+Every governed `AD_Client` must use **standard** period control (`C_AcctSchema.AutoPeriodControl = 'N'`):
+Baobab readiness governs periods through `C_PeriodControl`, and under Automatic Period Control iDempiere
+rewrites `C_AcctSchema.C_Period_ID` from `MPeriod.isOpen` in its own transaction, a configuration write the
+native veto refuses, so every completion would be denied.
 The native migrations must target the SAME database iDempiere uses. Grant the iDempiere role INSERT/SELECT
 on `baobab_native`; never UPDATE/DELETE or BYPASSRLS.
 
@@ -76,10 +80,20 @@ Gate A (unit), B (PostgreSQL: `native-finance-postgres`) and C (bundle build) ru
 is **not** certified until Gate D, a real iDempiere/PostgreSQL posting run, passes; production stays denied
 until Gate E operational acceptance. Synthetic fixtures are never evidence of legal standing.
 
+Gate D is the CI job `idempiere-posting-integration` (`idempiere/acceptance/`): the deployable image plus a
+CI-only driver bundle posts real GardenWorld GL journals on a fresh database against a synthetic CP over TLS,
+and asserts persisted state (DocStatus, balanced `Fact_Acct`, attribution rows) for every scenario in the
+owner's proof standard. Its first runs found three defects that Gates A–C could not see, all fixed in the same
+PR: integer-typed native triggers against iDempiere's `NUMERIC(10)` ids (N0004; the Gate B fixture now uses
+the real types); the JVM veto registered through `ModelValidationEngine.addModelChange` with client 0, which
+iDempiere keys per client so it **never fired for a real client** (now a synchronous OSGi `EventHandler` on
+the BEFORE topics, see LA-05D8); and the automatic-period-control configuration write above.
+
 ## 8. Consequences and open items
 
 - Real placements, mandates and IAM workload admission are owner actions.
 - Purchase-side and configuration operation classes need a Shared catalogue revision (ADR-SHARED-033 keys).
-- Costing writes (`M_Cost`, `M_CostDetail`) caused by shipments remain unclassified; Gate D will show whether
-  they need a derived classification.
+- Costing writes (`M_Cost`, `M_CostDetail`) caused by shipments remain unclassified. Gate D covers GL
+  journals only; shipment, invoice and payment documents need their own Gate D scenarios before those
+  classes are certified.
 - The Python order-to-cash layer is not yet wired to this path.

@@ -136,6 +136,43 @@ jobs:
       - name: Build deployable application-service image
         run: docker build -f modules/Dockerfile -t baobab-app:test .
 
+  idempiere-posting-integration:
+    name: Gate D — real iDempiere/PostgreSQL posting through the native finance veto
+    # P0-04B ERP / ADR-ERP-022: the shipped image plus a CI-only driver layer posts real GL journals
+    # on a fresh GardenWorld database against a synthetic CP over TLS, and asserts persisted state.
+    # The only evidence on which "atomic posting verified" may be claimed. Never skipped.
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Java (keytool for the CI-generated truststore)
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install PostgreSQL client
+        run: sudo apt-get update -q && sudo apt-get install -yq postgresql-client
+      - name: Build the deployable ERP image
+        run: docker build -f idempiere/Dockerfile -t baobab-erp:test .
+      - name: Add the CI-only Gate D driver layer (never shipped)
+        run: >-
+          docker build -f idempiere/acceptance/Dockerfile --build-arg BASE_IMAGE=baobab-erp:test
+          -t baobab-erp:gate-d .
+      - name: Gate D scenarios
+        run: idempiere/acceptance/run-gate-d.sh baobab-erp:gate-d "$RUNNER_TEMP/gate-d"
+      - name: Gate D evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gate-d-evidence
+          path: |
+            ${{ runner.temp }}/gate-d/gate-d-report.txt
+            ${{ runner.temp }}/gate-d/idempiere.log
+            ${{ runner.temp }}/gate-d/synthetic-cp.log
+            ${{ runner.temp }}/gate-d/migrate.log
+          if-no-files-found: error
+
   shared-conformance:
     name: Conformance against the pinned Shared contracts
     runs-on: ubuntu-26.04
