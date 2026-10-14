@@ -406,10 +406,10 @@ if [ -n "${S:-}" ]; then
   fenced "direct SQL M_CostDetail insert" "INSERT INTO adempiere.m_costdetail SELECT (jsonb_populate_record(cd, jsonb_build_object(
       'm_costdetail_id', (SELECT max(m_costdetail_id) + 1 FROM adempiere.m_costdetail), 'm_costdetail_uu', gen_random_uuid()::text))).*
       FROM adempiere.m_costdetail cd JOIN adempiere.m_inoutline l ON l.m_inoutline_id = cd.m_inoutline_id WHERE l.m_inout_id = $S LIMIT 1" "INSERT 0 1"
-  fenced "direct SQL M_Cost update" "UPDATE adempiere.m_cost c SET currentqty = currentqty + 1 FROM adempiere.m_costdetail cd
-      JOIN adempiere.m_inoutline l ON l.m_inoutline_id = cd.m_inoutline_id
-      WHERE l.m_inout_id = $S AND c.m_product_id = cd.m_product_id AND c.c_acctschema_id = cd.c_acctschema_id
-        AND c.m_costelement_id = cd.m_costelement_id AND c.ad_client_id = 11 AND c.ad_org_id = 0 AND c.m_attributesetinstance_id = 0" "UPDATE 1"
+  fenced "direct SQL M_Cost update" "UPDATE adempiere.m_cost SET currentqty = currentqty + 1 WHERE m_cost_uu = (
+      SELECT c.m_cost_uu FROM adempiere.m_cost c JOIN adempiere.m_costdetail cd ON cd.m_product_id = c.m_product_id
+        AND cd.c_acctschema_id = c.c_acctschema_id JOIN adempiere.m_inoutline l ON l.m_inoutline_id = cd.m_inoutline_id
+       WHERE l.m_inout_id = $S AND c.ad_client_id = 11 LIMIT 1)" "UPDATE 1"
 fi
 
 note "Gate D failures: $FAILURES"
