@@ -94,15 +94,7 @@ public final class GateDDriver implements BundleActivator, Runnable {
             // Every parse is inside this try: a malformed request is reported, never kills the driver.
             int parallel = Integer.parseInt(in.getProperty("parallel", "1"));
             String action = in.getProperty("action", "journal");
-            if ("pdoc".equals(action)) {
-                // ERP-A (ADR-SHARED-037): the purchase side and vendor-payment recording.
-                Properties ctx = context(Integer.parseInt(in.getProperty("org", "11")));
-                try {
-                    out.putAll(PurchaseFlow.document(in, ctx));
-                } finally {
-                    ServerContext.dispose();
-                }
-            } else if ("doc".equals(action) || "completeDoc".equals(action) || "repostDoc".equals(action)) {
+            if ("doc".equals(action) || "completeDoc".equals(action) || "repostDoc".equals(action)) {
                 // P0-04B-05: the other catalogued classes, on the real sales flow.
                 Properties ctx = context(Integer.parseInt(in.getProperty("org", "11")));
                 try {

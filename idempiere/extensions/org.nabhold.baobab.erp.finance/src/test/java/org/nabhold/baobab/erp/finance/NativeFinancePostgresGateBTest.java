@@ -929,7 +929,7 @@ class NativeFinancePostgresGateBTest {
         return id;
     }
 
-    private static int payablesAllocation(Connection c, int invoice, int payment) throws Exception {
+    private static int emptyAllocation(Connection c) throws Exception {
         int allocation = IDS.incrementAndGet();
         sql(c, "INSERT INTO adempiere.c_allocationhdr (c_allocationhdr_id, ad_client_id, ad_org_id) VALUES ("
                 + allocation + ", 11, 11)");
@@ -943,7 +943,7 @@ class NativeFinancePostgresGateBTest {
             sql(c, "INSERT INTO adempiere.c_doctype VALUES (202, 'API') ON CONFLICT DO NOTHING");
             foreignInvoice = otherClientDoc(c, "c_invoice", ", issotrx, c_doctypetarget_id, c_doctype_id", ", 'N', 202, 0");
             foreignPayment = otherClientDoc(c, "c_payment", ", isreceipt", ", 'N'");
-            allocation = payablesAllocation(c, foreignInvoice, foreignPayment);
+            allocation = emptyAllocation(c);
             c.commit();
         }
         try (Connection c = transaction()) {
@@ -1042,7 +1042,7 @@ class NativeFinancePostgresGateBTest {
             sql(c, "INSERT INTO adempiere.c_doctype VALUES (202, 'API') ON CONFLICT DO NOTHING");
             invoice = insertPurchase(c, "c_invoice", ", c_doctypetarget_id, c_doctype_id", ", 202, 0");
             payment = insertDoc(c, "c_payment", "isreceipt", "N");
-            allocation = payablesAllocation(c, invoice, payment);
+            allocation = emptyAllocation(c);
             c.commit();
         }
         line = IDS.incrementAndGet();
