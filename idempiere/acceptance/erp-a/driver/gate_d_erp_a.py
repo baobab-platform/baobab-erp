@@ -141,7 +141,7 @@ class Scenarios:
         n = self.c.scalar("cpdb", "controlplane", "controlplane",
                           f"SELECT count(*) FROM registry.erp_posting_authority_decision WHERE decision_id IN ({quoted}) "
                           f"AND outcome = 'AUTHORIZED' AND operation_class = '{cls}' "
-                          f"AND operation_reference LIKE 'erp/{cls}/{table}/%'")
+                          f"AND operation_reference LIKE 'erp/{cls}/{table}/{record}/%'")
         return n == str(len(ids))
 
     def cp_outcome(self, table: str, record, cls: str, outcome: str, negate: bool = False) -> bool:
