@@ -64,14 +64,19 @@ BEGIN
                   THEN 'erp.vendor-payment.record' END
         INTO result FROM adempiere.c_payment p WHERE p.c_payment_id = p_record;
     WHEN 'c_allocationhdr' THEN
-      SELECT count(*) FILTER (WHERE baobab_native.allocation_line_side(al.c_invoice_id::integer,
-                                      al.c_payment_id::integer) = 'SALES'),
-             count(*) FILTER (WHERE baobab_native.allocation_line_side(al.c_invoice_id::integer,
-                                      al.c_payment_id::integer) = 'PAYABLES'),
-             count(*) FILTER (WHERE baobab_native.allocation_line_side(al.c_invoice_id::integer,
-                                      al.c_payment_id::integer) IS NULL)
+      SELECT count(*) FILTER (WHERE s.side = 'SALES'), count(*) FILTER (WHERE s.side = 'PAYABLES'),
+             count(*) FILTER (WHERE s.side IS NULL)
         INTO sales, payables, other
-        FROM adempiere.c_allocationline al WHERE al.c_allocationhdr_id = p_record;
+        FROM adempiere.c_allocationhdr h
+        JOIN adempiere.c_allocationline al ON al.c_allocationhdr_id = h.c_allocationhdr_id
+        CROSS JOIN LATERAL (SELECT baobab_native.allocation_line_side(h.ad_client_id::integer,
+                              al.c_invoice_id::integer, al.c_payment_id::integer) AS side) s
+       WHERE h.c_allocationhdr_id = p_record
+         -- a line of another client never joins a placed client's allocation
+         AND al.ad_client_id = h.ad_client_id;
+      SELECT other + count(*) INTO other FROM adempiere.c_allocationhdr h
+        JOIN adempiere.c_allocationline al ON al.c_allocationhdr_id = h.c_allocationhdr_id
+       WHERE h.c_allocationhdr_id = p_record AND al.ad_client_id <> h.ad_client_id;
       result := CASE WHEN other = 0 AND sales > 0 AND payables = 0 THEN 'erp.allocation.record'
                      WHEN other = 0 AND payables > 0 AND sales = 0 THEN 'erp.payables-allocation.record' END;
     ELSE
@@ -82,23 +87,36 @@ END $$;
 
 -- The side of one allocation line: SALES when every document it joins is a
 -- sales invoice or a receipt, PAYABLES when every document it joins is an AP
--- invoice or a recordable vendor payment, NULL otherwise (mixed or ungoverned).
-CREATE FUNCTION baobab_native.allocation_line_side(p_invoice integer, p_payment integer)
+-- invoice or a recordable vendor payment, NULL otherwise (mixed, ungoverned,
+-- or a document of another client: iDempiere ids are global, so a client
+-- binding is checked here, never assumed from the foreign key).
+CREATE FUNCTION baobab_native.allocation_line_side(p_client integer, p_invoice integer, p_payment integer)
 RETURNS text LANGUAGE sql STABLE AS $$
   WITH sides AS (
-    SELECT CASE baobab_native.governed_class_of('C_Invoice', p_invoice)
-             WHEN 'erp.customer-invoice.issue' THEN 'SALES'
-             WHEN 'erp.vendor-invoice.record' THEN 'PAYABLES' ELSE 'NONE' END AS side
+    SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM adempiere.c_invoice i
+                                  WHERE i.c_invoice_id = p_invoice AND i.ad_client_id = p_client) THEN 'NONE'
+                ELSE CASE baobab_native.governed_class_of('C_Invoice', p_invoice)
+                       WHEN 'erp.customer-invoice.issue' THEN 'SALES'
+                       WHEN 'erp.vendor-invoice.record' THEN 'PAYABLES' ELSE 'NONE' END END AS side
      WHERE COALESCE(p_invoice, 0) > 0
     UNION ALL
-    SELECT CASE baobab_native.governed_class_of('C_Payment', p_payment)
-             WHEN 'erp.payment.record' THEN 'SALES'
-             WHEN 'erp.vendor-payment.record' THEN 'PAYABLES' ELSE 'NONE' END
+    SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM adempiere.c_payment p
+                                  WHERE p.c_payment_id = p_payment AND p.ad_client_id = p_client) THEN 'NONE'
+                ELSE CASE baobab_native.governed_class_of('C_Payment', p_payment)
+                       WHEN 'erp.payment.record' THEN 'SALES'
+                       WHEN 'erp.vendor-payment.record' THEN 'PAYABLES' ELSE 'NONE' END END
      WHERE COALESCE(p_payment, 0) > 0)
   SELECT CASE WHEN count(*) = 0 OR bool_or(side = 'NONE') THEN NULL
               WHEN bool_and(side = 'SALES') THEN 'SALES'
               WHEN bool_and(side = 'PAYABLES') THEN 'PAYABLES' END
     FROM sides
+$$;
+
+-- The class an allocation side stands for.
+CREATE FUNCTION baobab_native.allocation_side_class(p_side text)
+RETURNS text LANGUAGE sql IMMUTABLE AS $$
+  SELECT CASE p_side WHEN 'SALES' THEN 'erp.allocation.record'
+                     WHEN 'PAYABLES' THEN 'erp.payables-allocation.record' END
 $$;
 
 -- The governed root a ledger or matching row belongs to: a governed source
@@ -115,12 +133,15 @@ BEGIN
                   WHEN COALESCE(mp.c_invoiceline_id, 0) > 0 THEN il.c_invoice_id::integer END
         INTO root_table, root_record
         FROM adempiere.m_matchpo mp
-        LEFT JOIN adempiere.m_inoutline iol ON iol.m_inoutline_id = mp.m_inoutline_id
-        LEFT JOIN adempiere.c_invoiceline il ON il.c_invoiceline_id = mp.c_invoiceline_id
+        LEFT JOIN adempiere.m_inoutline iol
+               ON iol.m_inoutline_id = mp.m_inoutline_id AND iol.ad_client_id = mp.ad_client_id
+        LEFT JOIN adempiere.c_invoiceline il
+               ON il.c_invoiceline_id = mp.c_invoiceline_id AND il.ad_client_id = mp.ad_client_id
        WHERE mp.m_matchpo_id = p_record;
     WHEN 'm_matchinv' THEN
       SELECT 'C_Invoice', il.c_invoice_id::integer INTO root_table, root_record
-        FROM adempiere.m_matchinv mi JOIN adempiere.c_invoiceline il ON il.c_invoiceline_id = mi.c_invoiceline_id
+        FROM adempiere.m_matchinv mi
+        JOIN adempiere.c_invoiceline il ON il.c_invoiceline_id = mi.c_invoiceline_id AND il.ad_client_id = mi.ad_client_id
        WHERE mi.m_matchinv_id = p_record;
     ELSE
       root_table := p_table;
@@ -180,29 +201,42 @@ END $$;
 
 -- Matching rows: inserting, changing or deleting one needs current authority
 -- of its root document's own class in this transaction.
-CREATE FUNCTION baobab_native.match_commit_fence() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE client integer; root_t text; root_r integer;
+-- The root a matching row's OLD values pointed to, by the same rule as governed_root.
+CREATE FUNCTION baobab_native.match_root_of(p_table text, p_client integer, p_receipt_line numeric,
+                                            p_invoice_line numeric, OUT root_table text, OUT root_record integer)
+LANGUAGE plpgsql STABLE AS $$
 BEGIN
-  IF TG_OP = 'DELETE' THEN client := OLD.ad_client_id::integer; ELSE client := NEW.ad_client_id::integer; END IF;
-  IF NOT baobab_native.client_is_placed(client) THEN
-    RETURN NULL;
+  IF p_table = 'M_MatchPO' AND COALESCE(p_receipt_line, 0) > 0 THEN
+    SELECT 'M_InOut', l.m_inout_id::integer INTO root_table, root_record FROM adempiere.m_inoutline l
+     WHERE l.m_inoutline_id = p_receipt_line AND l.ad_client_id = p_client;
+  ELSIF COALESCE(p_invoice_line, 0) > 0 THEN
+    SELECT 'C_Invoice', l.c_invoice_id::integer INTO root_table, root_record FROM adempiere.c_invoiceline l
+     WHERE l.c_invoiceline_id = p_invoice_line AND l.ad_client_id = p_client;
   END IF;
-  IF TG_OP = 'DELETE' THEN
-    -- The row is gone: decide its root from the deleted values, by the same rule.
-    IF TG_ARGV[0] = 'M_MatchPO' AND COALESCE((to_jsonb(OLD) ->> 'm_inoutline_id')::numeric, 0) > 0 THEN
-      SELECT 'M_InOut', l.m_inout_id::integer INTO root_t, root_r FROM adempiere.m_inoutline l
-       WHERE l.m_inoutline_id = (to_jsonb(OLD) ->> 'm_inoutline_id')::numeric;
-    ELSIF COALESCE((to_jsonb(OLD) ->> 'c_invoiceline_id')::numeric, 0) > 0 THEN
-      SELECT 'C_Invoice', l.c_invoice_id::integer INTO root_t, root_r FROM adempiere.c_invoiceline l
-       WHERE l.c_invoiceline_id = (to_jsonb(OLD) ->> 'c_invoiceline_id')::numeric;
+END $$;
+
+CREATE FUNCTION baobab_native.match_commit_fence() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE old_t text; old_r integer; new_t text; new_r integer;
+BEGIN
+  IF TG_OP <> 'INSERT' AND baobab_native.client_is_placed(OLD.ad_client_id::integer) THEN
+    -- The row's former root loses (or changes) a match: it needs that root's authority too.
+    SELECT o.root_table, o.root_record INTO old_t, old_r
+      FROM baobab_native.match_root_of(TG_ARGV[0], OLD.ad_client_id::integer,
+             (to_jsonb(OLD) ->> 'm_inoutline_id')::numeric, (to_jsonb(OLD) ->> 'c_invoiceline_id')::numeric) o;
+    IF old_t IS NULL OR old_r IS NULL
+       OR NOT baobab_native.has_governed_attribution(OLD.ad_client_id::integer, old_t, old_r) THEN
+      RAISE EXCEPTION 'BAOBAB_NATIVE_FINANCE_DENIED: matching without an authorised root at COMMIT'
+        USING ERRCODE = '42501';
     END IF;
-  ELSE
-    SELECT g.root_table, g.root_record INTO root_t, root_r
-      FROM baobab_native.governed_root(TG_ARGV[0], (to_jsonb(NEW) ->> TG_ARGV[1])::numeric::integer) g;
   END IF;
-  IF root_t IS NULL OR root_r IS NULL OR NOT baobab_native.has_governed_attribution(client, root_t, root_r) THEN
-    RAISE EXCEPTION 'BAOBAB_NATIVE_FINANCE_DENIED: matching without an authorised root at COMMIT'
-      USING ERRCODE = '42501';
+  IF TG_OP <> 'DELETE' AND baobab_native.client_is_placed(NEW.ad_client_id::integer) THEN
+    SELECT g.root_table, g.root_record INTO new_t, new_r
+      FROM baobab_native.governed_root(TG_ARGV[0], (to_jsonb(NEW) ->> TG_ARGV[1])::numeric::integer) g;
+    IF new_t IS NULL OR new_r IS NULL
+       OR NOT baobab_native.has_governed_attribution(NEW.ad_client_id::integer, new_t, new_r) THEN
+      RAISE EXCEPTION 'BAOBAB_NATIVE_FINANCE_DENIED: matching without an authorised root at COMMIT'
+        USING ERRCODE = '42501';
+    END IF;
   END IF;
   RETURN NULL;
 END $$;
@@ -217,10 +251,10 @@ CREATE CONSTRAINT TRIGGER baobab_match_commit_fence AFTER INSERT OR UPDATE OR DE
 -- Payment selections drive remittance printing and bank-file export: a native
 -- disbursement-instruction path that no class covers. Refused outright.
 CREATE FUNCTION baobab_native.forbid_disbursement_instruction() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE client integer;
 BEGIN
-  IF TG_OP = 'DELETE' THEN client := OLD.ad_client_id::integer; ELSE client := NEW.ad_client_id::integer; END IF;
-  IF baobab_native.client_is_placed(client) THEN
+  -- Either side placed refuses: a row can never be moved out of (or into) a placed client.
+  IF (TG_OP <> 'INSERT' AND baobab_native.client_is_placed(OLD.ad_client_id::integer))
+     OR (TG_OP <> 'DELETE' AND baobab_native.client_is_placed(NEW.ad_client_id::integer)) THEN
     RAISE EXCEPTION 'BAOBAB_NATIVE_FINANCE_DENIED: native disbursement instructions are not governed'
       USING ERRCODE = '42501';
   END IF;
@@ -255,3 +289,32 @@ END $$;
 
 CREATE TRIGGER baobab_class_lock_isonline BEFORE UPDATE OF isonline ON adempiere.c_payment
   FOR EACH ROW EXECUTE FUNCTION baobab_native.forbid_outbound_online_change();
+
+-- Allocation lines (redefines N0005): an inserted or updated line needs current
+-- authority for the allocation's resulting class; an updated or deleted line
+-- also needs authority for its OWN former side, so deleting the last line of an
+-- authorised allocation is possible while re-pointing a line from one side to
+-- the other is fenced on both.
+CREATE OR REPLACE FUNCTION baobab_native.allocation_line_commit_fence() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE old_class text; current_class text;
+BEGIN
+  IF TG_OP <> 'INSERT' AND baobab_native.client_is_placed(OLD.ad_client_id::integer) THEN
+    old_class := baobab_native.allocation_side_class(baobab_native.allocation_line_side(
+      OLD.ad_client_id::integer, OLD.c_invoice_id::integer, OLD.c_payment_id::integer));
+    current_class := baobab_native.governed_class_of('C_AllocationHdr', OLD.c_allocationhdr_id::integer);
+    IF old_class IS NULL
+       OR (current_class IS NOT NULL AND current_class <> old_class)
+       OR NOT baobab_native.has_current_attribution_for(OLD.ad_client_id::integer, 'C_AllocationHdr',
+                                                        OLD.c_allocationhdr_id::integer, old_class) THEN
+      RAISE EXCEPTION 'BAOBAB_NATIVE_FINANCE_DENIED: allocation line change without current authority at COMMIT'
+        USING ERRCODE = '42501';
+    END IF;
+  END IF;
+  IF TG_OP <> 'DELETE' AND baobab_native.client_is_placed(NEW.ad_client_id::integer)
+     AND NOT baobab_native.has_governed_attribution(NEW.ad_client_id::integer, 'C_AllocationHdr',
+                                                    NEW.c_allocationhdr_id::integer) THEN
+    RAISE EXCEPTION 'BAOBAB_NATIVE_FINANCE_DENIED: allocation line change without current authority at COMMIT'
+      USING ERRCODE = '42501';
+  END IF;
+  RETURN NULL;
+END $$;

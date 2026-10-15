@@ -12,7 +12,7 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
   catalogue version 2 classes, using a single database rule (`governed_class_of`). Matching rows are fenced
   through their root document. Payment selections, online outbound payments, vendor returns, AP credit memos
   and AP/AR netting stay denied. Recording a vendor payment is never authority to disburse. Shared pin
-  `92541c9` → `756edb4`. Gate B (PostgreSQL 17) now runs 25 tests. Purchase costing stays denied until the
+  `92541c9` → `756edb4`. Allocation documents are bound to the allocation's client, match re-pointing needs both roots, and payment selections cannot move between clients. Gate B (PostgreSQL 17) now runs 29 tests. Purchase costing stays denied until the
   Gate D harness classifies it.
 
 ### Security

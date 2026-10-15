@@ -47,7 +47,7 @@ final class NativeOperationResolver {
             "C_ProjectIssue_ID", "C_LandedCostAllocation_ID", "A_Asset_ID");
     private static final String STORED_CLASS = "SELECT baobab_native.governed_class_of(?, ?)";
     private static final String ROOT = "SELECT root_table, root_record FROM baobab_native.governed_root(?, ?)";
-    private static final String LINE_SIDE = "SELECT baobab_native.allocation_line_side(?, ?)";
+    private static final String LINE_SIDE = "SELECT baobab_native.allocation_line_side(?, ?, ?)";
 
     private final NativeConnections connections;
 
@@ -153,8 +153,10 @@ final class NativeOperationResolver {
         try (PreparedStatement s = db.prepareStatement(LINE_SIDE)) {
             int invoice = record.intValue("C_Invoice_ID");
             int payment = record.intValue("C_Payment_ID");
-            s.setObject(1, invoice > 0 ? invoice : null, java.sql.Types.INTEGER);
-            s.setObject(2, payment > 0 ? payment : null, java.sql.Types.INTEGER);
+            // Every joined document must belong to this client (ids are global).
+            s.setInt(1, record.adClientId());
+            s.setObject(2, invoice > 0 ? invoice : null, java.sql.Types.INTEGER);
+            s.setObject(3, payment > 0 ? payment : null, java.sql.Types.INTEGER);
             try (ResultSet r = s.executeQuery()) {
                 side = r.next() ? r.getString(1) : null;
             }
@@ -208,6 +210,20 @@ final class NativeOperationResolver {
             try (ResultSet r = s.executeQuery()) {
                 if (!r.next()) return null;
                 rootId = r.getInt(1);
+            }
+        }
+        // A stored match is never re-pointed to another root: that would silently
+        // unmatch its former root (the COMMIT fence also requires both roots).
+        if (record.recordId() > 0) {
+            try (PreparedStatement s = db.prepareStatement(ROOT)) {
+                s.setString(1, record.table());
+                s.setInt(2, record.recordId());
+                try (ResultSet r = s.executeQuery()) {
+                    if (r.next() && r.getString(1) != null
+                            && (!rootTable.equals(r.getString(1)) || r.getInt(2) != rootId)) {
+                        return null;
+                    }
+                }
             }
         }
         String operationClass = storedClass(record.transactionName(), rootTable, rootId);

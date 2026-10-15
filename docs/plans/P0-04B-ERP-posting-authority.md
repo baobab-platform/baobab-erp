@@ -52,14 +52,15 @@ classes. ADR-ERP-022 §4.3 records how ERP classifies them.
 | Contracts | Shared pin `92541c9` → `756edb4`; both runtimes re-synced (`sync_authority_contracts.py --check`) |
 
 **Evidence (this PR).**
-- **Gate B.** `NativeFinancePostgresGateBTest` runs 25 tests on PostgreSQL 17. The CI job moves from PostgreSQL 16 to 17. The new tests cover:
+- **Gate B.** `NativeFinancePostgresGateBTest` runs 29 tests on PostgreSQL 17. The CI job moves from PostgreSQL 16 to 17. The new tests cover:
   - purchase classification by own values and stored rows, with vendor returns and AP credit memos denied;
   - purchase completion only under its own class;
   - class-exact reuse;
   - payment selection refused, and online switching locked;
   - no AP/AR netting, with a direct-SQL sales line refused on a payables allocation;
   - matching fenced through its root on insert, ledger posting and delete.
-- **Mutation check.** Removing the `M_MatchPO` fence and the `C_PaySelection` trigger fails the two corresponding tests.
+  - review fixes (Codex on #100): allocation documents must belong to the allocation's client; re-pointing a match needs both the old and the new root's authority; payment-selection rows cannot move into or out of a placed client; an allocation's last line is deleted only with its own side's authority.
+- **Mutation check.** Removing the `M_MatchPO` fence and the `C_PaySelection` trigger fails the two corresponding tests. Reverting each of the four review fixes fails its own test.
 - **Gate A and C.** The finance unit tests and the `erp/v2` conformance tests (89) pass, and the packaged JAR verifies (167 wire vectors).
 
 **Not in this PR.**

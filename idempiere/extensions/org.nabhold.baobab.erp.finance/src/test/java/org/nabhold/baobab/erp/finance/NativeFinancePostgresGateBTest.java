@@ -917,4 +917,162 @@ class NativeFinancePostgresGateBTest {
         }
         assertEquals(1, count("SELECT count(*) FROM adempiere.m_matchinv WHERE m_matchinv_id = " + matchInv));
     }
+
+    // --- ERP-A review fixes (ERP #100): client binding, match repointing, selection moves, last-line deletion ---
+
+    /** An UNPLACED second client: iDempiere ids are global, so its documents are reachable by id. */
+    private static int otherClientDoc(Connection c, String relation, String columns, String values) throws SQLException {
+        sql(c, "INSERT INTO adempiere.ad_client VALUES (12, 'Y') ON CONFLICT DO NOTHING");
+        int id = IDS.incrementAndGet();
+        sql(c, "INSERT INTO adempiere." + relation + " (" + relation + "_id, ad_client_id, ad_org_id" + columns
+                + ") VALUES (" + id + ", 12, 12" + values + ")");
+        return id;
+    }
+
+    private static int payablesAllocation(Connection c, int invoice, int payment) throws Exception {
+        int allocation = IDS.incrementAndGet();
+        sql(c, "INSERT INTO adempiere.c_allocationhdr (c_allocationhdr_id, ad_client_id, ad_org_id) VALUES ("
+                + allocation + ", 11, 11)");
+        return allocation;
+    }
+
+    @Test
+    void allocationsNeverJoinAnotherClientsDocuments() throws Exception {
+        int foreignInvoice, foreignPayment, allocation;
+        try (Connection c = transaction()) {
+            sql(c, "INSERT INTO adempiere.c_doctype VALUES (202, 'API') ON CONFLICT DO NOTHING");
+            foreignInvoice = otherClientDoc(c, "c_invoice", ", issotrx, c_doctypetarget_id, c_doctype_id", ", 'N', 202, 0");
+            foreignPayment = otherClientDoc(c, "c_payment", ", isreceipt", ", 'N'");
+            allocation = payablesAllocation(c, foreignInvoice, foreignPayment);
+            c.commit();
+        }
+        try (Connection c = transaction()) {
+            var resolver = new NativeOperationResolver(trx -> c);
+            assertNull(resolver.classify(record("C_AllocationLine", 0, "gate-b-xc", "C_AllocationHdr_ID",
+                    String.valueOf(allocation), "C_Invoice_ID", String.valueOf(foreignInvoice),
+                    "C_Payment_ID", String.valueOf(foreignPayment))), "another client's documents have no side");
+            // Bypass: even with a payables attribution, direct SQL joining them is refused at COMMIT.
+            attribute(c, new NativeOperation(NativeOperation.PAYABLES_ALLOCATION, "C_AllocationHdr", allocation,
+                    record("C_AllocationHdr", allocation, "gate-b-xc")));
+            sql(c, "INSERT INTO adempiere.c_allocationline (c_allocationline_id, c_allocationhdr_id, c_invoice_id, "
+                    + "c_payment_id, ad_client_id, ad_org_id) VALUES (" + IDS.incrementAndGet() + ", " + allocation + ", "
+                    + foreignInvoice + ", " + foreignPayment + ", 11, 11)");
+            assertNull(storedClass_on(c, "C_AllocationHdr", allocation));
+            denied(c);
+        }
+    }
+
+    @Test
+    void aMatchCannotBeRepointedWithoutBothRootsAuthority() throws Exception {
+        int receiptA, lineA, receiptB, lineB, match;
+        try (Connection c = transaction()) {
+            receiptA = insertPurchase(c, "m_inout", ", movementtype", ", 'V+'");
+            lineA = IDS.incrementAndGet();
+            sql(c, "INSERT INTO adempiere.m_inoutline (m_inoutline_id, m_inout_id, ad_client_id, ad_org_id) VALUES ("
+                    + lineA + ", " + receiptA + ", 11, 11)");
+            receiptB = insertPurchase(c, "m_inout", ", movementtype", ", 'V+'");
+            lineB = IDS.incrementAndGet();
+            sql(c, "INSERT INTO adempiere.m_inoutline (m_inoutline_id, m_inout_id, ad_client_id, ad_org_id) VALUES ("
+                    + lineB + ", " + receiptB + ", 11, 11)");
+            c.commit();
+        }
+        match = IDS.incrementAndGet();
+        try (Connection c = transaction()) {
+            attribute(c, new NativeOperation(NativeOperation.MATERIAL_RECEIPT, "M_InOut", receiptA,
+                    record("M_InOut", receiptA, "gate-b-rp")));
+            sql(c, "INSERT INTO adempiere.m_matchpo (m_matchpo_id, ad_client_id, ad_org_id, m_inoutline_id) VALUES ("
+                    + match + ", 11, 11, " + lineA + ")");
+            c.commit();
+        }
+        // The JVM refuses to re-point a stored match to another root.
+        try (Connection c = transaction()) {
+            assertNull(new NativeOperationResolver(trx -> c).classify(new NativeRecord("M_MatchPO", CLIENT, ORG, match,
+                    "model:TYPE_BEFORE_CHANGE", "gate-b-rp", col -> "M_InOutLine_ID".equals(col) ? lineB : null)));
+            c.rollback();
+        }
+        // Bypass: direct SQL re-pointing with only the NEW root's authority is refused at COMMIT.
+        try (Connection c = transaction()) {
+            attribute(c, new NativeOperation(NativeOperation.MATERIAL_RECEIPT, "M_InOut", receiptB,
+                    record("M_InOut", receiptB, "gate-b-rp")));
+            sql(c, "UPDATE adempiere.m_matchpo SET m_inoutline_id = " + lineB + " WHERE m_matchpo_id = " + match);
+            denied(c);
+        }
+        // With BOTH roots' authority the change commits.
+        try (Connection c = transaction()) {
+            attribute(c, new NativeOperation(NativeOperation.MATERIAL_RECEIPT, "M_InOut", receiptA,
+                    record("M_InOut", receiptA, "gate-b-rp")));
+            attribute(c, new NativeOperation(NativeOperation.MATERIAL_RECEIPT, "M_InOut", receiptB,
+                    record("M_InOut", receiptB, "gate-b-rp")));
+            sql(c, "UPDATE adempiere.m_matchpo SET m_inoutline_id = " + lineB + " WHERE m_matchpo_id = " + match);
+            c.commit();
+        }
+        assertEquals(1, count("SELECT count(*) FROM adempiere.m_matchpo WHERE m_inoutline_id = " + lineB
+                + " AND m_matchpo_id = " + match));
+    }
+
+    @Test
+    void aPaymentSelectionCanNeverMoveIntoOrOutOfAPlacedClient() throws Exception {
+        int unplaced;
+        int placed = IDS.incrementAndGet();
+        try (Connection c = transaction()) {
+            unplaced = otherClientDoc(c, "c_payselection", "", "");
+            c.commit();
+        }
+        try (Connection c = transaction()) {
+            SQLException e = assertThrows(SQLException.class, () -> sql(c,
+                    "UPDATE adempiere.c_payselection SET ad_client_id = 11, ad_org_id = 11 WHERE c_payselection_id = " + unplaced));
+            assertTrue(e.getMessage().contains("disbursement instructions are not governed"), e.getMessage());
+        }
+        try (Connection c = transaction()) {
+            // A placed client's pre-existing selection (history created before placement).
+            sql(c, "ALTER TABLE adempiere.c_payselection DISABLE TRIGGER baobab_forbid_disbursement_instruction");
+            sql(c, "INSERT INTO adempiere.c_payselection (c_payselection_id, ad_client_id, ad_org_id) VALUES ("
+                    + placed + ", 11, 11)");
+            sql(c, "ALTER TABLE adempiere.c_payselection ENABLE TRIGGER baobab_forbid_disbursement_instruction");
+            SQLException e = assertThrows(SQLException.class, () -> sql(c,
+                    "UPDATE adempiere.c_payselection SET ad_client_id = 12, ad_org_id = 12 WHERE c_payselection_id = " + placed));
+            assertTrue(e.getMessage().contains("disbursement instructions are not governed"), e.getMessage());
+        }
+    }
+
+    @Test
+    void theLastAllocationLineIsDeletedOnlyWithItsOwnSidesAuthority() throws Exception {
+        int invoice, payment, allocation, line;
+        try (Connection c = transaction()) {
+            sql(c, "INSERT INTO adempiere.c_doctype VALUES (202, 'API') ON CONFLICT DO NOTHING");
+            invoice = insertPurchase(c, "c_invoice", ", c_doctypetarget_id, c_doctype_id", ", 202, 0");
+            payment = insertDoc(c, "c_payment", "isreceipt", "N");
+            allocation = payablesAllocation(c, invoice, payment);
+            c.commit();
+        }
+        line = IDS.incrementAndGet();
+        NativeOperation payables = new NativeOperation(NativeOperation.PAYABLES_ALLOCATION, "C_AllocationHdr",
+                allocation, record("C_AllocationHdr", allocation, "gate-b-dl"));
+        try (Connection c = transaction()) {
+            attribute(c, payables);
+            sql(c, "INSERT INTO adempiere.c_allocationline (c_allocationline_id, c_allocationhdr_id, c_invoice_id, "
+                    + "c_payment_id, ad_client_id, ad_org_id) VALUES (" + line + ", " + allocation + ", " + invoice + ", "
+                    + payment + ", 11, 11)");
+            c.commit();
+        }
+        // Without authority the deletion is refused at COMMIT.
+        try (Connection c = transaction()) {
+            sql(c, "DELETE FROM adempiere.c_allocationline WHERE c_allocationline_id = " + line);
+            denied(c);
+        }
+        // A sales decision is not the deleted line's side.
+        try (Connection c = transaction()) {
+            attribute(c, new NativeOperation(NativeOperation.ALLOCATION, "C_AllocationHdr", allocation,
+                    record("C_AllocationHdr", allocation, "gate-b-dl")));
+            sql(c, "DELETE FROM adempiere.c_allocationline WHERE c_allocationline_id = " + line);
+            denied(c);
+        }
+        // With its own side's authority the final line is deleted, leaving an empty allocation.
+        try (Connection c = transaction()) {
+            attribute(c, payables);
+            sql(c, "DELETE FROM adempiere.c_allocationline WHERE c_allocationline_id = " + line);
+            c.commit();
+        }
+        assertEquals(0, count("SELECT count(*) FROM adempiere.c_allocationline WHERE c_allocationhdr_id = " + allocation));
+    }
 }

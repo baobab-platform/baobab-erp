@@ -121,7 +121,13 @@ row's ledger posting:
 - an `M_MatchInv` belongs to its vendor invoice.
 
 Inserting, changing or deleting a matching row needs the root's current authority in the same transaction
-(deferred constraint triggers).
+(deferred constraint triggers). Re-pointing a match needs both the old and the new root's authority, and the JVM
+refuses it outright.
+
+**Client binding.** iDempiere ids are global. An allocation line's invoice and payment, and a matching row's
+lines, must belong to the same `AD_Client` as the allocation or the match, or they have no class. A payment
+selection row can never move into or out of a placed client. Deleting an allocation line needs the authority of
+that line's own side, so the last line of an authorised allocation can still be removed.
 
 **Class-exact reuse.** A decision is reused within a transaction only for exactly its own class
 (`has_current_attribution_for`), so a sales decision is never reused for a payables write.
