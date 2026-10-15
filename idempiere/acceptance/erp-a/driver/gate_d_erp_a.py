@@ -461,8 +461,9 @@ def receipt(args, evidence: Evidence) -> None:
             "real": ["iDempiere 13 with the shipped Baobab finance veto", "Baobab native migrations and COMMIT fences",
                      "CP release binary and its migrations", "PostgreSQL 17 (ERP and CP)", "TLS edge (nginx)"],
             "simulated": ["IAM: test OIDC issuer with real RS256 JWTs (not Keycloak)",
-                          "legal-entity verification, market assignment, engine instance binding, human identities "
-                          "(recorded synthetic CP rows)", "GardenWorld synthetic business data"],
+                          "recorded synthetic CP rows: legal-entity verification, market assignment, "
+                          + "engine instance binding, human identities",
+                          "GardenWorld synthetic business data"],
             "provider": "none: no money movement; vendor payment is RECORDING only (ADR-SHARED-037)"},
         "scenarios": evidence.scenarios,
         "result": "PASS" if evidence.failures() == 0 else "FAIL",
