@@ -1,6 +1,6 @@
 {
   "repository": "baobab-platform/shared",
-  "commit": "92541c92321abde72dea7deb7d42e70d0b6acafb",
+  "commit": "756edb410fdfb29c8b90bcc388a69412b4b5b7b1",
   "roots": [
     "contracts/admission/v2/documentary-restriction.schema.json",
     "contracts/control-plane/v1/domain.schema.json",
@@ -31,7 +31,7 @@
     "contracts/control-plane/v1/erp-assignment.schema.json": "e412e22d9931d36fbc5816f134af5c3588a178775c4a9a0124a9855c2d018f3a",
     "contracts/control-plane/v1/market.schema.json": "acbdc4c1e8c716f1dcd9b855b79f5206ebcb69fd911f5a14b515bbcb78cca2f9",
     "contracts/control-plane/v1/platform-context.schema.json": "92a3584f1db3c192fa0315820b6054607d377a52028f43a6fe48deda14c7ed2f",
-    "contracts/erp/v2/posting-authority.schema.json": "241f1878518fed1bb29a3d01a9bd8babf82972f4cacddafaacd3d133e5c00e74",
+    "contracts/erp/v2/posting-authority.schema.json": "7a693a62da894a45722a36b4261bfcf932387a4ffd01ea8b7413cb5981a2a572",
     "contracts/evidence/v1/domain.schema.json": "36847f9a85bc8e45cb2944851145e07e776abb2140f3626b9e922ed224226a64",
     "contracts/organisation/v1/admission.schema.json": "e24b7942afb626a91d1e6f42d905609fbb53102bc91d492285f375c1b399bcf1",
     "contracts/organisation/v1/domain.schema.json": "8409e3d9f1741421ee08818540ddeae60e1990dd9b117826f032d3733f3c5801",

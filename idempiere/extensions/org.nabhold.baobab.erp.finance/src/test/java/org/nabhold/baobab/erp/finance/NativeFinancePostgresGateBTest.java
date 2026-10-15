@@ -363,7 +363,7 @@ class NativeFinancePostgresGateBTest {
     }
 
     @Test
-    void outboundPaymentHasNoClassAndForgedAuthorityCannotCompleteOrPostIt() throws Exception {
+    void outboundPaymentIsRecordedOnlyAndForgedSalesAuthorityCannotCompleteIt() throws Exception {
         int payment;
         try (Connection c = transaction()) {
             payment = insertDoc(c, "c_payment", "isreceipt", "N");
@@ -371,13 +371,21 @@ class NativeFinancePostgresGateBTest {
         }
         try (Connection c = transaction()) {
             var resolver = new NativeOperationResolver(trx -> c);
-            assertNull(resolver.classify(header("C_Payment", payment, "gate-b-out", "IsReceipt", "N")));
+            // ERP-A (ADR-SHARED-037): an outbound payment that is neither online
+            // nor from a payment selection is RECORDED under its own class only.
+            assertEquals(NativeOperation.VENDOR_PAYMENT, resolver.classify(
+                    record("C_Payment", payment, "gate-b-out", "IsReceipt", "N", "IsOnline", "N")).operationClass());
+            assertNull(resolver.classify(record("C_Payment", payment, "gate-b-out", "IsReceipt", "N", "IsOnline", "Y")),
+                    "an online outbound payment is a disbursement instruction");
+            assertNull(resolver.classify(record("C_Payment", payment, "gate-b-out", "IsReceipt", "N")),
+                    "a missing online flag denies");
             assertNull(resolver.classify(header("C_Payment", payment, "gate-b-out", "IsReceipt", null)),
                     "a missing direction denies");
-            assertNull(resolver.classify(new NativeRecord("Fact_Acct", CLIENT, ORG, 0, "model:TYPE_BEFORE_NEW", "gate-b-out",
-                    col -> switch (col) { case "AD_Table_ID" -> 335; case "Record_ID" -> payment; default -> null; })),
-                    "an outbound payment's ledger has no class");
-            // Even an attribution forged for payment.record cannot complete it at COMMIT.
+            assertEquals(NativeOperation.VENDOR_PAYMENT, resolver.classify(new NativeRecord("Fact_Acct", CLIENT, ORG, 0,
+                    "model:TYPE_BEFORE_NEW", "gate-b-out",
+                    col -> switch (col) { case "AD_Table_ID" -> 335; case "Record_ID" -> payment; default -> null; }))
+                    .operationClass(), "an outbound payment's ledger is recorded under its own class");
+            // An attribution forged for the RECEIPT class cannot complete it at COMMIT.
             NativeOperation forged = new NativeOperation(NativeOperation.PAYMENT, "C_Payment", payment,
                     header("C_Payment", payment, "gate-b-out", "IsReceipt", "N"));
             NativeConnections same = trx -> c;
@@ -647,5 +655,266 @@ class NativeFinancePostgresGateBTest {
             }
         }
         assertEquals(0, count("SELECT count(*) FROM adempiere.c_allocationline WHERE c_allocationhdr_id = " + allocation));
+    }
+
+    // --- P0-04B ERP-A (N0006, ADR-SHARED-037): purchase side and vendor-payment recording ---
+
+    private static NativeRecord record(String table, int id, String trx, String... columnValues) {
+        java.util.Map<String, Object> values = new java.util.HashMap<>();
+        for (int i = 0; i + 1 < columnValues.length; i += 2) values.put(columnValues[i], columnValues[i + 1]);
+        return new NativeRecord(table, CLIENT, ORG, id, "document:TIMING_BEFORE_COMPLETE", trx, values::get);
+    }
+
+    private static void sql(Connection c, String statement) throws SQLException {
+        try (Statement s = c.createStatement()) {
+            s.execute(statement);
+        }
+    }
+
+    private static int insertPurchase(Connection c, String relation, String extraColumns, String extraValues)
+            throws SQLException {
+        int id = IDS.incrementAndGet();
+        sql(c, "INSERT INTO adempiere." + relation + " (" + relation + "_id, ad_client_id, ad_org_id, issotrx"
+                + extraColumns + ") VALUES (" + id + ", 11, 11, 'N'" + extraValues + ")");
+        return id;
+    }
+
+    /** Append an attribution for op's class through the real placement, readiness and attribution providers. */
+    private static void attribute(Connection c, NativeOperation op) throws Exception {
+        NativeConnections same = trx -> c;
+        NativePlacement placement = new PlacementContextSource(same).currentPlacement(op);
+        assertNotNull(placement, "provenance-backed placement");
+        new NativeFinanceAttribution(same).append(op, placement, decision(Instant.now().plusSeconds(25)),
+                new NativeFinanceReadiness.FinanceBaseline(LE, 1));
+    }
+
+    private static String storedClass(String table, int id) throws SQLException {
+        try (Connection c = open(); var s = c.prepareStatement("SELECT baobab_native.governed_class_of(?, ?)")) {
+            s.setString(1, table);
+            s.setInt(2, id);
+            try (var r = s.executeQuery()) {
+                r.next();
+                return r.getString(1);
+            }
+        }
+    }
+
+    @Test
+    void purchaseDocumentsAreClassifiedByTheirOwnValuesAndStoredRows() throws Exception {
+        int order, receipt, vendorReturn, invoice, creditMemo;
+        try (Connection c = transaction()) {
+            sql(c, "INSERT INTO adempiere.c_doctype VALUES (202, 'API'), (203, 'APC') ON CONFLICT DO NOTHING");
+            order = insertPurchase(c, "c_order", "", "");
+            receipt = insertPurchase(c, "m_inout", ", movementtype", ", 'V+'");
+            vendorReturn = insertPurchase(c, "m_inout", ", movementtype", ", 'V-'");
+            invoice = insertPurchase(c, "c_invoice", ", c_doctypetarget_id, c_doctype_id", ", 202, 0");
+            creditMemo = insertPurchase(c, "c_invoice", ", c_doctypetarget_id, c_doctype_id", ", 203, 0");
+            c.commit();
+        }
+        assertEquals(NativeOperation.PURCHASE_ORDER, storedClass("C_Order", order));
+        assertEquals(NativeOperation.MATERIAL_RECEIPT, storedClass("M_InOut", receipt));
+        assertNull(storedClass("M_InOut", vendorReturn), "a vendor return is not a goods receipt");
+        assertEquals(NativeOperation.VENDOR_INVOICE, storedClass("C_Invoice", invoice));
+        assertNull(storedClass("C_Invoice", creditMemo), "an AP credit memo has no class");
+        try (Connection c = transaction()) {
+            var resolver = new NativeOperationResolver(trx -> c);
+            assertEquals(NativeOperation.PURCHASE_ORDER,
+                    resolver.classify(record("C_Order", order, "gate-b-po", "IsSOTrx", "N")).operationClass());
+            assertEquals(NativeOperation.MATERIAL_RECEIPT, resolver.classify(
+                    record("M_InOut", receipt, "gate-b-po", "IsSOTrx", "N", "MovementType", "V+")).operationClass());
+            assertNull(resolver.classify(record("M_InOut", vendorReturn, "gate-b-po", "IsSOTrx", "N", "MovementType", "V-")));
+            assertEquals(NativeOperation.VENDOR_INVOICE, resolver.classify(
+                    record("C_Invoice", invoice, "gate-b-po", "IsSOTrx", "N", "C_DocTypeTarget_ID", "202")).operationClass());
+            assertNull(resolver.classify(record("C_Invoice", creditMemo, "gate-b-po", "IsSOTrx", "N",
+                    "C_DocTypeTarget_ID", "203")), "an AP credit memo has no class");
+            // A line is its stored header's class.
+            assertEquals(NativeOperation.MATERIAL_RECEIPT, resolver.classify(record("M_InOutLine", 0, "gate-b-po",
+                    "M_InOut_ID", String.valueOf(receipt))).operationClass());
+            assertNull(resolver.classify(record("M_InOutLine", 0, "gate-b-po", "M_InOut_ID", String.valueOf(vendorReturn))));
+            c.rollback();
+        }
+    }
+
+    @Test
+    void purchaseCompletionNeedsItsOwnClassAndNeverTheSalesOne() throws Exception {
+        int order;
+        try (Connection c = transaction()) {
+            order = insertPurchase(c, "c_order", "", "");
+            c.commit();
+        }
+        // A sales-order decision (a forged or reused class) cannot complete a purchase order.
+        try (Connection c = transaction()) {
+            attribute(c, new NativeOperation(NativeOperation.SALES_ORDER, "C_Order", order,
+                    record("C_Order", order, "gate-b-po2", "IsSOTrx", "N")));
+            sql(c, "UPDATE adempiere.c_order SET docstatus = 'CO' WHERE c_order_id = " + order);
+            denied(c);
+        }
+        // Its own class completes it, and the JVM reuses that decision only for that class.
+        try (Connection c = transaction()) {
+            NativeOperation own = new NativeOperation(NativeOperation.PURCHASE_ORDER, "C_Order", order,
+                    record("C_Order", order, "gate-b-po2", "IsSOTrx", "N"));
+            attribute(c, own);
+            NativeFinanceAttribution attribution = new NativeFinanceAttribution(trx -> c);
+            assertTrue(attribution.hasCurrent(own));
+            assertFalse(attribution.hasCurrent(new NativeOperation(NativeOperation.SALES_ORDER, "C_Order", order,
+                    own.record())), "a decision is reused only for exactly its class");
+            sql(c, "UPDATE adempiere.c_order SET docstatus = 'CO' WHERE c_order_id = " + order);
+            c.commit();
+        }
+        assertEquals(1, count("SELECT count(*) FROM adempiere.c_order WHERE docstatus = 'CO' AND c_order_id = " + order));
+    }
+
+    @Test
+    void paymentSelectionIsNeverAGovernedPathAndOutboundPaymentsCannotTurnOnline() throws Exception {
+        int payment;
+        try (Connection c = transaction()) {
+            payment = insertDoc(c, "c_payment", "isreceipt", "N");
+            c.commit();
+        }
+        // Bypass: direct SQL creating a payment selection for a placed client is refused outright.
+        for (String table : new String[] {"c_payselection", "c_payselectionline", "c_payselectioncheck"}) {
+            try (Connection c = transaction()) {
+                SQLException e = assertThrows(SQLException.class, () -> sql(c, "INSERT INTO adempiere." + table
+                        + " (" + table + "_id, ad_client_id, ad_org_id) VALUES (" + IDS.incrementAndGet() + ", 11, 11)"));
+                assertTrue(e.getMessage().contains("disbursement instructions are not governed"), e.getMessage());
+            }
+        }
+        // A recorded outbound payment cannot be switched to online processing by direct SQL.
+        try (Connection c = transaction()) {
+            SQLException e = assertThrows(SQLException.class,
+                    () -> sql(c, "UPDATE adempiere.c_payment SET isonline = 'Y' WHERE c_payment_id = " + payment));
+            assertTrue(e.getMessage().contains("cannot become an online payment"), e.getMessage());
+        }
+        // Even a pre-existing selection row (unplaced history) strips the class: no recording, no completion.
+        try (Connection c = transaction()) {
+            sql(c, "ALTER TABLE adempiere.c_payselectioncheck DISABLE TRIGGER baobab_forbid_disbursement_instruction");
+            sql(c, "INSERT INTO adempiere.c_payselectioncheck (c_payselectioncheck_id, ad_client_id, ad_org_id, c_payment_id) "
+                    + "VALUES (" + IDS.incrementAndGet() + ", 11, 11, " + payment + ")");
+            assertNull(storedClass_on(c, "C_Payment", payment), "a payment from a selection has no class");
+            assertNull(new NativeOperationResolver(trx -> c).classify(
+                    record("C_Payment", payment, "gate-b-ps", "IsReceipt", "N", "IsOnline", "N")));
+            attribute(c, new NativeOperation(NativeOperation.VENDOR_PAYMENT, "C_Payment", payment,
+                    record("C_Payment", payment, "gate-b-ps", "IsReceipt", "N", "IsOnline", "N")));
+            sql(c, "UPDATE adempiere.c_payment SET docstatus = 'CO' WHERE c_payment_id = " + payment);
+            denied(c);
+        }
+    }
+
+    private static String storedClass_on(Connection c, String table, int id) throws SQLException {
+        try (var s = c.prepareStatement("SELECT baobab_native.governed_class_of(?, ?)")) {
+            s.setString(1, table);
+            s.setInt(2, id);
+            try (var r = s.executeQuery()) {
+                r.next();
+                return r.getString(1);
+            }
+        }
+    }
+
+    @Test
+    void allocationsNeverNetPayablesAgainstReceivables() throws Exception {
+        int vendorInvoice, vendorPayment, salesInvoice, allocation;
+        try (Connection c = transaction()) {
+            sql(c, "INSERT INTO adempiere.c_doctype VALUES (202, 'API') ON CONFLICT DO NOTHING");
+            vendorInvoice = insertPurchase(c, "c_invoice", ", c_doctypetarget_id, c_doctype_id", ", 202, 0");
+            vendorPayment = insertDoc(c, "c_payment", "isreceipt", "N");
+            salesInvoice = insertDoc(c, "c_invoice", "issotrx", "Y");
+            allocation = IDS.incrementAndGet();
+            sql(c, "INSERT INTO adempiere.c_allocationhdr (c_allocationhdr_id, ad_client_id, ad_org_id) VALUES ("
+                    + allocation + ", 11, 11)");
+            c.commit();
+        }
+        try (Connection c = transaction()) {
+            var resolver = new NativeOperationResolver(trx -> c);
+            // An empty draft header has no side yet; it carries no ledger effect.
+            NativeRecord emptyHeader = new NativeRecord("C_AllocationHdr", CLIENT, ORG, allocation,
+                    "model:TYPE_BEFORE_CHANGE", "gate-b-al", col -> "DocStatus".equals(col) ? "DR" : null);
+            assertTrue(resolver.emptyDraftAllocation(emptyHeader));
+            assertFalse(resolver.emptyDraftAllocation(new NativeRecord("C_AllocationHdr", CLIENT, ORG, allocation,
+                    "document:TIMING_BEFORE_COMPLETE", "gate-b-al", col -> "DocStatus".equals(col) ? "DR" : null)),
+                    "a document action is never an empty draft save");
+            assertNull(resolver.classify(emptyHeader), "an empty allocation has no class");
+            NativeRecord payablesLine = record("C_AllocationLine", 0, "gate-b-al", "C_AllocationHdr_ID",
+                    String.valueOf(allocation), "C_Invoice_ID", String.valueOf(vendorInvoice),
+                    "C_Payment_ID", String.valueOf(vendorPayment));
+            assertEquals(NativeOperation.PAYABLES_ALLOCATION, resolver.classify(payablesLine).operationClass());
+            assertNull(resolver.classify(record("C_AllocationLine", 0, "gate-b-al", "C_AllocationHdr_ID",
+                    String.valueOf(allocation), "C_Invoice_ID", String.valueOf(salesInvoice),
+                    "C_Payment_ID", String.valueOf(vendorPayment))), "a line joining both sides has no class");
+            attribute(c, resolver.classify(payablesLine));
+            sql(c, "INSERT INTO adempiere.c_allocationline (c_allocationline_id, c_allocationhdr_id, c_invoice_id, "
+                    + "c_payment_id, ad_client_id, ad_org_id) VALUES (" + IDS.incrementAndGet() + ", " + allocation + ", "
+                    + vendorInvoice + ", " + vendorPayment + ", 11, 11)");
+            assertEquals(NativeOperation.PAYABLES_ALLOCATION, storedClass_on(c, "C_AllocationHdr", allocation));
+            // Once payables, a sales line can never join it.
+            assertNull(resolver.classify(record("C_AllocationLine", 0, "gate-b-al", "C_AllocationHdr_ID",
+                    String.valueOf(allocation), "C_Invoice_ID", String.valueOf(salesInvoice))));
+            sql(c, "UPDATE adempiere.c_allocationhdr SET docstatus = 'CO' WHERE c_allocationhdr_id = " + allocation);
+            c.commit();
+        }
+        // Bypass: direct SQL adding a sales line to the completed payables allocation is refused at COMMIT.
+        try (Connection c = transaction()) {
+            sql(c, "INSERT INTO adempiere.c_allocationline (c_allocationline_id, c_allocationhdr_id, c_invoice_id, "
+                    + "ad_client_id, ad_org_id) VALUES (" + IDS.incrementAndGet() + ", " + allocation + ", "
+                    + salesInvoice + ", 11, 11)");
+            denied(c);
+        }
+        assertEquals(NativeOperation.PAYABLES_ALLOCATION, storedClass("C_AllocationHdr", allocation));
+    }
+
+    @Test
+    void matchingRowsAreFencedThroughTheirOneRootDocument() throws Exception {
+        int receipt, receiptLine, invoice, invoiceLine;
+        try (Connection c = transaction()) {
+            sql(c, "INSERT INTO adempiere.c_doctype VALUES (202, 'API') ON CONFLICT DO NOTHING");
+            receipt = insertPurchase(c, "m_inout", ", movementtype", ", 'V+'");
+            receiptLine = IDS.incrementAndGet();
+            sql(c, "INSERT INTO adempiere.m_inoutline (m_inoutline_id, m_inout_id, ad_client_id, ad_org_id) VALUES ("
+                    + receiptLine + ", " + receipt + ", 11, 11)");
+            invoice = insertPurchase(c, "c_invoice", ", c_doctypetarget_id, c_doctype_id", ", 202, 0");
+            invoiceLine = IDS.incrementAndGet();
+            sql(c, "INSERT INTO adempiere.c_invoiceline (c_invoiceline_id, c_invoice_id, ad_client_id, ad_org_id) VALUES ("
+                    + invoiceLine + ", " + invoice + ", 11, 11)");
+            c.commit();
+        }
+        int matchPo = IDS.incrementAndGet();
+        int matchInv = IDS.incrementAndGet();
+        // Bypass: direct SQL matching without the root's authority in this transaction.
+        try (Connection c = transaction()) {
+            sql(c, "INSERT INTO adempiere.m_matchpo (m_matchpo_id, ad_client_id, ad_org_id, m_inoutline_id) VALUES ("
+                    + matchPo + ", 11, 11, " + receiptLine + ")");
+            denied(c);
+        }
+        try (Connection c = transaction()) {
+            var resolver = new NativeOperationResolver(trx -> c);
+            NativeOperation po = resolver.classify(new NativeRecord("M_MatchPO", CLIENT, ORG, 0, "model:TYPE_BEFORE_NEW",
+                    "gate-b-mt", col -> "M_InOutLine_ID".equals(col) ? receiptLine : null));
+            assertEquals(NativeOperation.MATERIAL_RECEIPT, po.operationClass());
+            assertEquals(receipt, po.sourceRecordId());
+            NativeOperation inv = resolver.classify(new NativeRecord("M_MatchInv", CLIENT, ORG, 0, "model:TYPE_BEFORE_NEW",
+                    "gate-b-mt", col -> switch (col) {
+                        case "M_InOutLine_ID" -> receiptLine; case "C_InvoiceLine_ID" -> invoiceLine; default -> null; }));
+            assertEquals(NativeOperation.VENDOR_INVOICE, inv.operationClass(), "an invoice match roots at its invoice");
+            assertEquals(invoice, inv.sourceRecordId());
+            attribute(c, po);
+            attribute(c, inv);
+            sql(c, "INSERT INTO adempiere.m_matchpo (m_matchpo_id, ad_client_id, ad_org_id, m_inoutline_id) VALUES ("
+                    + matchPo + ", 11, 11, " + receiptLine + ")");
+            sql(c, "INSERT INTO adempiere.m_matchinv (m_matchinv_id, ad_client_id, ad_org_id, m_inoutline_id, "
+                    + "c_invoiceline_id) VALUES (" + matchInv + ", 11, 11, " + receiptLine + ", " + invoiceLine + ")");
+            // The match's ledger rows are attributed through the same root.
+            assertEquals(NativeOperation.VENDOR_INVOICE, resolver.classify(new NativeRecord("Fact_Acct", CLIENT, ORG, 0,
+                    "model:TYPE_BEFORE_NEW", "gate-b-mt", col -> switch (col) {
+                        case "AD_Table_ID" -> 472; case "Record_ID" -> matchInv; default -> null; })).operationClass());
+            sql(c, "INSERT INTO adempiere.fact_acct (fact_acct_id, ad_client_id, ad_org_id, ad_table_id, record_id, "
+                    + "c_period_id, amtacctdr) VALUES (" + IDS.incrementAndGet() + ", 11, 11, 472, " + matchInv + ", 301, 10)");
+            c.commit();
+        }
+        // Bypass: deleting a match (unmatching) without the root's authority is refused at COMMIT.
+        try (Connection c = transaction()) {
+            sql(c, "DELETE FROM adempiere.m_matchinv WHERE m_matchinv_id = " + matchInv);
+            denied(c);
+        }
+        assertEquals(1, count("SELECT count(*) FROM adempiere.m_matchinv WHERE m_matchinv_id = " + matchInv));
     }
 }

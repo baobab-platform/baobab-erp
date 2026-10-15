@@ -39,3 +39,30 @@ it also fixed three defects that only a real runtime exposed (ADR-ERP-022 §7).
 Real placements or mandates, workload activation, Python order-to-cash wiring, purchase-side and configuration
 classes, costing-write classification, production enablement. Protected runtimes without CP/IAM configuration
 continue to deny every protected financial write.
+
+## ERP-A — purchase side and vendor-payment recording (EA v2.2 EA-R03, 2026-10-15)
+
+Shared `erp/v2` catalogue version 2 (ADR-SHARED-037, Shared#314, pinned at `756edb4`) adds five recording
+classes. ADR-ERP-022 §4.3 records how ERP classifies them.
+
+| Layer | Change |
+|---|---|
+| Native migration | `N0006`: `governed_class_of` / `governed_root` / `allocation_line_side` as the single classification rule; class-exact `has_current_attribution_for`; `Fact_Acct` fence routed through a matching row's root; deferred COMMIT fences on `M_MatchPO` / `M_MatchInv`; payment selections refused outright for placed clients; class locks on `M_InOut.MovementType` and outbound `C_Payment.IsOnline` |
+| JVM | `NativeOperationResolver` classifies headers from their own values and stored documents through `governed_class_of`; matching rows classified as their root; empty draft allocation headers carry no decision; `M_MatchPO`, `M_MatchInv` and `C_PaySelection*` are protected tables; same-transaction reuse is class-exact |
+| Contracts | Shared pin `92541c9` → `756edb4`; both runtimes re-synced (`sync_authority_contracts.py --check`) |
+
+**Evidence (this PR).**
+- **Gate B.** `NativeFinancePostgresGateBTest` runs 25 tests on PostgreSQL 17. The CI job moves from PostgreSQL 16 to 17. The new tests cover:
+  - purchase classification by own values and stored rows, with vendor returns and AP credit memos denied;
+  - purchase completion only under its own class;
+  - class-exact reuse;
+  - payment selection refused, and online switching locked;
+  - no AP/AR netting, with a direct-SQL sales line refused on a payables allocation;
+  - matching fenced through its root on insert, ledger posting and delete.
+- **Mutation check.** Removing the `M_MatchPO` fence and the `C_PaySelection` trigger fails the two corresponding tests.
+- **Gate A and C.** The finance unit tests and the `erp/v2` conformance tests (89) pass, and the packaged JAR verifies (167 wire vectors).
+
+**Not in this PR.**
+- Purchase-side costing (receipt and match cost details) stays denied until real iDempiere shows which writes are deterministic root consequences.
+- The engine-local harness (real iDempiere 13, the real CP binary at a pinned merged SHA, real signed workload tokens, PostgreSQL 17, crash-window and bypass scenarios) is the next ERP-A PR. Gate D's synthetic CP knows only the version 1 classes, so its outbound-payment scenario still denies here; that PR rewrites it against the real CP.
+- Engine-local evidence on synthetic data is **not EA Gate D and not L4** (EA v2.2 §§3, 7). Production stays denied.

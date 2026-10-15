@@ -82,13 +82,13 @@ jobs:
         run: python scripts/verify_contract_artifacts.py --wheel /tmp/erp-wheel/*.whl --runtime-python /tmp/erp-wheel-runtime/bin/python
 
   native-finance-postgres:
-    # EA v2.1 Gate B (P0-04B ERP): the real JVM placement, readiness, operation and
+    # EA v2.1 Gate B (P0-04B ERP; ERP-A purchase side): the real JVM placement, readiness, operation and
     # attribution providers and the native COMMIT fence, over JDBC on PostgreSQL.
     # The adempiere schema is a minimal fixture; this is not an iDempiere run (Gate D).
     runs-on: ubuntu-26.04
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:17-alpine
         env:
           POSTGRES_DB: baobab_native_test
           POSTGRES_USER: baobab
@@ -123,7 +123,7 @@ jobs:
           -Dtest=NativeFinancePostgresGateBTest -Dsurefire.failIfNoSpecifiedTests=false
       - name: Gate B must have run, not skipped
         run: >-
-          grep -q 'tests="20"[^>]*skipped="0"'
+          grep -q 'tests="25"[^>]*skipped="0"'
           idempiere/extensions/org.nabhold.baobab.erp.finance/target/surefire-reports/TEST-org.nabhold.baobab.erp.finance.NativeFinancePostgresGateBTest.xml
 
   build-image:

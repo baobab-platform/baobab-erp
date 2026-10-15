@@ -14,6 +14,13 @@ public record NativeOperation(String operationClass, String sourceTable, int sou
     public static final String ALLOCATION = "erp.allocation.record";
     public static final String SHIPMENT = "erp.shipment.complete";
     public static final String SALES_ORDER = "erp.sales-order.complete";
+    // Shared erp/v2 catalogue version 2 (ADR-SHARED-037): purchase-side and
+    // vendor-payment RECORDING classes; never money-movement authority.
+    public static final String PURCHASE_ORDER = "erp.purchase-order.complete";
+    public static final String MATERIAL_RECEIPT = "erp.material-receipt.complete";
+    public static final String VENDOR_INVOICE = "erp.vendor-invoice.record";
+    public static final String VENDOR_PAYMENT = "erp.vendor-payment.record";
+    public static final String PAYABLES_ALLOCATION = "erp.payables-allocation.record";
 
     /** Exact operation and transaction reference bound into every CP decision. */
     public String operationReference() {

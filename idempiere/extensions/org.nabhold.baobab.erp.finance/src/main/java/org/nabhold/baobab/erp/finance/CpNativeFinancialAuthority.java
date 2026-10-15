@@ -257,6 +257,11 @@ public final class CpNativeFinancialAuthority implements NativeFinancialAuthorit
             // Aggregate cost is never an operation: only a cost detail already
             // derived from an authorised root in this transaction covers it.
             if ("M_Cost".equals(record.table())) return derived.costCovered(record);
+            // An allocation's side comes only from its lines, which iDempiere
+            // saves after the header: an empty draft header has no ledger
+            // effect and no side yet. Its lines, completion and posting are
+            // each classified, decided and fenced at COMMIT (N0006).
+            if (operations.emptyDraftAllocation(record)) return true;
             NativeOperation operation = operations.classify(record);
             if (operation == null) return false;
             String reference = operation.operationReference();

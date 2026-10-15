@@ -4,6 +4,17 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- **ERP-A purchase-side and vendor-payment recording (EA v2.2 EA-R03; ADR-SHARED-037; ADR-ERP-022 §4.3).**
+  Native migration `N0006` and the JVM resolver classify purchase orders, vendor receipts (`V+`), AP
+  invoices, recordable outbound payments and payables-only allocations under the five new Shared `erp/v2`
+  catalogue version 2 classes, using a single database rule (`governed_class_of`). Matching rows are fenced
+  through their root document. Payment selections, online outbound payments, vendor returns, AP credit memos
+  and AP/AR netting stay denied. Recording a vendor payment is never authority to disburse. Shared pin
+  `92541c9` → `756edb4`. Gate B (PostgreSQL 17) now runs 25 tests. Purchase costing stays denied until the
+  Gate D harness classifies it.
+
 ### Security
 
 - `idempiere/Dockerfile` swaps the Jackson 2.15.4 bundles in the pinned iDempiere
