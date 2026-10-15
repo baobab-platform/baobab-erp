@@ -55,7 +55,7 @@ trap cleanup EXIT
 "${COMPOSE[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
 
 log "throwaway CA, the TLS edge certificate and iDempiere's truststore"
-mkdir -p "$RUN"/{edge,cp,issuer,erp-tls,gate-d/requests,gate-d/results}
+mkdir -p "$RUN"/{edge,cp,issuer,erp-tls,erp-secret,gate-d/requests,gate-d/results}
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=Baobab ERP-A throwaway CA" \
   -keyout "$RUN/ca.key" -out "$RUN/ca.pem" 2>/dev/null
 openssl req -newkey rsa:2048 -nodes -subj "/CN=gated.test" -keyout "$RUN/edge/server.key" -out "$RUN/edge.csr" 2>/dev/null
@@ -76,6 +76,8 @@ json.dump({"baobab-erp-legal-actor-assessor-staging": {
                "erp-posting-authority:resolve"]}}, open(sys.argv[1], "w"))
 EOF
 cp "$HERE/cp/workload-registry.yaml" "$RUN/cp/workload-registry.yaml"
+printf '%s\n' "$ERP_WORKLOAD_SECRET" > "$RUN/erp-secret/workload-secret"
+chmod a+rX "$RUN/erp-secret"; chmod 0444 "$RUN/erp-secret/workload-secret"
 chmod -R a+rX "$RUN/issuer" "$RUN/cp"
 
 CP_COMMIT=$(git -C "$CP_SRC" rev-parse HEAD)

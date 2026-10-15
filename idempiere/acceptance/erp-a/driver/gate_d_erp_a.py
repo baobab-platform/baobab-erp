@@ -441,7 +441,7 @@ def receipt(args, evidence: Evidence) -> None:
     shared_pin = ""
     if lock.exists():
         for line in lock.read_text().splitlines():
-            if "commit" in line or "ref:" in line:
+            if line.strip().startswith("commit:"):
                 shared_pin = line.split(":", 1)[1].strip().strip('"')
                 break
     report = {

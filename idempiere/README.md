@@ -104,6 +104,13 @@ now attach one via `WorkloadTokenProviderFactory.fromSystemProperties()`
   `docs/sso-configuration.md`.
 - `baobab.iam.workload.scope` -- defaults to `erp:integrate`.
 
+Prefer `baobab.iam.workload.client.secret.file` (and, for the native finance veto,
+`baobab.iam.native.client.secret.file`): the path of a mounted secret file holding one
+line. iDempiere's start script echoes the whole `java` command line to the container
+log, and `ps` shows it, so an inline `-D...secret=` value leaks. This was found by the
+ERP-A harness's log check. When a `.file` property is set, an unreadable, empty or
+multi-line file means no secret: the inline property is never used as a fallback.
+
 Like `baobab.app.base.url`, none of these are wired into the pinned image's own JVM
 launch yet; a real deployment passes them the same way.
 

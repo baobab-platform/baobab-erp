@@ -44,11 +44,13 @@ services:
         -Dbaobab.cp.native.base.url=https://cp.gated.test/
         -Dbaobab.iam.token.url=https://iam.gated.test/realms/baobab/token
         -Dbaobab.iam.native.client.id=baobab-erp-legal-actor-assessor-staging
-        -Dbaobab.iam.native.client.secret=${ERP_WORKLOAD_SECRET}
+        -Dbaobab.iam.native.client.secret.file=/run/secrets/erp/workload-secret
         -Djavax.net.ssl.trustStore=/gate-d-tls/truststore.p12 -Djavax.net.ssl.trustStoreType=PKCS12
         -Djavax.net.ssl.trustStorePassword=changeit
     volumes:
       - ${RUN_DIR}/erp-tls:/gate-d-tls:ro
+      # The workload secret is a mounted file, never a -D flag: the start script echoes the command line.
+      - ${RUN_DIR}/erp-secret:/run/secrets/erp:ro
       - ${RUN_DIR}/gate-d:/opt/idempiere/.baobab/gate-d
     networks: [erpa]
     restart: "no"
