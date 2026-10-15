@@ -31,7 +31,7 @@ final class NativeFinanceAttribution {
                 ?::uuid,?,?,?,?::uuid,?,?,?::uuid,?,?,?)
         """;
     private static final String CURRENT =
-            "SELECT baobab_native.has_current_attribution(?, ?, ?)";
+            "SELECT baobab_native.has_current_attribution_for(?, ?, ?, ?)";
 
     /** A CP posting-authority decision ERP has already validated. */
     record Decision(String decisionId, String contextId, String mandateId, String supersedesMandateId,
@@ -48,7 +48,11 @@ final class NativeFinanceAttribution {
         return new NativeDerivedWrites(connections);
     }
 
-    /** True when this transaction already holds current authority for the source document. */
+    /**
+     * True when this transaction already holds current authority for the source
+     * document under exactly this operation class (N0006): a decision for one
+     * class is never reused for another, e.g. a sales decision for a payables line.
+     */
     boolean hasCurrent(NativeOperation operation) throws Exception {
         if (operation.sourceRecordId() <= 0) return false;
         Connection db = NativeConnections.transactional(connections, operation.record().transactionName());
@@ -56,6 +60,7 @@ final class NativeFinanceAttribution {
             s.setInt(1, operation.record().adClientId());
             s.setString(2, operation.sourceTable());
             s.setInt(3, operation.sourceRecordId());
+            s.setString(4, operation.operationClass());
             try (ResultSet r = s.executeQuery()) {
                 return r.next() && r.getBoolean(1);
             }

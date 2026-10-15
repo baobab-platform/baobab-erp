@@ -15,7 +15,11 @@ public final class NativeFinancePolicy {
             "C_BankStatementLine", "C_BankAccount", "C_Cash",
             "C_CashLine", "Fact_Acct", "C_AcctSchema",
             "C_ElementValue", "C_ValidCombination", "C_Tax", "C_TaxAcct",
-            "GL_Journal", "GL_JournalLine", "M_Cost", "M_CostDetail");
+            "GL_Journal", "GL_JournalLine", "M_Cost", "M_CostDetail",
+            // ERP-A: matching rows are governed through their root document;
+            // payment selections (remittance print, bank-file export) are a
+            // disbursement-instruction path no class covers, so always denied.
+            "M_MatchPO", "M_MatchInv", "C_PaySelection", "C_PaySelectionLine", "C_PaySelectionCheck");
 
     private NativeFinancePolicy() {}
 

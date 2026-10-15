@@ -15,7 +15,12 @@
         "erp.payment.record",
         "erp.allocation.record",
         "erp.shipment.complete",
-        "erp.sales-order.complete"
+        "erp.sales-order.complete",
+        "erp.purchase-order.complete",
+        "erp.material-receipt.complete",
+        "erp.vendor-invoice.record",
+        "erp.vendor-payment.record",
+        "erp.payables-allocation.record"
       ],
       "description": "Closed vocabulary; posting-operations.yaml maps each class to exactly one legal-actor role and activity. Extensions require a versioned contract revision."
     },
@@ -390,6 +395,116 @@
               },
               "activity": {
                 "const": "SALES_ORDER_COMMITMENT"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation_class": {
+                "const": "erp.purchase-order.complete"
+              }
+            },
+            "required": [
+              "operation_class"
+            ]
+          },
+          "then": {
+            "properties": {
+              "legal_actor_role": {
+                "const": "CONTRACTING_PARTY"
+              },
+              "activity": {
+                "const": "PURCHASE_ORDER_COMMITMENT"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation_class": {
+                "const": "erp.material-receipt.complete"
+              }
+            },
+            "required": [
+              "operation_class"
+            ]
+          },
+          "then": {
+            "properties": {
+              "legal_actor_role": {
+                "const": "CONTRACTING_PARTY"
+              },
+              "activity": {
+                "const": "GOODS_RECEIPT"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation_class": {
+                "const": "erp.vendor-invoice.record"
+              }
+            },
+            "required": [
+              "operation_class"
+            ]
+          },
+          "then": {
+            "properties": {
+              "legal_actor_role": {
+                "const": "ACCOUNTING_ENTITY"
+              },
+              "activity": {
+                "const": "VENDOR_INVOICE_RECORDING"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation_class": {
+                "const": "erp.vendor-payment.record"
+              }
+            },
+            "required": [
+              "operation_class"
+            ]
+          },
+          "then": {
+            "properties": {
+              "legal_actor_role": {
+                "const": "ACCOUNTING_ENTITY"
+              },
+              "activity": {
+                "const": "VENDOR_PAYMENT_RECORDING"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation_class": {
+                "const": "erp.payables-allocation.record"
+              }
+            },
+            "required": [
+              "operation_class"
+            ]
+          },
+          "then": {
+            "properties": {
+              "legal_actor_role": {
+                "const": "ACCOUNTING_ENTITY"
+              },
+              "activity": {
+                "const": "PAYABLES_ALLOCATION"
               }
             }
           }

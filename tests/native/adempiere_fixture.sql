@@ -55,3 +55,21 @@ CREATE TABLE adempiere.m_cost (ad_client_id numeric(10) NOT NULL, ad_org_id nume
   PRIMARY KEY (ad_client_id, ad_org_id, m_product_id, c_acctschema_id, m_costtype_id, m_costelement_id,
     m_attributesetinstance_id));
 INSERT INTO adempiere.ad_table VALUES (319, 'M_InOut'), (735, 'C_AllocationHdr');
+-- P0-04B ERP-A (N0006): the purchase-side columns and tables real iDempiere has.
+ALTER TABLE adempiere.m_inout ADD COLUMN movementtype char(2) NOT NULL DEFAULT 'C-';
+ALTER TABLE adempiere.c_payment ADD COLUMN isonline char(1) NOT NULL DEFAULT 'N';
+ALTER TABLE adempiere.c_invoice ADD COLUMN c_doctypetarget_id numeric(10);
+CREATE TABLE adempiere.m_matchpo (m_matchpo_id numeric(10) PRIMARY KEY, ad_client_id numeric(10) NOT NULL,
+  ad_org_id numeric(10) NOT NULL, c_orderline_id numeric(10), m_inoutline_id numeric(10), c_invoiceline_id numeric(10));
+CREATE TABLE adempiere.m_matchinv (m_matchinv_id numeric(10) PRIMARY KEY, ad_client_id numeric(10) NOT NULL,
+  ad_org_id numeric(10) NOT NULL, m_inoutline_id numeric(10), c_invoiceline_id numeric(10) NOT NULL);
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['c_payselection','c_payselectionline','c_payselectioncheck'] LOOP
+    EXECUTE format('CREATE TABLE adempiere.%I (%I numeric(10) PRIMARY KEY, ad_client_id numeric(10) NOT NULL,
+      ad_org_id numeric(10) NOT NULL)', t, t || '_id');
+  END LOOP;
+END $$;
+ALTER TABLE adempiere.c_payselectioncheck ADD COLUMN c_payment_id numeric(10);
+INSERT INTO adempiere.ad_table VALUES (259, 'C_Order'), (472, 'M_MatchInv'), (473, 'M_MatchPO');
