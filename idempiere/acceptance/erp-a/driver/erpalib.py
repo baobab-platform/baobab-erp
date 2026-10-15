@@ -56,8 +56,9 @@ class Compose:
             raise RuntimeError(f"compose {' '.join(args)} failed: {p.stderr[-2000:]}")
         return p.stdout
 
-    def psql(self, service: str, user: str, db: str, statement: str, check: bool = True) -> subprocess.CompletedProcess:
-        p = subprocess.run(self.base + ["exec", "-T", service, "psql", "-X", "-q", "-At", "-F", "\t",
+    def psql(self, service: str, user: str, db: str, statement: str, check: bool = True,
+             quiet: bool = True) -> subprocess.CompletedProcess:
+        p = subprocess.run(self.base + ["exec", "-T", service, "psql", "-X"] + (["-q"] if quiet else []) + ["-At", "-F", "\t",
                                         "-v", "ON_ERROR_STOP=1", "-U", user, "-d", db],
                            input=statement, capture_output=True, text=True, env=dict(os.environ))
         if check and p.returncode != 0:
@@ -88,7 +89,7 @@ class Erp:
         """One statement in its own explicit transaction as the iDempiere runtime
         role, outside the JVM: the COMMIT fence is the only thing in the way."""
         p = self.c.psql("erpdb", "adempiere", "idempiere",
-                        f"BEGIN;\n{statement};\nCOMMIT;", check=False)
+                        f"BEGIN;\n{statement};\nCOMMIT;", check=False, quiet=False)
         return (p.stdout + p.stderr).strip()
 
     def request(self, name: str, timeout: int = 180, **props) -> dict:

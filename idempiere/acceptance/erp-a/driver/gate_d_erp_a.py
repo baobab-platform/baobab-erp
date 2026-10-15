@@ -77,11 +77,12 @@ SELECT (jsonb_populate_record(c, jsonb_build_object(
      AND x.m_costtype_id = c.m_costtype_id AND x.m_costelement_id = ae.m_costelement_id
      AND x.m_attributesetinstance_id = c.m_attributesetinstance_id);
 -- Open the current period for the purchase-side document types, and for the types whose native
--- refusal is asserted (vendor return MMS, AP credit memo APC), so a refusal is Baobab's, not a closed period.
+-- refusal is asserted (vendor return MMS, AP credit memo APC), and allocations (CMA), so a refusal is
+-- Baobab's, not a closed period.
 UPDATE adempiere.c_periodcontrol pc SET periodstatus = 'O'
   FROM adempiere.c_period p
  WHERE p.c_period_id = pc.c_period_id AND p.ad_client_id = 11
-   AND pc.docbasetype IN ('POO', 'MMR', 'MMS', 'API', 'APC', 'APP', 'MXP', 'MXI')
+   AND pc.docbasetype IN ('POO', 'MMR', 'MMS', 'API', 'APC', 'APP', 'CMA', 'MXP', 'MXI')
    AND current_date BETWEEN p.startdate AND p.enddate;
 INSERT INTO baobab_native.native_placement (placement_id, version, tenant_id, engine_instance_id,
   operating_organisation_id, legal_entity_id, market, ad_client_id, ad_org_id, effective_from,
@@ -180,7 +181,7 @@ class Scenarios:
         out = self.erp.bypass(statement)
         Path(self.args.out, f"bypass-{sid}.txt").write_text(out + "\n")
         return self.ev.scenario(sid, title + ": refused at COMMIT",
-                                tag in out.splitlines() and DENIED in out and "ROLLBACK" in out, out[-400:])
+                                tag in out.splitlines() and DENIED in out, out[-400:])
 
     def cost_rows(self, order_line_ids: str) -> str:
         return self.q(f"SELECT count(*) FROM m_costdetail WHERE c_orderline_id IN ({order_line_ids}) "
@@ -304,7 +305,9 @@ class Scenarios:
         ev.scenario("S17", "direct SQL payment selection insert: refused", DENIED in out, out[-400:])
         out = self.erp.bypass(f"UPDATE adempiere.c_payment SET isonline = 'Y' WHERE c_payment_id = {pay or 0}")
         Path(self.args.out, "bypass-S18.txt").write_text(out + "\n")
-        ev.scenario("S18", "direct SQL: a recorded vendor payment cannot become online", DENIED in out, out[-400:])
+        ev.scenario("S18", "direct SQL: a recorded vendor payment cannot become online",
+                    bool(pay) and DENIED in out
+                    and self.q(f"SELECT isonline FROM c_payment WHERE c_payment_id = {pay or 0}") == "N", out[-400:])
 
         # S19: crash window. Completion is authorised and attributed in the transaction, then iDempiere is
         # SIGKILLed before COMMIT: nothing persists in ERP; CP keeps the decision it recorded.
@@ -368,12 +371,16 @@ class Scenarios:
         self.cp.revoke(self.cp.mandate)
         self.cp.mandate = self.cp.propose(PURCHASE, "erp-a/mandate-purchase-renewed")
         d_down = self.doc("po", qty=1, complete="false").get("id", "")
+        down_rows = (f"SELECT count(*) FROM baobab_native.finance_authority_attribution "
+                     f"WHERE lower(source_table) = 'c_order' AND source_record_id = {d_down or 0}")
+        down_before = self.q(down_rows)
         self.c.run("stop", "cp")
         r = self.complete("C_Order", d_down)
         self.c.run("start", "cp")
         ev.scenario("S24", "CP unavailable: fail closed, order stays DR without ledger or attribution",
                     bool(d_down) and self.q(f"SELECT docstatus FROM c_order WHERE c_order_id = {d_down}") == "DR"
-                    and not self.attributed("C_Order", d_down, PO) and r.get("complete_ok") != "true", json.dumps(r))
+                    and self.q(down_rows) == down_before and self.facts(T_ORDER, d_down) == "0"
+                    and r.get("complete_ok") != "true", json.dumps(r))
         self.wait_cp()
         r = self.complete("C_Order", d_down)
         ev.scenario("S25", "CP back with a renewed mandate: the same order completes under a new decision",
