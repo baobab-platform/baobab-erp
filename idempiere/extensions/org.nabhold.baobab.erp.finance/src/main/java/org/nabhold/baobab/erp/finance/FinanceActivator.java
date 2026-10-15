@@ -14,6 +14,7 @@ import org.osgi.framework.BundleActivator;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.ServiceRegistration;
 import org.nabhold.baobab.erp.integration.WorkloadTokenProvider;
+import org.nabhold.baobab.erp.integration.WorkloadTokenProviderFactory;
 import java.net.URI;
 import org.osgi.service.event.Event;
 import org.osgi.service.event.EventAdmin;
@@ -160,7 +161,8 @@ public final class FinanceActivator implements BundleActivator {
         String cp = System.getProperty("baobab.cp.native.base.url");
         String tokenUrl = System.getProperty("baobab.iam.token.url");
         String client = System.getProperty("baobab.iam.native.client.id", "baobab-erp-workload");
-        String secret = System.getProperty("baobab.iam.native.client.secret");
+        // Preferably a mounted file (baobab.iam.native.client.secret.file): never on the command line.
+        String secret = WorkloadTokenProviderFactory.secret("baobab.iam.native.client.secret");
         // Absence is not a fallback: the native veto then has NO permit
         // provider and refuses every protected financial operation.
         if (cp == null || tokenUrl == null || secret == null || secret.isBlank()) {

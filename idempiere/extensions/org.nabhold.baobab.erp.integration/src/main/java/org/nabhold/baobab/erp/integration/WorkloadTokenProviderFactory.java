@@ -28,8 +28,29 @@ public final class WorkloadTokenProviderFactory {
     private WorkloadTokenProviderFactory() {
     }
 
+    /**
+     * A workload client secret: read from the file named by {@code <property>.file}
+     * (a mounted secret) when that is set, else from {@code <property>} itself. The
+     * file form keeps the secret off the JVM command line, which the iDempiere start
+     * script echoes to the container log and which {@code ps} shows. A file that is
+     * set but unreadable, empty or multi-line yields {@code null}, never a fallback
+     * to the inline property.
+     */
+    public static String secret(String property) {
+        String file = System.getProperty(property + ".file");
+        if (file == null || file.isBlank()) {
+            return System.getProperty(property);
+        }
+        try {
+            String value = java.nio.file.Files.readString(java.nio.file.Path.of(file)).strip();
+            return value.isEmpty() || value.contains("\n") || value.contains("\r") ? null : value;
+        } catch (java.io.IOException | RuntimeException unreadable) {
+            return null;
+        }
+    }
+
     public static WorkloadTokenProvider fromSystemProperties() {
-        String clientSecret = System.getProperty(CLIENT_SECRET_PROPERTY);
+        String clientSecret = secret(CLIENT_SECRET_PROPERTY);
         if (clientSecret == null || clientSecret.isBlank()) {
             return null;
         }

@@ -1,0 +1,10 @@
+# ERP-A harness CI-only workload registry snapshot. SYNTHETIC: it marks the ERP
+# legal-actor assessor ACTIVE for this throwaway integration run only. The
+# canonical Shared registry entry is unchanged; activation there is a separate,
+# approved change. Never deployed.
+workloads:
+  baobab-erp-legal-actor-assessor-staging:
+    status: ACTIVE
+    environment: integration
+    allowed_scopes: ["context:resolve", "legal-actor:assess", "documentary:restriction-assess", "erp-posting-authority:resolve"]
+    context_purposes: ["RUNTIME"]

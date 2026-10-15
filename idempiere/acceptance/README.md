@@ -49,7 +49,8 @@ before COMMIT.
 - **Injected failure** after ledger and cost rows, before commit: nothing survives.
 - **Shipment retry and repost:** a retry, and a forced repost under authority, leave the ledger and costing
   unchanged. A forced repost after revocation is refused.
-- **Money out and purchases stay denied:**
+- **Classes the synthetic CP cannot decide stay denied.** It decides only the version 1 classes, so these
+  are refused (the real-CP ERP-A harness below covers the purchase side):
   - an outbound vendor payment is refused at creation;
   - posting an existing outbound payment is refused;
   - an allocation against a vendor invoice is refused;
@@ -69,3 +70,38 @@ Both happen before the placement exists.
 Run `idempiere/acceptance/run-gate-d.sh <image> <work-dir>`. It needs `docker`, `psql`, `openssl` and
 `keytool`. Set `GATE_D_KEEP=1` to leave the containers up for diagnosis. The report, the iDempiere log, the
 synthetic CP log and the migration log are written to `<work-dir>`.
+
+## ERP-A engine-local harness: the real CP (`erp-a/`)
+
+EA v2.2 EA-R03, ADR-SHARED-037, ADR-ERP-022 §4.3. CI job `erp-a-real-cp`. It uses the same image and driver.
+In place of `synthetic_cp.py` it runs:
+- the **real** CP release binary, built from `baobab-cp` at the pinned merged commit (`CP_COMMIT`);
+- a test OIDC issuer (`issuer/issuer.py`) that issues real RS256 workload tokens;
+- PostgreSQL 17 for ERP and CP;
+- an nginx TLS edge from a run-local CA (`cp.gated.test`, `iam.gated.test`).
+
+`driver/seed.py` seeds CP through its admin API: tenant bootstrap and activation, a four-eyes market, and a
+maker/checker/operator mandate. Rows that CP has no API for are recorded as synthetic in the evidence. The
+workload registry snapshot (`cp/workload-registry.yaml`) is CI-only.
+
+`driver/gate_d_erp_a.py` places GardenWorld under that real tenant and engine instance. It then runs S01–S26
+and asserts state in **both** databases. Every ERP attribution must name a decision that CP itself recorded as
+AUTHORIZED. The scenarios cover:
+- purchase-to-pay recording, with costing derived from the receipt and from the matched vendor invoice;
+- the deny-by-name routes;
+- direct SQL as the runtime role;
+- a SIGKILL of the JVM between authority and COMMIT;
+- a lease outlived before COMMIT;
+- revocation, a narrower mandate and CP being unavailable.
+
+The driver's `completeDoc` accepts `holdSeconds`/`hold_marker` for the crash and lease windows.
+
+Run `BAOBAB_ENVIRONMENT=integration ERP_IMAGE=<gate-d image> CP_SRC=<baobab-cp checkout>
+idempiere/acceptance/erp-a/run-gate-d-erp-a.sh <evidence-dir>`. It needs `docker`, `go`, `psql`, `openssl`,
+`keytool` and `pip`. The evidence directory receives:
+- the report;
+- `erp-a-receipt.json` (the EA v2.2 receipt fields);
+- the service logs, which are checked to carry no token or secret;
+- the bypass transcripts.
+
+This is engine-local real-component evidence on synthetic data. It is **not EA Gate D and not L4**.

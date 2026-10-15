@@ -25,9 +25,10 @@ import java.util.Set;
  *
  * Matching rows and costing rows are not operations of their own: a match is
  * classified as its one deterministic root document; a cost detail as the
- * catalogued root that caused it in the same transaction (only a sales
- * shipment line today). Every other costing origin stays denied until it is
- * catalogued.
+ * catalogued root that caused it in the same transaction: a sales shipment
+ * line, or (Average PO costing) a purchase-order line matched to a material
+ * receipt authorised in this transaction. Every other costing origin stays
+ * denied until it is catalogued.
  */
 final class NativeOperationResolver {
     /** Header tables: the governed source documents. */
@@ -44,7 +45,7 @@ final class NativeOperationResolver {
     private static final List<String> COST_SOURCES = List.of(
             "M_InOutLine_ID", "C_InvoiceLine_ID", "C_OrderLine_ID", "M_InventoryLine_ID",
             "M_MovementLine_ID", "M_ProductionLine_ID", "M_MatchInv_ID", "M_MatchPO_ID",
-            "C_ProjectIssue_ID", "C_LandedCostAllocation_ID", "A_Asset_ID");
+            "C_ProjectIssue_ID", "C_LandedCostAllocation_ID", "A_Asset_ID", "PP_Cost_Collector_ID");
     private static final String STORED_CLASS = "SELECT baobab_native.governed_class_of(?, ?)";
     private static final String ROOT = "SELECT root_table, root_record FROM baobab_native.governed_root(?, ?)";
     private static final String LINE_SIDE = "SELECT baobab_native.allocation_line_side(?, ?, ?)";
@@ -260,6 +261,8 @@ final class NativeOperationResolver {
      * client, and its org is that shipment's org or 0 (client-level costing).
      */
     private NativeOperation costDetailRoot(NativeRecord record) throws Exception {
+        if (record.intValue("C_OrderLine_ID") > 0) return purchaseCostRoot(record);
+        if (record.intValue("C_InvoiceLine_ID") > 0) return invoiceCostRoot(record);
         for (String source : COST_SOURCES) {
             if (!"M_InOutLine_ID".equals(source) && record.intValue(source) > 0) return null;
         }
@@ -277,6 +280,62 @@ final class NativeOperationResolver {
                     return null;
                 }
                 return new NativeOperation(NativeOperation.SHIPMENT, "M_InOut", r.getInt(1), record);
+            }
+        }
+    }
+
+    /**
+     * Purchase costing (ERP-A, observed on real iDempiere 13 Gate D): posting
+     * an M_MatchPO under Average PO costing writes one cost detail per
+     * accounting schema whose ONLY source is the purchase-order line. It
+     * inherits from exactly one material receipt that already holds current
+     * authority of its own class in THIS transaction and is matched to that
+     * order line through an M_MatchPO of the same client; its org is that
+     * receipt's org or 0. Zero or several such receipts deny.
+     */
+    private NativeOperation purchaseCostRoot(NativeRecord record) throws Exception {
+        for (String source : COST_SOURCES) {
+            if (!"C_OrderLine_ID".equals(source) && record.intValue(source) > 0) return null;
+        }
+        if (!Boolean.FALSE.equals(record.flag("IsSOTrx"))) return null;
+        Connection db = NativeConnections.transactional(connections, record.transactionName());
+        try (PreparedStatement s = db.prepareStatement("SELECT baobab_native.purchase_cost_root(?, ?, ?)")) {
+            s.setInt(1, record.adClientId());
+            s.setInt(2, record.adOrgId());
+            s.setInt(3, record.intValue("C_OrderLine_ID"));
+            try (ResultSet r = s.executeQuery()) {
+                if (!r.next()) return null;
+                int receipt = r.getInt(1);
+                if (r.wasNull() || receipt <= 0) return null;
+                return new NativeOperation(NativeOperation.MATERIAL_RECEIPT, "M_InOut", receipt, record);
+            }
+        }
+    }
+
+    /**
+     * Invoice-match costing (ERP-A, observed on real iDempiere 13): posting an
+     * M_MatchInv under Average PO costing writes one cost detail per accounting
+     * schema whose ONLY source is the vendor-invoice line. It derives from that
+     * line's own vendor invoice (an M_MatchInv belongs to its vendor invoice,
+     * ADR-ERP-022 §4.3), only while the line is matched in the same client and
+     * the invoice is of class erp.vendor-invoice.record. The root is decided
+     * like any other; the COMMIT fence requires its attribution.
+     */
+    private NativeOperation invoiceCostRoot(NativeRecord record) throws Exception {
+        for (String source : COST_SOURCES) {
+            if (!"C_InvoiceLine_ID".equals(source) && record.intValue(source) > 0) return null;
+        }
+        if (!Boolean.FALSE.equals(record.flag("IsSOTrx"))) return null;
+        Connection db = NativeConnections.transactional(connections, record.transactionName());
+        try (PreparedStatement s = db.prepareStatement("SELECT baobab_native.invoice_cost_root(?, ?, ?)")) {
+            s.setInt(1, record.adClientId());
+            s.setInt(2, record.adOrgId());
+            s.setInt(3, record.intValue("C_InvoiceLine_ID"));
+            try (ResultSet r = s.executeQuery()) {
+                if (!r.next()) return null;
+                int invoice = r.getInt(1);
+                if (r.wasNull() || invoice <= 0) return null;
+                return new NativeOperation(NativeOperation.VENDOR_INVOICE, "C_Invoice", invoice, record);
             }
         }
     }

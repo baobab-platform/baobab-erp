@@ -12,8 +12,16 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
   catalogue version 2 classes, using a single database rule (`governed_class_of`). Matching rows are fenced
   through their root document. Payment selections, online outbound payments, vendor returns, AP credit memos
   and AP/AR netting stay denied. Recording a vendor payment is never authority to disburse. Shared pin
-  `92541c9` → `756edb4`. Allocation documents are bound to the allocation's client, match re-pointing needs both roots, and payment selections cannot move between clients. Gate B (PostgreSQL 17) now runs 29 tests. Purchase costing stays denied until the
-  Gate D harness classifies it.
+  `92541c9` → `756edb4`. Allocation documents are bound to the allocation's client, match re-pointing needs both roots, and payment selections cannot move between clients. Gate B (PostgreSQL 17) now runs 29 tests.
+- **ERP-A engine-local harness and purchase costing (EA v2.2 EA-R03; ADR-ERP-022 §4.3).** Native migration
+  `N0007` makes purchase costing a derived write, as observed on real iDempiere 13:
+  - the receipt's order-line cost detail derives from its single matched, authorised receipt;
+  - the invoice-match cost detail derives from its own matched vendor invoice;
+  - every other costing origin stays denied.
+  The new CI job `erp-a-real-cp` (`idempiere/acceptance/erp-a/`) runs real iDempiere against the real CP binary at
+  `0337632`, with signed workload tokens and PostgreSQL 17. It covers purchase-to-pay recording, deny-by-name
+  routes, direct-SQL bypasses, a JVM kill before COMMIT, lease expiry, revocation and CP being unavailable, and
+  writes the EA v2.2 receipt. This is engine-local evidence: not EA Gate D, not L4. Gate B now runs 33 tests.
 
 ### Security
 

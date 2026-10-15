@@ -1,6 +1,9 @@
 package org.nabhold.baobab.erp.acceptance;
 
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.sql.Timestamp;
 import java.util.Properties;
 
@@ -35,22 +38,36 @@ final class SalesFlow {
 
     /** action=doc kind=order|shipment|invoice|payment|allocation [complete post rollbackAfterPost ...]. */
     static Properties document(Properties in, Properties ctx) {
-        Properties out = new Properties();
         String kind = in.getProperty("kind");
+        return process(in, ctx, trxName -> switch (kind) {
+            case "order" -> order(in, ctx, trxName);
+            case "shipment" -> shipment(in, ctx, trxName);
+            case "invoice" -> invoice(in, ctx, trxName);
+            case "payment" -> payment(in, ctx, trxName);
+            case "allocation" -> allocation(in, ctx, trxName);
+            default -> throw new IllegalArgumentException("unknown kind " + kind);
+        });
+    }
+
+    /** Builds one native document inside the driver's transaction. */
+    interface Builder {
+        PO build(String trxName) throws Exception;
+    }
+
+    /**
+     * Create (via builder), complete, commit and post one document as a user
+     * does, or inject a failure after posting and before commit; shared by the
+     * sales and purchase flows so both prove the same completion semantics.
+     */
+    static Properties process(Properties in, Properties ctx, Builder builder) {
+        Properties out = new Properties();
         boolean complete = Boolean.parseBoolean(in.getProperty("complete", "true"));
         boolean post = Boolean.parseBoolean(in.getProperty("post", "true"));
         boolean rollbackAfterPost = Boolean.parseBoolean(in.getProperty("rollbackAfterPost", "false"));
         String trxName = Trx.createTrxName("BaobabGateD");
         Trx trx = Trx.get(trxName, true);
         try {
-            PO doc = switch (kind) {
-                case "order" -> order(in, ctx, trxName);
-                case "shipment" -> shipment(in, ctx, trxName);
-                case "invoice" -> invoice(in, ctx, trxName);
-                case "payment" -> payment(in, ctx, trxName);
-                case "allocation" -> allocation(in, ctx, trxName);
-                default -> throw new IllegalArgumentException("unknown kind " + kind);
-            };
+            PO doc = builder.build(trxName);
             out.setProperty("id", String.valueOf(doc.get_ID()));
             out.setProperty("table", doc.get_TableName());
             out.setProperty("table_id", String.valueOf(doc.get_Table_ID()));
@@ -72,6 +89,10 @@ final class SalesFlow {
                 out.setProperty("costs_before_rollback", String.valueOf(DB.getSQLValueEx(trxName,
                         "SELECT COUNT(*) FROM M_CostDetail cd JOIN M_InOutLine l ON l.M_InOutLine_ID=cd.M_InOutLine_ID "
                                 + "WHERE l.M_InOut_ID=?", doc.get_ID())));
+                out.setProperty("matches_before_rollback", String.valueOf(DB.getSQLValueEx(trxName,
+                        "SELECT (SELECT COUNT(*) FROM M_MatchPO mp JOIN M_InOutLine l ON l.M_InOutLine_ID=mp.M_InOutLine_ID "
+                                + "WHERE l.M_InOut_ID=?) + (SELECT COUNT(*) FROM M_MatchInv mi JOIN C_InvoiceLine il "
+                                + "ON il.C_InvoiceLine_ID=mi.C_InvoiceLine_ID WHERE il.C_Invoice_ID=?)", doc.get_ID(), doc.get_ID())));
                 trx.rollback();
                 out.setProperty("committed", "false");
             } else {
@@ -90,6 +111,28 @@ final class SalesFlow {
         return out;
     }
 
+    /**
+     * holdSeconds=N: after completion has been authorised and attributed in
+     * this transaction, publish held/&lt;hold_marker&gt; (with the in-transaction
+     * attribution count) and wait N seconds BEFORE commit. The harness uses it
+     * to kill the JVM inside the window (crash) or to outlive the 30-second
+     * lease so the COMMIT fence must refuse (ADR-ERP-022 §4.1).
+     */
+    static void holdBeforeCommit(Properties in, String trxName, String table, int id) throws Exception {
+        int seconds = Integer.parseInt(in.getProperty("holdSeconds", "0"));
+        if (seconds <= 0) return;
+        Object attributed = DB.getSQLValueEx(trxName,
+                "SELECT COUNT(*) FROM baobab_native.finance_authority_attribution "
+                        + "WHERE txid = txid_current() AND lower(source_table) = lower(?) AND source_record_id = ?",
+                table, id);
+        Path held = Path.of("/opt/idempiere/.baobab/gate-d/held");
+        Files.createDirectories(held);
+        Path tmp = held.resolve(in.getProperty("hold_marker", "hold") + ".tmp");
+        Files.writeString(tmp, "attributed=" + attributed + "\n");
+        Files.move(tmp, held.resolve(in.getProperty("hold_marker", "hold")), StandardCopyOption.ATOMIC_MOVE);
+        Thread.sleep(seconds * 1000L);
+    }
+
     /** Complete (and post) an existing document of any governed table. */
     static Properties completeExisting(Properties in, Properties ctx) {
         Properties out = new Properties();
@@ -105,6 +148,7 @@ final class SalesFlow {
             out.setProperty("complete_ok", String.valueOf(ok));
             if (!ok) out.setProperty("complete_msg", String.valueOf(action.getProcessMsg()));
             doc.saveEx();
+            holdBeforeCommit(in, trxName, table, id);
             out.setProperty("committed", String.valueOf(trx.commit(true)));
             if (ok) {
                 out.setProperty("post_error", String.valueOf(

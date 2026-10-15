@@ -62,6 +62,8 @@ to iDempiere's own launch (see `idempiere/README.md`):
 - `baobab.iam.token.url`
 - `baobab.iam.workload.client.secret` (the `baobab-erp-workload` client's secret from
   Baobab IAM's Keycloak Admin Console — **never commit this value**)
+  — preferably as `baobab.iam.workload.client.secret.file`, the path of a mounted secret
+  file, because iDempiere's start script echoes inline `-D` values to its log
 - `baobab.iam.token.url`'s companions `baobab.iam.workload.client.id` and
   `baobab.iam.workload.scope` default to `baobab-erp-workload`/`erp:integrate` and
   rarely need overriding.

@@ -73,3 +73,8 @@ BEGIN
 END $$;
 ALTER TABLE adempiere.c_payselectioncheck ADD COLUMN c_payment_id numeric(10);
 INSERT INTO adempiere.ad_table VALUES (259, 'C_Order'), (472, 'M_MatchInv'), (473, 'M_MatchPO');
+-- P0-04B ERP-A (N0007): the cost-detail source columns real iDempiere has.
+ALTER TABLE adempiere.m_costdetail ADD COLUMN c_orderline_id numeric(10), ADD COLUMN c_invoiceline_id numeric(10),
+  ADD COLUMN m_matchinv_id numeric(10), ADD COLUMN m_inventoryline_id numeric(10),
+  ADD COLUMN m_movementline_id numeric(10), ADD COLUMN m_productionline_id numeric(10),
+  ADD COLUMN c_projectissue_id numeric(10), ADD COLUMN pp_cost_collector_id numeric(10);

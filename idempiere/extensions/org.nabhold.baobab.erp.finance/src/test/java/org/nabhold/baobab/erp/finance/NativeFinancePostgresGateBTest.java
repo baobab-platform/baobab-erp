@@ -1075,4 +1075,181 @@ class NativeFinancePostgresGateBTest {
         }
         assertEquals(0, count("SELECT count(*) FROM adempiere.c_allocationline WHERE c_allocationhdr_id = " + allocation));
     }
+
+    // --- ERP-A purchase costing (N0007): an order-line cost detail derives from its one authorised receipt ---
+
+    /** A vendor receipt with one line, matched by M_MatchPO to a purchase-order line, all in client 11. */
+    private static int[] matchedReceipt(Connection c, int orderLine) throws Exception {
+        int receipt = insertPurchase(c, "m_inout", ", movementtype", ", 'V+'");
+        int line = IDS.incrementAndGet();
+        sql(c, "INSERT INTO adempiere.m_inoutline (m_inoutline_id, m_inout_id, ad_client_id, ad_org_id) VALUES ("
+                + line + ", " + receipt + ", 11, 11)");
+        attribute(c, new NativeOperation(NativeOperation.MATERIAL_RECEIPT, "M_InOut", receipt,
+                record("M_InOut", receipt, "gate-b-pc")));
+        sql(c, "INSERT INTO adempiere.m_matchpo (m_matchpo_id, ad_client_id, ad_org_id, c_orderline_id, m_inoutline_id) "
+                + "VALUES (" + IDS.incrementAndGet() + ", 11, 11, " + orderLine + ", " + line + ")");
+        return new int[] {receipt, line};
+    }
+
+    private static NativeRecord orderLineCost(int orderLine, String extraColumn, int extraValue) {
+        return new NativeRecord("M_CostDetail", CLIENT, ORG, 0, "model:TYPE_BEFORE_NEW", "gate-b-pc", col -> switch (col) {
+            case "C_OrderLine_ID" -> orderLine;
+            case "IsSOTrx" -> "N";
+            case "M_Product_ID" -> 501;
+            case "C_AcctSchema_ID" -> 101;
+            case "M_CostElement_ID" -> 601;
+            default -> col.equals(extraColumn) ? extraValue : null;
+        });
+    }
+
+    private static void writeOrderLineCost(Connection c, int orderLine) throws SQLException {
+        sql(c, "INSERT INTO adempiere.m_costdetail (m_costdetail_id, ad_client_id, ad_org_id, m_product_id, "
+                + "c_acctschema_id, m_costelement_id, c_orderline_id, issotrx) VALUES (" + IDS.incrementAndGet()
+                + ", 11, 11, 501, 101, 601, " + orderLine + ", 'N')");
+    }
+
+    @Test
+    void purchaseOrderLineCostingDerivesFromItsOneAuthorisedReceipt() throws Exception {
+        int orderLine = IDS.incrementAndGet();
+        try (Connection c = transaction()) {
+            int receipt = matchedReceipt(c, orderLine)[0];
+            NativeConnections same = trx -> c;
+            NativeOperation root = new NativeOperationResolver(same).classify(orderLineCost(orderLine, null, 0));
+            assertNotNull(root, "an order-line cost detail roots at its matched, authorised receipt");
+            assertEquals(NativeOperation.MATERIAL_RECEIPT, root.operationClass());
+            assertEquals(receipt, root.sourceRecordId());
+            new NativeDerivedWrites(same).appendCostDetail(root);
+            writeOrderLineCost(c, orderLine);
+            c.commit();
+        }
+        assertEquals(1, count("SELECT count(*) FROM adempiere.m_costdetail WHERE c_orderline_id = " + orderLine));
+    }
+
+    @Test
+    void purchaseCostingWithoutASingleAuthorisedReceiptIsDenied() throws Exception {
+        // No receipt authority in this transaction: no root; direct SQL refused at COMMIT.
+        int orderLine = IDS.incrementAndGet();
+        try (Connection c = transaction()) {
+            int receipt = insertPurchase(c, "m_inout", ", movementtype", ", 'V+'");
+            int line = IDS.incrementAndGet();
+            sql(c, "INSERT INTO adempiere.m_inoutline (m_inoutline_id, m_inout_id, ad_client_id, ad_org_id) VALUES ("
+                    + line + ", " + receipt + ", 11, 11)");
+            c.commit();
+        }
+        try (Connection c = transaction()) {
+            assertNull(new NativeOperationResolver(trx -> c).classify(orderLineCost(orderLine, null, 0)));
+            writeOrderLineCost(c, orderLine);
+            denied(c);
+        }
+        // Two authorised receipts matched to the same order line: ambiguous, no root.
+        int shared = IDS.incrementAndGet();
+        try (Connection c = transaction()) {
+            matchedReceipt(c, shared);
+            matchedReceipt(c, shared);
+            assertNull(new NativeOperationResolver(trx -> c).classify(orderLineCost(shared, null, 0)),
+                    "several candidate receipts are ambiguous");
+            c.rollback();
+        }
+        // Any second cost source (an invoice line: price variance) is not this derived write.
+        int mixed = IDS.incrementAndGet();
+        try (Connection c = transaction()) {
+            matchedReceipt(c, mixed);
+            assertNull(new NativeOperationResolver(trx -> c).classify(
+                    orderLineCost(mixed, "C_InvoiceLine_ID", IDS.incrementAndGet())));
+            c.rollback();
+        }
+    }
+
+    // --- ERP-A invoice-match costing (N0007): an invoice-line cost detail derives from its matched vendor invoice ---
+
+    /** An AP document of the given type with one line in client 11, optionally matched by an M_MatchInv. */
+    private static int[] apInvoiceLine(Connection c, int docType, boolean matched) throws Exception {
+        sql(c, "INSERT INTO adempiere.c_doctype VALUES (202, 'API'), (203, 'APC') ON CONFLICT DO NOTHING");
+        int invoice = insertPurchase(c, "c_invoice", ", c_doctypetarget_id, c_doctype_id", ", " + docType + ", 0");
+        int line = IDS.incrementAndGet();
+        sql(c, "INSERT INTO adempiere.c_invoiceline (c_invoiceline_id, c_invoice_id, ad_client_id, ad_org_id) VALUES ("
+                + line + ", " + invoice + ", 11, 11)");
+        if (matched) {
+            sql(c, "INSERT INTO adempiere.m_matchinv (m_matchinv_id, ad_client_id, ad_org_id, c_invoiceline_id) VALUES ("
+                    + IDS.incrementAndGet() + ", 11, 11, " + line + ")");
+        }
+        return new int[] {invoice, line};
+    }
+
+    private static NativeRecord invoiceLineCost(int invoiceLine, String isSOTrx, String extraColumn, int extraValue) {
+        return new NativeRecord("M_CostDetail", CLIENT, ORG, 0, "model:TYPE_BEFORE_NEW", "gate-b-ic", col -> switch (col) {
+            case "C_InvoiceLine_ID" -> invoiceLine;
+            case "IsSOTrx" -> isSOTrx;
+            case "M_Product_ID" -> 501;
+            case "C_AcctSchema_ID" -> 101;
+            default -> col.equals(extraColumn) ? extraValue : null;
+        });
+    }
+
+    private static void writeInvoiceLineCost(Connection c, int invoiceLine) throws SQLException {
+        sql(c, "INSERT INTO adempiere.m_costdetail (m_costdetail_id, ad_client_id, ad_org_id, m_product_id, "
+                + "c_acctschema_id, c_invoiceline_id, issotrx) VALUES (" + IDS.incrementAndGet()
+                + ", 11, 11, 501, 101, " + invoiceLine + ", 'N')");
+    }
+
+    @Test
+    void invoiceMatchCostingDerivesFromItsOwnMatchedVendorInvoice() throws Exception {
+        int line;
+        try (Connection c = transaction()) {
+            int[] invoice = apInvoiceLine(c, 202, true);
+            line = invoice[1];
+            NativeConnections same = trx -> c;
+            NativeOperation root = new NativeOperationResolver(same).classify(invoiceLineCost(line, "N", null, 0));
+            assertNotNull(root, "a matched vendor-invoice line's cost detail roots at its own vendor invoice");
+            assertEquals(NativeOperation.VENDOR_INVOICE, root.operationClass());
+            assertEquals("C_Invoice", root.sourceTable());
+            assertEquals(invoice[0], root.sourceRecordId());
+            attribute(c, root);
+            new NativeDerivedWrites(same).appendCostDetail(root);
+            writeInvoiceLineCost(c, line);
+            c.commit();
+        }
+        assertEquals(1, count("SELECT count(*) FROM adempiere.m_costdetail WHERE c_invoiceline_id = " + line));
+    }
+
+    @Test
+    void invoiceLineCostingWithoutAMatchedVendorInvoiceIsDenied() throws Exception {
+        // Unmatched line: no root, and with the invoice's authority alone the detail is refused at COMMIT.
+        try (Connection c = transaction()) {
+            int[] invoice = apInvoiceLine(c, 202, false);
+            assertNull(new NativeOperationResolver(trx -> c).classify(invoiceLineCost(invoice[1], "N", null, 0)));
+            attribute(c, new NativeOperation(NativeOperation.VENDOR_INVOICE, "C_Invoice", invoice[0],
+                    record("C_Invoice", invoice[0], "gate-b-ic")));
+            writeInvoiceLineCost(c, invoice[1]);
+            denied(c);
+        }
+        // An AP credit memo is never a vendor invoice record, matched or not.
+        try (Connection c = transaction()) {
+            int[] memo = apInvoiceLine(c, 203, true);
+            assertNull(new NativeOperationResolver(trx -> c).classify(invoiceLineCost(memo[1], "N", null, 0)));
+            c.rollback();
+        }
+        // A sales-side detail, or a second cost source, is not this derived write.
+        try (Connection c = transaction()) {
+            int[] invoice = apInvoiceLine(c, 202, true);
+            NativeOperationResolver resolver = new NativeOperationResolver(trx -> c);
+            assertNull(resolver.classify(invoiceLineCost(invoice[1], "Y", null, 0)));
+            assertNull(resolver.classify(invoiceLineCost(invoice[1], "N", "M_InOutLine_ID", IDS.incrementAndGet())));
+            assertNull(resolver.classify(invoiceLineCost(invoice[1], "N", "PP_Cost_Collector_ID", IDS.incrementAndGet())));
+            c.rollback();
+        }
+        // A receipt's derived attribution never covers an invoice-line detail.
+        int orderLine = IDS.incrementAndGet();
+        try (Connection c = transaction()) {
+            int receipt = matchedReceipt(c, orderLine)[0];
+            NativeConnections same = trx -> c;
+            new NativeDerivedWrites(same).appendCostDetail(new NativeOperation(NativeOperation.MATERIAL_RECEIPT,
+                    "M_InOut", receipt, orderLineCost(orderLine, null, 0)));
+            int[] invoice = apInvoiceLine(c, 202, true);
+            attribute(c, new NativeOperation(NativeOperation.VENDOR_INVOICE, "C_Invoice", invoice[0],
+                    record("C_Invoice", invoice[0], "gate-b-ic")));
+            writeInvoiceLineCost(c, invoice[1]);
+            denied(c);
+        }
+    }
 }

@@ -132,9 +132,25 @@ that line's own side, so the last line of an authorised allocation can still be 
 **Class-exact reuse.** A decision is reused within a transaction only for exactly its own class
 (`has_current_attribution_for`), so a sales decision is never reused for a payables write.
 
-**Costing on the purchase side.** Receipt and match costing stays denied until Gate D observes, on real
-iDempiere, which purchase costing writes are deterministic consequences of a governed root (§4.2). The
-harness PR records the result.
+**Costing on the purchase side.** Real iDempiere 13 (GardenWorld, Average PO) was observed in the
+engine-local harness. It writes purchase costing in two places, both in the posting transaction of a governed root.
+These are derived writes under §4.2 (N0007):
+- Completing and posting a material receipt posts its `M_MatchPO`. The match itself has no `Fact_Acct` (no
+  purchase price variance under Average PO). Each accounting schema gets one `M_CostDetail` whose only source
+  is the purchase-order line. That detail derives from the single material receipt matched to that line,
+  which already holds current authority of its own class in the same transaction. Zero or several candidate
+  receipts deny.
+- Posting an `M_MatchInv` books the not-invoiced-receipts clearing and writes, per schema, one `M_CostDetail`
+  whose only source is the vendor-invoice line. That detail derives from that line's own vendor invoice,
+  only while the line is matched in the same client and the invoice is of class `erp.vendor-invoice.record`.
+  It never derives from an AP credit memo or a sales invoice.
+
+Each derived detail then updates its `M_Cost` bucket under the same cover. Every other costing origin stays
+denied until it has its own catalogued class (ERP-B or later): landed cost, inventory, movement,
+production, cost collector, revaluation, or a detail with a second source.
+
+The derived-write register accepts only an `M_InOut` or `C_Invoice` root of the same client and org,
+attributed in the same transaction. The cost-detail COMMIT fence matches each branch to its root table.
 
 ## 5. Freshness and atomicity
 
@@ -174,6 +190,23 @@ PR: integer-typed native triggers against iDempiere's `NUMERIC(10)` ids (N0004; 
 the real types); the JVM veto registered through `ModelValidationEngine.addModelChange` with client 0, which
 iDempiere keys per client so it **never fired for a real client** (now a synchronous OSGi `EventHandler` on
 the BEFORE topics, see LA-05D8); and the automatic-period-control configuration write above.
+
+The ERP-A engine-local harness is the CI job `erp-a-real-cp` (`idempiere/acceptance/erp-a/`). It runs the same image
+and driver against the **real** CP release binary, built at a pinned merged commit, with real RS256 workload tokens
+from a test issuer. ERP and CP each run on PostgreSQL 17, and every hop goes over TLS. CP is seeded through its own
+admin API: tenant, market, four-eyes mandate and revocation. The rows CP has no API for are recorded as synthetic.
+The harness asserts both databases: every ERP attribution names a decision that CP itself recorded as AUTHORIZED
+for that class and document. It covers:
+- the purchase-to-pay recording flow with its costing;
+- the deny-by-name routes;
+- direct-SQL bypasses as the runtime role;
+- a JVM kill between authority and COMMIT;
+- lease expiry inside the transaction;
+- revocation and a narrower mandate;
+- CP being unavailable.
+
+It writes the EA v2.2 receipt fields. Under EA v2.2 this is engine-local real-component evidence on
+synthetic data. It is **not** EA Gate D and not L4, which runs only on the Infrastructure INT-01 runner.
 
 ## 8. Consequences and open items
 
