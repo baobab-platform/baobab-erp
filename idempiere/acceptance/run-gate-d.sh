@@ -364,18 +364,20 @@ if [ -n "${S:-}" ]; then
     || fail "background forced shipment repost after revocation" "state changed"
 fi
 
-# S6. Money out and purchase side stay denied on every route.
+# S6. The synthetic CP decides only the catalogue version 1 (sales and GL) classes: a purchase-side or
+#     vendor-payment write it cannot decide is refused on every route. ERP-A's positives, and the routes
+#     that stay denied even under a real CP decision, run against the REAL CP in erp-a/ (ADR-SHARED-037).
 drun pay_out authorized kind=payment direction=out amount=10 || true
 if baobab_denied pay_out && [ -z "$(prop pay_out id)" ] \
    && [ "$(sql "SELECT count(*) FROM c_payment WHERE isreceipt = 'N' AND description LIKE 'Baobab Gate D%'")" = "0" ]; then
-  pass "outbound vendor payment: refused at creation"
+  pass "outbound vendor payment without a CP decision for its class: refused at creation"
 else fail "outbound vendor payment" "created ($(prop pay_out id))"; fi
 VP=$(sql "SELECT min(c_payment_id) FROM c_payment WHERE ad_client_id = 11 AND isreceipt = 'N' AND docstatus IN ('CO','CL')")
 if [ -n "$VP" ]; then
   VF=$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 335 AND record_id = $VP")
   run vp_repost authorized action=repostDoc table=C_Payment id="$VP" force=true || true
   [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 335 AND record_id = $VP")" = "$VF" ] && [ "$(prop vp_repost post_error)" != "null" ] \
-    && pass "outbound payment posting (accounting path): refused, ledger unchanged" || fail "outbound payment posting" "ledger changed"
+    && pass "outbound payment posting without a CP decision for its class: refused, ledger unchanged" || fail "outbound payment posting" "ledger changed"
 fi
 VI=$(sql "SELECT min(c_invoice_id) FROM c_invoice WHERE ad_client_id = 11 AND issotrx = 'N' AND docstatus = 'CO' AND ispaid = 'N'")
 if [ -n "$VI" ] && [ -n "${R2:-}" ]; then
@@ -388,7 +390,7 @@ if [ -n "$MR" ]; then
   MF=$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $MR")
   run mr_repost authorized action=repostDoc table=M_InOut id="$MR" force=true || true
   [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $MR")" = "$MF" ] && [ "$(prop mr_repost post_error)" != "null" ] \
-    && pass "purchase material receipt posting: refused, ledger unchanged" || fail "purchase receipt posting" "ledger changed"
+    && pass "purchase material receipt posting without a CP decision for its class: refused, ledger unchanged" || fail "purchase receipt posting" "ledger changed"
 fi
 
 # S7. Direction is immutable; direct SQL costing, outbound completion and payment ledger are fenced.

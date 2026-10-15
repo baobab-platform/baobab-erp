@@ -64,6 +64,38 @@ classes. ADR-ERP-022 §4.3 records how ERP classifies them.
 - **Gate A and C.** The finance unit tests and the `erp/v2` conformance tests (89) pass, and the packaged JAR verifies (167 wire vectors).
 
 **Not in this PR.**
-- Purchase-side costing (receipt and match cost details) stays denied until real iDempiere shows which writes are deterministic root consequences.
-- The engine-local harness (real iDempiere 13, the real CP binary at a pinned merged SHA, real signed workload tokens, PostgreSQL 17, crash-window and bypass scenarios) is the next ERP-A PR. Gate D's synthetic CP knows only the version 1 classes, so its outbound-payment scenario still denies here; that PR rewrites it against the real CP.
+- Purchase-side costing and the engine-local harness: the next ERP-A PR, below.
 - Engine-local evidence on synthetic data is **not EA Gate D and not L4** (EA v2.2 §§3, 7). Production stays denied.
+
+### ERP-A engine-local harness and purchase costing (step 4)
+
+**Purchase costing (N0007).** These are derived writes under ADR-ERP-022 §4.2, observed on real iDempiere 13 (GardenWorld, Average PO):
+- The receipt's `M_MatchPO` posts in the receipt's own transaction. It writes no `Fact_Acct` and one order-line-only cost detail per schema. That detail derives from the single matched material receipt, which already holds authority in the same transaction.
+- `M_MatchInv` posting books the not-invoiced-receipts clearing and one invoice-line-only cost detail per schema. That detail derives from the line's own matched vendor invoice, never from an AP credit memo or a sales invoice.
+- The derived-write register now accepts only `M_InOut` or vendor `C_Invoice` roots. Each cost-detail fence branch checks its root table, and a cost-collector source is excluded.
+- Every other costing origin stays denied.
+
+Before this fix, the first real-CP run left `M_MatchInv` unposted (`posted='E'`) because its cost detail had no root. That is fail-closed, but it left the not-invoiced-receipts clearing open.
+
+**Harness (`idempiere/acceptance/erp-a/`, CI job `erp-a-real-cp`).** Its parts:
+- real iDempiere 13 with the shipped veto;
+- the real CP release binary built at `0337632` (CP #402);
+- real RS256 workload tokens from a test issuer;
+- PostgreSQL 17 for ERP and CP;
+- TLS on every hop.
+
+CP is seeded through its admin API: tenant bootstrap and activation, a four-eyes market, a three-person mandate, and revocation. The rows CP has no API for are recorded as synthetic. The scenarios, each asserting persisted state in both databases:
+- S01–S06: purchase order, receipt with match and costing, matched vendor invoice, vendor-payment record with its allocation, and a manual payables allocation. Each is attributed to a decision that CP recorded as AUTHORIZED.
+- S07: retry and forced repost.
+- S08–S12: vendor return, AP credit memo, payment selection, online payment and a mixed allocation are refused.
+- S13–S18: direct SQL as the runtime role (completion, match, ledger, cost detail, payment selection, turning a payment online) is refused.
+- S19–S20: the JVM is SIGKILLed between authority and COMMIT, so nothing persists while CP keeps its decision; after a restart the completion re-decides and commits once.
+- S21: a lease outlived inside the transaction is refused at COMMIT.
+- S22–S25: a revoked mandate is refused, with the refusal recorded by CP; a contracting-only mandate refuses the vendor invoice and authorises the order; with CP unavailable the write fails closed and succeeds once CP is back.
+- S26: there is no ERP attribution without a CP-recorded AUTHORIZED decision.
+
+The run writes the EA v2.2 receipt (`erp-a-receipt.json`), with candidate and CP SHAs, Shared pin, image ids, profile, real versus simulated components, scenario results and evidence location.
+
+**Gate B** is now 33 tests. Removing the `M_MatchInv` requirement from `invoice_cost_root` fails `invoiceLineCostingWithoutAMatchedVendorInvoiceIsDenied`.
+
+**Classification.** This is engine-local real-component evidence on synthetic data: **not EA Gate D, not L4**. The synthetic Gate D keeps refusing the classes its synthetic CP cannot decide. Production stays denied.
