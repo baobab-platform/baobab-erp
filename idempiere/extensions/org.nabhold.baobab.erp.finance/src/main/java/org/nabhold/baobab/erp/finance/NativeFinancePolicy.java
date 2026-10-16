@@ -19,7 +19,11 @@ public final class NativeFinancePolicy {
             // ERP-A: matching rows are governed through their root document;
             // payment selections (remittance print, bank-file export) are a
             // disbursement-instruction path no class covers, so always denied.
-            "M_MatchPO", "M_MatchInv", "C_PaySelection", "C_PaySelectionLine", "C_PaySelectionCheck");
+            "M_MatchPO", "M_MatchInv", "C_PaySelection", "C_PaySelectionLine", "C_PaySelectionCheck",
+            // ERP-B (ADR-SHARED-038): uncatalogued families, denied by name for a
+            // placed client (no class) and refused independently in PostgreSQL (N0008).
+            "M_Inventory", "M_InventoryLine", "M_Movement", "M_MovementLine",
+            "M_Production", "M_ProductionLine", "M_ProductionPlan", "C_LandedCost", "C_LandedCostAllocation");
 
     private NativeFinancePolicy() {}
 

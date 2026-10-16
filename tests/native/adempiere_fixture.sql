@@ -78,3 +78,20 @@ ALTER TABLE adempiere.m_costdetail ADD COLUMN c_orderline_id numeric(10), ADD CO
   ADD COLUMN m_matchinv_id numeric(10), ADD COLUMN m_inventoryline_id numeric(10),
   ADD COLUMN m_movementline_id numeric(10), ADD COLUMN m_productionline_id numeric(10),
   ADD COLUMN c_projectissue_id numeric(10), ADD COLUMN pp_cost_collector_id numeric(10);
+-- P0-04B ERP-B (N0008): the deny-by-name families, and the payment and invoice
+-- columns that payment-execution evidence is matched on, as real iDempiere has them.
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['c_bankstatementline','c_cashline','m_inventory','m_inventoryline','m_movement',
+                           'm_movementline','m_production','m_productionline','m_productionplan',
+                           'c_landedcost','c_landedcostallocation'] LOOP
+    EXECUTE format('CREATE TABLE adempiere.%I (%I numeric(10) PRIMARY KEY, ad_client_id numeric(10) NOT NULL,
+      ad_org_id numeric(10) NOT NULL)', t, t || '_id');
+  END LOOP;
+END $$;
+CREATE TABLE adempiere.c_currency (c_currency_id numeric(10) PRIMARY KEY, iso_code char(3) NOT NULL);
+INSERT INTO adempiere.c_currency VALUES (100, 'USD'), (102, 'EUR'), (300, 'UGX');
+ALTER TABLE adempiere.c_payment ADD COLUMN c_bpartner_id numeric(10), ADD COLUMN c_currency_id numeric(10),
+  ADD COLUMN payamt numeric NOT NULL DEFAULT 0, ADD COLUMN c_invoice_id numeric(10);
+ALTER TABLE adempiere.c_invoice ADD COLUMN c_bpartner_id numeric(10), ADD COLUMN c_currency_id numeric(10);

@@ -26,6 +26,8 @@ from seed import CONTRACTING_ONLY, PURCHASE, ControlPlane  # noqa: E402
 
 CLIENT = 11
 DENIED = "BAOBAB_NATIVE_FINANCE_DENIED"
+PLACEMENT = "5e0a7c3b-2d1f-4e6a-9b8c-7d6e5f4a3b21"
+INGEST = "synthetic_evidence_ingest"
 PO, MR, VI, VP, PA = ("erp.purchase-order.complete", "erp.material-receipt.complete", "erp.vendor-invoice.record",
                       "erp.vendor-payment.record", "erp.payables-allocation.record")
 # iDempiere AD_Table ids.
@@ -87,7 +89,7 @@ UPDATE adempiere.c_periodcontrol pc SET periodstatus = 'O'
 INSERT INTO baobab_native.native_placement (placement_id, version, tenant_id, engine_instance_id,
   operating_organisation_id, legal_entity_id, market, ad_client_id, ad_org_id, effective_from,
   approved_by, checked_by, evidence_reference, erp_assignment_reference)
-VALUES ('5e0a7c3b-2d1f-4e6a-9b8c-7d6e5f4a3b21', 1, '{s["tenant"]}', '{s["engine_instance"]}',
+VALUES ('{PLACEMENT}', 1, '{s["tenant"]}', '{s["engine_instance"]}',
   '{s["organisation"]}', '{s["legal_entity"]}', '{s["market"]}', 11, 11, now() - interval '1 day',
   'Synthetic Placement Maker', 'Synthetic Placement Checker', 'synthetic:erp-a/placement', 'synthetic:erp-a/plan/v1');
 INSERT INTO baobab.financial_configuration_baseline (legal_entity_id, version, functional_currency,
@@ -95,6 +97,12 @@ INSERT INTO baobab.financial_configuration_baseline (legal_entity_id, version, f
   effective_from, approved_by, approved_at, evidence_reference)
 VALUES ('{s["legal_entity"]}', 1, 'USD', 1, 'synthetic-gardenworld', 'synthetic-gardenworld', 'synthetic-gardenworld',
   'AVERAGE_PO', current_date - 30, 'Synthetic Finance Approver', now(), 'synthetic:erp-a/baseline');
+-- ERP-B (N0008): the synthetic payment-execution evidence ingest login. Not a superuser, not iDempiere's role.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{INGEST}') THEN
+    CREATE ROLE {INGEST} LOGIN NOSUPERUSER IN ROLE baobab_payment_evidence_ingest;
+  END IF;
+END $$;
 """
     compose.psql("erpdb", "postgres", "idempiere", statement)
 
@@ -183,6 +191,30 @@ class Scenarios:
         return self.ev.scenario(sid, title + ": refused at COMMIT",
                                 tag in out.splitlines() and DENIED in out, out[-400:])
 
+    def evidence(self, invoice, amount: str | None = None) -> bool:
+        """ERP-B: SYNTHETIC_ENGINE_LOCAL payment-execution evidence for one vendor invoice, written by the
+        synthetic ingest login, never by iDempiere. Proves the mechanism only, never a real disbursement."""
+        rows = self.c.sql("erpdb", "adempiere", "idempiere",
+                          f"SELECT i.c_bpartner_id, i.c_currency_id, c.iso_code, i.grandtotal, i.ad_org_id "
+                          f"FROM adempiere.c_invoice i JOIN adempiere.c_currency c ON c.c_currency_id = i.c_currency_id "
+                          f"WHERE i.c_invoice_id = {invoice or 0}")
+        if not rows:
+            return False
+        partner, currency, iso, total, org = rows[-1]
+        self.n += 1
+        p = self.c.psql("erpdb", INGEST, "idempiere", f"""
+INSERT INTO baobab_native.payment_execution_evidence (evidence_id, execution_authority, placement_id,
+  placement_version, responsible_legal_entity_id, ad_client_id, ad_org_id, payee_reference, c_bpartner_id,
+  obligation_reference, c_invoice_id, currency, c_currency_id, amount, executed_at, verified_at, verified_by,
+  evidence_references)
+VALUES (gen_random_uuid(), 'SYNTHETIC_ENGINE_LOCAL', '{PLACEMENT}', 1, '{self.state["legal_entity"]}', 11, {org},
+  'erp:bpartner/{partner}', {partner}, 'erp:vendor-invoice/{invoice}', {invoice}, '{iso}', {currency},
+  {amount or total}, now() - interval '2 minutes', now() - interval '1 minute', 'Synthetic Payment Verifier',
+  ARRAY['synthetic:erp-b/payment-execution/{self.n}'])""", check=False)
+        self.ev.note("synthetic-evidence", {"invoice": invoice, "amount": amount or total, "ok": p.returncode == 0,
+                                            "stderr": p.stderr[-300:]})
+        return p.returncode == 0
+
     def cost_rows(self, order_line_ids: str) -> str:
         return self.q(f"SELECT count(*) FROM m_costdetail WHERE c_orderline_id IN ({order_line_ids}) "
                       f"AND coalesce(m_inoutline_id, 0) = 0 AND coalesce(c_invoiceline_id, 0) = 0")
@@ -226,6 +258,7 @@ class Scenarios:
                     bool(mi) and self.q(f"SELECT posted FROM m_matchinv WHERE m_matchinv_id = {mi or 0}") == "Y"
                     and self.balanced(T_MATCHINV, mi or 0) and int(inv_costs or 0) > 0 and int(inv_derived or 0) > 0,
                     f"matchinv={mi} costs={inv_costs} derived={inv_derived}")
+        self.evidence(inv)
         r = self.doc("vpayment", invoice_id=inv)
         pay = r.get("id", "")
         alloc = self.q(f"SELECT max(c_allocationhdr_id) FROM c_allocationline WHERE c_payment_id = {pay or 0}")
@@ -239,6 +272,7 @@ class Scenarios:
         r2 = self.doc("po", qty=1)
         po2 = r2.get("id", "")
         inv2 = self.doc("vinvoice", order_id=po2).get("id", "")
+        self.evidence(inv2)
         pay2 = self.doc("vpayment", invoice_id=inv2, unallocated="true").get("id", "")
         r = self.doc("vallocation", invoice_id=inv2, payment_id=pay2)
         al = r.get("id", "")
@@ -271,6 +305,7 @@ class Scenarios:
                                "AND description LIKE 'Baobab Gate D%'") == "0", json.dumps(r))
         ar = self.q("SELECT min(c_invoice_id) FROM c_invoice WHERE ad_client_id = 11 AND issotrx = 'Y' "
                     "AND docstatus = 'CO' AND ispaid = 'N'")
+        self.evidence(inv2, amount="1.00")
         pay3 = self.doc("vpayment", amount="1.00").get("id", "")
         r = self.doc("vallocation", invoice_id=ar or 0, payment_id=pay3 or 0, amount="1.00")
         ev.scenario("S12", "mixed allocation (vendor payment against a customer invoice): refused",
@@ -387,8 +422,101 @@ class Scenarios:
                     self.q(f"SELECT docstatus FROM c_order WHERE c_order_id = {d_down}") == "CO"
                     and self.cp_backed("C_Order", d_down, PO), json.dumps(r))
 
+        self.erp_b()
+
         self.ev.scenario("S26", "no ERP attribution without a CP-recorded AUTHORIZED decision (whole run)",
                          self.orphans() == 0, f"orphans={self.orphans()}")
+
+    def bound(self, payment) -> bool:
+        return bool(payment) and self.q(f"SELECT count(*) FROM baobab_native.payment_execution_binding "
+                                        f"WHERE c_payment_id = {payment}") == "1"
+
+    def erp_b(self) -> None:
+        """ERP-B (ADR-SHARED-038): vendor-payment recording needs bound, still-matching execution evidence;
+        a payment is allocated only to its evidence obligation; uncatalogued families are denied by name."""
+        ev = self.ev
+        vendor_paid = lambda: self.q("SELECT count(*) FROM c_payment WHERE ad_client_id = 11 AND isreceipt = 'N' "
+                                     "AND description LIKE 'Baobab Gate D%'")
+        po_b = self.doc("po", qty=1).get("id", "")
+        inv_b = self.doc("vinvoice", order_id=po_b).get("id", "")
+        before = vendor_paid()
+        r = self.doc("vpayment", invoice_id=inv_b)
+        ev.scenario("B01", "vendor payment without execution evidence: refused at creation, no payment row",
+                    bool(inv_b) and self.refused("c_payment", T_PAYMENT, r.get("id"), r) and vendor_paid() == before,
+                    json.dumps(r))
+        total = self.q(f"SELECT grandtotal FROM c_invoice WHERE c_invoice_id = {inv_b or 0}")
+        short = self.q(f"SELECT grandtotal - 0.01 FROM c_invoice WHERE c_invoice_id = {inv_b or 0}")
+        ingested = self.evidence(inv_b, amount=short)
+        r = self.doc("vpayment", invoice_id=inv_b)
+        ev.scenario("B02", "evidence for another amount: refused",
+                    ingested and self.refused("c_payment", T_PAYMENT, r.get("id"), r) and vendor_paid() == before,
+                    json.dumps(r))
+        ingested = self.evidence(inv_b)
+        r = self.doc("vpayment", invoice_id=inv_b)
+        pay_b = r.get("id", "")
+        ev.scenario("B03", "matching evidence: payment RECORDED, bound, posted and CP-backed; the invoice is paid",
+                    ingested and self.posted("c_payment", "C_Payment", T_PAYMENT, pay_b, VP) and self.bound(pay_b)
+                    and self.q(f"SELECT ispaid FROM c_invoice WHERE c_invoice_id = {inv_b or 0}") == "Y",
+                    json.dumps(r))
+        before = vendor_paid()
+        r = self.doc("vpayment", invoice_id=inv_b, unallocated="true", amount=total)
+        ev.scenario("B04", "evidence already bound to a payment: a second payment is refused",
+                    bool(pay_b) and self.refused("c_payment", T_PAYMENT, r.get("id"), r) and vendor_paid() == before,
+                    json.dumps(r))
+        po_c, po_d = self.doc("po", qty=1).get("id", ""), self.doc("po", qty=1).get("id", "")
+        inv_c = self.doc("vinvoice", order_id=po_c).get("id", "")
+        inv_d = self.doc("vinvoice", order_id=po_d).get("id", "")
+        self.evidence(inv_c)
+        pay_c = self.doc("vpayment", invoice_id=inv_c, unallocated="true").get("id", "")
+        r = self.doc("vallocation", invoice_id=inv_d, payment_id=pay_c or 0)
+        ev.scenario("B05", "allocating a vendor payment to another invoice than its evidence obligation: refused",
+                    self.bound(pay_c) and bool(inv_d) and DENIED in json.dumps(r)
+                    and self.q(f"SELECT count(*) FROM c_allocationline WHERE c_payment_id = {pay_c or 0}") == "0",
+                    json.dumps(r))
+        r = self.doc("vallocation", invoice_id=inv_c, payment_id=pay_c or 0)
+        al = r.get("id", "")
+        ev.scenario("B06", "allocating it to its evidence obligation: CO, CP-backed",
+                    bool(al) and self.q(f"SELECT docstatus FROM c_allocationhdr WHERE c_allocationhdr_id = {al}") == "CO"
+                    and self.cp_backed("C_AllocationHdr", al, PA), json.dumps(r))
+        out = self.erp.bypass(f"""INSERT INTO baobab_native.payment_execution_evidence (evidence_id,
+            execution_authority, placement_id, placement_version, responsible_legal_entity_id, ad_client_id, ad_org_id,
+            payee_reference, c_bpartner_id, obligation_reference, c_invoice_id, currency, c_currency_id, amount,
+            executed_at, verified_at, verified_by, evidence_references)
+          SELECT gen_random_uuid(), 'SYNTHETIC_ENGINE_LOCAL', '{PLACEMENT}', 1, '{self.state["legal_entity"]}', 11, 11,
+            'erp:bpartner/x', i.c_bpartner_id, 'erp:vendor-invoice/x', i.c_invoice_id, c.iso_code, i.c_currency_id,
+            i.grandtotal, now(), now(), 'Forged Verifier', ARRAY['forged']
+          FROM adempiere.c_invoice i JOIN adempiere.c_currency c ON c.c_currency_id = i.c_currency_id
+          WHERE i.c_invoice_id = {inv_d or 0}""")
+        Path(self.args.out, "bypass-B07.txt").write_text(out + "\n")
+        ev.scenario("B07", "iDempiere's runtime role writing execution evidence by direct SQL: refused",
+                    (DENIED in out and "ingest role" in out or "permission denied" in out)
+                    and self.q(f"SELECT count(*) FROM baobab_native.payment_execution_evidence "
+                               f"WHERE c_invoice_id = {inv_d or 0}") == "0", out[-400:])
+        # Denied by name through the native models (the JVM veto) ...
+        for sid, kind, rel in (("B08", "bankstatement", "c_bankstatement"), ("B09", "cash", "c_cash"),
+                               ("B10", "inventory", "m_inventory")):
+            n0 = self.q(f"SELECT count(*) FROM {rel} WHERE ad_client_id = 11")
+            r = self.doc(kind, complete="false")
+            ev.scenario(sid, f"{kind} through the native model: refused by name, nothing persists",
+                        DENIED in json.dumps(r) and self.q(f"SELECT count(*) FROM {rel} WHERE ad_client_id = 11") == n0,
+                        json.dumps(r))
+        # ... and by direct SQL as the runtime role (PostgreSQL alone).
+        refused, outs = [], []
+        for rel in ("c_bankstatement", "c_bankstatementline", "c_cash", "c_cashline", "m_inventory", "m_inventoryline",
+                    "m_movement", "m_movementline", "m_production", "m_productionline", "m_productionplan",
+                    "c_landedcost", "c_landedcostallocation"):
+            out = self.erp.bypass(f"INSERT INTO adempiere.{rel} (ad_client_id, ad_org_id) VALUES (11, 11)")
+            outs.append(f"--- {rel}\n{out}")
+            if DENIED in out:
+                refused.append(rel)
+        Path(self.args.out, "bypass-B11.txt").write_text("\n".join(outs) + "\n")
+        ev.scenario("B11", "direct SQL into every denied-by-name family: refused by PostgreSQL",
+                    len(refused) == 13, f"refused={refused}")
+        is_super = self.c.scalar("erpdb", "postgres", "idempiere",
+                                 "SELECT rolsuper FROM pg_roles WHERE rolname = 'adempiere'")
+        ev.note("runtime-role", {"adempiere_is_superuser": is_super,
+                                 "meaning": "a superuser can disable triggers; production must run iDempiere as a "
+                                            "non-superuser role that is not a member of baobab_payment_evidence_ingest"})
 
     def orphans(self) -> int:
         ids = [r[0] for r in self.c.sql("erpdb", "adempiere", "idempiere",
@@ -445,7 +573,7 @@ def receipt(args, evidence: Evidence) -> None:
                 shared_pin = line.split(":", 1)[1].strip().strip('"')
                 break
     report = {
-        "receipt": "EA-R03 ERP-A engine-local real-component harness",
+        "receipt": "EA-R03 ERP-A and ERP-B engine-local real-component harness",
         "classification": "ENGINE-LOCAL real-component evidence on SYNTHETIC data. NOT EA Gate D. NOT L4 "
                           "(L4 runs only on the Infrastructure INT-01 runner). Protected routes stay fail-closed; "
                           "nothing here activates staging or production.",
@@ -463,8 +591,11 @@ def receipt(args, evidence: Evidence) -> None:
             "simulated": ["IAM: test OIDC issuer with real RS256 JWTs (not Keycloak)",
                           "recorded synthetic CP rows: legal-entity verification, market assignment, "
                           + "engine instance binding, human identities",
-                          "GardenWorld synthetic business data"],
-            "provider": "none: no money movement; vendor payment is RECORDING only (ADR-SHARED-037)"},
+                          "GardenWorld synthetic business data",
+                          "payment-execution evidence: SYNTHETIC_ENGINE_LOCAL, written by a synthetic ingest login; "
+                          + "proves the provenance mechanism only, never a real disbursement (ADR-SHARED-038)"],
+            "provider": "none: no money movement; vendor payment is RECORDING only (ADR-SHARED-037, ADR-SHARED-038)"},
+        "notes": evidence.notes,
         "scenarios": evidence.scenarios,
         "result": "PASS" if evidence.failures() == 0 else "FAIL",
         "evidence_location": os.environ.get("EVIDENCE_LOCATION", str(Path(args.out).resolve())),
