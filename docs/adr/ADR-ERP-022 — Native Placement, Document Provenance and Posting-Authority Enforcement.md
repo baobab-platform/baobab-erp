@@ -152,6 +152,50 @@ production, cost collector, revaluation, or a detail with a second source.
 The derived-write register accepts only an `M_InOut` or `C_Invoice` root of the same client and org,
 attributed in the same transaction. The cost-detail COMMIT fence matches each branch to its root table.
 
+### 4.4 Payables recording provenance and deny-by-name (amendment, ERP-B, owner decision 2026-10-16)
+
+ADR-SHARED-038 decides ERP-B. The catalogue stays at version 2, and only the five §4.3 classes exist. N0008 adds
+three rules for placed clients, each enforced by both the JVM veto and PostgreSQL.
+
+**Vendor payments need positive provenance.**
+- An outbound payment is `erp.vendor-payment.record` only while it is bound to exactly one payment-execution
+  evidence record (`baobab_native.payment_execution_evidence`, Shared `erp/v2` `payment-execution-evidence.schema.json`).
+- That record must match the payment exactly: same client and org (so the placement's legal entity), payee
+  (`C_BPartner_ID`), currency and amount (`PayAmt`).
+- Its obligation must be a vendor invoice of the same client, org, payee and currency.
+- When the payment names an invoice, it must be that obligation.
+
+The JVM checks the values being saved (`vendor_payment_provenance`). An AFTER trigger on `C_Payment` binds the
+payment to its single unbound matching record, for good (`payment_execution_binding`). `governed_class_of` then
+re-checks the bound record against the stored payment, so a payment whose amount, payee, currency, org or invoice
+drifts loses its class, and its completion and ledger lines are refused at COMMIT. Missing, mismatched,
+ambiguous (several candidates) or already-bound evidence denies.
+
+**Evidence is written only by the ingest path.**
+- Inserts are allowed only from a role that is a member of `baobab_payment_evidence_ingest` and not a superuser.
+  The guard trigger enforces this, so iDempiere's runtime role is refused even when it owns the table.
+- The record must name the open placement version of its legal entity, client and org, and verification may not
+  precede execution.
+- Evidence and bindings are append-only.
+- The only execution authority is `SYNTHETIC_ENGINE_LOCAL`. Vendor-payment recording therefore stays
+  non-activatable for protected and production placements until a Shared revision admits a real authority.
+
+**Allocation to the obligation only.** A line that carries a vendor payment is `PAYABLES` only when its invoice is
+that payment's evidence obligation. A payment is never allocated to another invoice, and never on its own.
+
+**Denied by name.** These tables are protected in the JVM, where they have no class, and refused outright by a
+BEFORE trigger for any write that touches a placed client:
+- bank statements: `C_BankStatement`, `C_BankStatementLine`;
+- cash journals: `C_Cash`, `C_CashLine`;
+- inventory and movement: `M_Inventory`, `M_InventoryLine`, `M_Movement`, `M_MovementLine`;
+- production: `M_Production`, `M_ProductionLine`, `M_ProductionPlan`;
+- landed cost: `C_LandedCost`, `C_LandedCostAllocation`.
+
+The migration fails if any of these tables is missing, so the refusal is never silently skipped. Because a
+statement write fails its whole transaction, a native process that would create a payment from a bank statement
+rolls back with everything it wrote. Production is deferred to ERP-C, and bank reconciliation and cash management
+to their own increments.
+
 ## 5. Freshness and atomicity
 
 The JVM veto appends the attribution (CP decision, mandate lineage, placement, baseline) in the SAME
@@ -168,13 +212,20 @@ Within one transaction a still-current attribution for the same source document 
 ## 6. Deployment order
 
 `db/migrate.sh` (application schema, 0025) → iDempiere seed/upgrade → `db/migrate-native.sh`
-(N0001–N0006; refuses without the adempiere schema) → start iDempiere with the finance bundle → expose routes.
+(N0001–N0008; refuses without the adempiere schema) → start iDempiere with the finance bundle → expose routes.
 Every governed `AD_Client` must use **standard** period control (`C_AcctSchema.AutoPeriodControl = 'N'`):
 Baobab readiness governs periods through `C_PeriodControl`, and under Automatic Period Control iDempiere
 rewrites `C_AcctSchema.C_Period_ID` from `MPeriod.isOpen` in its own transaction, a configuration write the
 native veto refuses, so every completion would be denied.
 The native migrations must target the SAME database iDempiere uses. Grant the iDempiere role INSERT/SELECT
 on `baobab_native`; never UPDATE/DELETE or BYPASSRLS.
+
+ERP-B adds two role rules:
+- The iDempiere role must not be a superuser, because a superuser can disable the fences.
+- It must not be a member of `baobab_payment_evidence_ingest`. N0008 creates that NOLOGIN role when the migrator
+  may create roles; otherwise an operator pre-creates it.
+
+Only the payment-execution ingest login is a member of that role.
 
 ## 7. Evidence standard
 
@@ -200,6 +251,10 @@ for that class and document. It covers:
 - the purchase-to-pay recording flow with its costing;
 - the deny-by-name routes;
 - direct-SQL bypasses as the runtime role;
+- ERP-B: vendor payments refused without evidence, with evidence for another amount, and with already-bound
+  evidence; a recorded payment bound to its evidence; allocation only to the evidence obligation; the runtime
+  role refused when writing evidence; bank statement, cash journal and inventory refused through the native models;
+  and direct SQL into every denied-by-name family refused;
 - a JVM kill between authority and COMMIT;
 - lease expiry inside the transaction;
 - revocation and a narrower mandate;
@@ -216,6 +271,8 @@ synthetic data. It is **not** EA Gate D and not L4, which runs only on the Infra
 - Costing caused by a sales shipment is a derived write (§4.2); every other costing origin stays denied until
   it has its own catalogued class. Gate D covers GL journals and the sales flow (order, shipment with costing,
   customer invoice, receipt, allocation) as of P0-04B-05.
-- Bank reconciliation and the cash journal need a Shared catalogue revision (ERP-B). Vendor disbursement is
-  never an ERP class: ERP only records it (§4.3); moving money is Payments' payout, still non-activatable.
+- Bank reconciliation and the cash journal stay denied by name (ERP-B, §4.4). Each needs its own Shared catalogue
+  revision, and manufacturing is deferred to ERP-C. Vendor disbursement is never an ERP class: ERP only records it,
+  against independently verified execution evidence (§4.3, §4.4). Moving money is Payments' payout, which is still
+  non-activatable, so vendor-payment recording stays non-activatable for real placements.
 - The Python order-to-cash layer is not yet wired to this path.

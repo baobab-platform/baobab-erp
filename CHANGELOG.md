@@ -6,6 +6,18 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 
 ### Added
 
+- **ERP-B payables recording provenance and deny-by-name (EA v2.2 EA-R03; ADR-SHARED-038; ADR-ERP-022 §4.4).**
+  Native migration N0008:
+  - Vendor-payment recording now needs a bound, still-matching payment-execution evidence record. The record
+    must match the client, org, payee, currency, amount and vendor-invoice obligation.
+  - Evidence is written only by a non-superuser member of `baobab_payment_evidence_ingest`, and is append-only.
+  - A vendor payment is allocated only to its evidence obligation.
+  - Bank statements, cash journals, inventory, movement, production and landed cost are refused by name, in the
+    JVM veto and in PostgreSQL.
+
+  Gate B has four new tests (37 in total). The `erp-a-real-cp` harness gains scenarios B01 to B11, and its
+  driver gains bank statement, cash journal and inventory kinds. The catalogue stays at version 2. This is
+  engine-local evidence on synthetic data; it is not EA Gate D and not L4.
 - **ERP-A purchase-side and vendor-payment recording (EA v2.2 EA-R03; ADR-SHARED-037; ADR-ERP-022 §4.3).**
   Native migration `N0006` and the JVM resolver classify purchase orders, vendor receipts (`V+`), AP
   invoices, recordable outbound payments and payables-only allocations under the five new Shared `erp/v2`

@@ -1,6 +1,6 @@
 {
   "repository": "baobab-platform/shared",
-  "commit": "756edb410fdfb29c8b90bcc388a69412b4b5b7b1",
+  "commit": "e1da44e90903ab7f6fe9a9060604f9bff2f13666",
   "roots": [
     "contracts/admission/v2/documentary-restriction.schema.json",
     "contracts/control-plane/v1/domain.schema.json",

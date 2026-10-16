@@ -1,5 +1,6 @@
 package org.nabhold.baobab.erp.finance;
 
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -18,10 +19,12 @@ import java.util.Set;
  * applies, so the JVM veto and the fence can never disagree on a class:
  * sales side, or purchase side (a purchase order, a vendor receipt (V+), an AP
  * invoice, an outbound payment that is neither online nor from a payment
- * selection, and an allocation joining only those). Vendor returns, AP credit
- * memos, mixed AP/AR allocations, payment selections, bank statements, cash
- * journals and accounting configuration have no class and stay denied.
- * Recording a vendor payment is never permission to disburse (ADR-SHARED-035).
+ * selection and is bound to its payment-execution evidence (ERP-B,
+ * ADR-SHARED-038), and an allocation joining only those). Vendor returns, AP
+ * credit memos, mixed AP/AR allocations, payment selections, bank statements,
+ * cash journals, inventory, movement, production, landed cost and accounting
+ * configuration have no class and stay denied. Recording a vendor payment is
+ * never permission to disburse (ADR-SHARED-035).
  *
  * Matching rows and costing rows are not operations of their own: a match is
  * classified as its one deterministic root document; a cost detail as the
@@ -49,6 +52,7 @@ final class NativeOperationResolver {
     private static final String STORED_CLASS = "SELECT baobab_native.governed_class_of(?, ?)";
     private static final String ROOT = "SELECT root_table, root_record FROM baobab_native.governed_root(?, ?)";
     private static final String LINE_SIDE = "SELECT baobab_native.allocation_line_side(?, ?, ?)";
+    private static final String PROVENANCE = "SELECT baobab_native.vendor_payment_provenance(?, ?, ?, ?, ?, ?, ?)";
 
     private final NativeConnections connections;
 
@@ -135,7 +139,9 @@ final class NativeOperationResolver {
                 // selection generated, would be a native disbursement instruction.
                 if (!Boolean.FALSE.equals(record.flag("IsOnline"))) return null;
                 if (record.recordId() > 0 && inPaySelection(record.transactionName(), record.recordId())) return null;
-                return NativeOperation.VENDOR_PAYMENT;
+                // ERP-B (ADR-SHARED-038): recording needs positive provenance, i.e. one
+                // independently verified execution-evidence record for these exact values.
+                return hasExecutionEvidence(record) ? NativeOperation.VENDOR_PAYMENT : null;
             case "C_AllocationHdr":
                 return record.recordId() > 0
                         ? storedClass(record.transactionName(), "C_AllocationHdr", record.recordId()) : null;
@@ -368,6 +374,44 @@ final class NativeOperationResolver {
                 return r.next() ? r.getString(1) : null;
             }
         }
+    }
+
+    /**
+     * True when the outbound payment being saved has its payment-execution
+     * evidence (N0008): a bound payment while its own values still match that
+     * evidence, an unbound one when exactly one unbound record matches them.
+     * Missing, ambiguous or mismatched evidence denies.
+     */
+    private boolean hasExecutionEvidence(NativeRecord record) throws Exception {
+        BigDecimal amount = decimal(record.value("PayAmt"));
+        int partner = record.intValue("C_BPartner_ID");
+        int currency = record.intValue("C_Currency_ID");
+        if (amount == null || amount.signum() <= 0 || partner <= 0 || currency <= 0 || record.adOrgId() <= 0) {
+            return false;
+        }
+        int invoice = record.intValue("C_Invoice_ID");
+        Connection db = NativeConnections.transactional(connections, record.transactionName());
+        try (PreparedStatement s = db.prepareStatement(PROVENANCE)) {
+            s.setInt(1, record.adClientId());
+            s.setInt(2, Math.max(record.recordId(), 0));
+            s.setInt(3, record.adOrgId());
+            s.setInt(4, partner);
+            s.setInt(5, currency);
+            s.setBigDecimal(6, amount);
+            s.setInt(7, Math.max(invoice, 0));
+            try (ResultSet r = s.executeQuery()) {
+                return r.next() && r.getString(1) != null;
+            }
+        }
+    }
+
+    private static BigDecimal decimal(Object value) {
+        if (value instanceof BigDecimal d) return d;
+        if (value instanceof Number n) return new BigDecimal(n.toString());
+        if (value instanceof String s) {
+            try { return new BigDecimal(s.trim()); } catch (NumberFormatException ignored) { return null; }
+        }
+        return null;
     }
 
     /** Fail closed: an unreadable answer counts as part of a payment selection. */

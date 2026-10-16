@@ -365,19 +365,26 @@ class NativeFinancePostgresGateBTest {
     @Test
     void outboundPaymentIsRecordedOnlyAndForgedSalesAuthorityCannotCompleteIt() throws Exception {
         int payment;
+        int invoice;
         try (Connection c = transaction()) {
-            payment = insertDoc(c, "c_payment", "isreceipt", "N");
+            invoice = vendorInvoice(c);
+            c.commit();
+        }
+        ingestEvidence(invoice, "125.00", PARTNER, CURRENCY, "UGX");
+        try (Connection c = transaction()) {
+            payment = vendorPayment(c, invoice, "125.00", true);
             c.commit();
         }
         try (Connection c = transaction()) {
             var resolver = new NativeOperationResolver(trx -> c);
             // ERP-A (ADR-SHARED-037): an outbound payment that is neither online
-            // nor from a payment selection is RECORDED under its own class only.
-            assertEquals(NativeOperation.VENDOR_PAYMENT, resolver.classify(
-                    record("C_Payment", payment, "gate-b-out", "IsReceipt", "N", "IsOnline", "N")).operationClass());
-            assertNull(resolver.classify(record("C_Payment", payment, "gate-b-out", "IsReceipt", "N", "IsOnline", "Y")),
+            // nor from a payment selection is RECORDED under its own class only,
+            // and (ERP-B) only with its bound execution evidence.
+            assertEquals(NativeOperation.VENDOR_PAYMENT,
+                    resolver.classify(payment(payment, invoice, "125.00", "IsOnline", "N")).operationClass());
+            assertNull(resolver.classify(payment(payment, invoice, "125.00", "IsOnline", "Y")),
                     "an online outbound payment is a disbursement instruction");
-            assertNull(resolver.classify(record("C_Payment", payment, "gate-b-out", "IsReceipt", "N")),
+            assertNull(resolver.classify(payment(payment, invoice, "125.00")),
                     "a missing online flag denies");
             assertNull(resolver.classify(header("C_Payment", payment, "gate-b-out", "IsReceipt", null)),
                     "a missing direction denies");
@@ -816,8 +823,12 @@ class NativeFinancePostgresGateBTest {
         int vendorInvoice, vendorPayment, salesInvoice, allocation;
         try (Connection c = transaction()) {
             sql(c, "INSERT INTO adempiere.c_doctype VALUES (202, 'API') ON CONFLICT DO NOTHING");
-            vendorInvoice = insertPurchase(c, "c_invoice", ", c_doctypetarget_id, c_doctype_id", ", 202, 0");
-            vendorPayment = insertDoc(c, "c_payment", "isreceipt", "N");
+            vendorInvoice = vendorInvoice(c);
+            c.commit();
+        }
+        ingestEvidence(vendorInvoice, "40.00", PARTNER, CURRENCY, "UGX");
+        try (Connection c = transaction()) {
+            vendorPayment = vendorPayment(c, vendorInvoice, "40.00", false);
             salesInvoice = insertDoc(c, "c_invoice", "issotrx", "Y");
             allocation = IDS.incrementAndGet();
             sql(c, "INSERT INTO adempiere.c_allocationhdr (c_allocationhdr_id, ad_client_id, ad_org_id) VALUES ("
@@ -1040,8 +1051,12 @@ class NativeFinancePostgresGateBTest {
         int invoice, payment, allocation, line;
         try (Connection c = transaction()) {
             sql(c, "INSERT INTO adempiere.c_doctype VALUES (202, 'API') ON CONFLICT DO NOTHING");
-            invoice = insertPurchase(c, "c_invoice", ", c_doctypetarget_id, c_doctype_id", ", 202, 0");
-            payment = insertDoc(c, "c_payment", "isreceipt", "N");
+            invoice = vendorInvoice(c);
+            c.commit();
+        }
+        ingestEvidence(invoice, "41.00", PARTNER, CURRENCY, "UGX");
+        try (Connection c = transaction()) {
+            payment = vendorPayment(c, invoice, "41.00", false);
             allocation = emptyAllocation(c);
             c.commit();
         }
@@ -1251,5 +1266,277 @@ class NativeFinancePostgresGateBTest {
             writeInvoiceLineCost(c, invoice[1]);
             denied(c);
         }
+    }
+
+    // --- P0-04B ERP-B (N0008, ADR-SHARED-038): payment-execution provenance and deny-by-name ---
+
+    private static final int PARTNER = 701;
+    private static final int CURRENCY = 300;
+    private static final String INGEST = "gateb_evidence_ingest";
+
+    /** A vendor invoice (base type API) of PARTNER in CURRENCY, client 11. */
+    private static int vendorInvoice(Connection c) throws SQLException {
+        sql(c, "INSERT INTO adempiere.c_doctype VALUES (202, 'API') ON CONFLICT DO NOTHING");
+        return insertPurchase(c, "c_invoice", ", c_doctypetarget_id, c_doctype_id, c_bpartner_id, c_currency_id",
+                ", 202, 0, " + PARTNER + ", " + CURRENCY);
+    }
+
+    /** A recorded outbound payment of PARTNER; withInvoice names the obligation on the payment itself. */
+    private static int vendorPayment(Connection c, int invoice, String amount, boolean withInvoice) throws SQLException {
+        int id = IDS.incrementAndGet();
+        sql(c, "INSERT INTO adempiere.c_payment (c_payment_id, ad_client_id, ad_org_id, c_doctype_id, isreceipt, "
+                + "c_bpartner_id, c_currency_id, payamt, c_invoice_id) VALUES (" + id + ", 11, 11, 201, 'N', " + PARTNER
+                + ", " + CURRENCY + ", " + amount + ", " + (withInvoice ? invoice : "NULL") + ")");
+        return id;
+    }
+
+    /** The payment as the JVM veto sees it being saved: its own values, never a caller's. */
+    private static NativeRecord payment(int id, int invoice, String amount, String... more) {
+        String[] values = {"IsReceipt", "N", "C_BPartner_ID", String.valueOf(PARTNER),
+                "C_Currency_ID", String.valueOf(CURRENCY), "PayAmt", amount, "C_Invoice_ID", String.valueOf(invoice)};
+        String[] all = java.util.Arrays.copyOf(values, values.length + more.length);
+        System.arraycopy(more, 0, all, values.length, more.length);
+        return record("C_Payment", id, "gate-b-pee", all);
+    }
+
+    /** The ingest role: a non-superuser member of baobab_payment_evidence_ingest. */
+    private static void ingestRole(Connection c) throws SQLException {
+        sql(c, "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '" + INGEST + "') THEN "
+                + "CREATE ROLE " + INGEST + " NOLOGIN NOSUPERUSER IN ROLE baobab_payment_evidence_ingest; END IF; END $$");
+    }
+
+    private static String evidenceInsert(int invoice, String amount, int partner, int currency, String iso,
+                                         String legalEntity) {
+        return "INSERT INTO baobab_native.payment_execution_evidence (evidence_id, execution_authority, placement_id, "
+                + "placement_version, responsible_legal_entity_id, ad_client_id, ad_org_id, payee_reference, c_bpartner_id, "
+                + "obligation_reference, c_invoice_id, currency, c_currency_id, amount, executed_at, verified_at, "
+                + "verified_by, evidence_references) VALUES ('" + UUID.randomUUID() + "', 'SYNTHETIC_ENGINE_LOCAL', '"
+                + placementId + "', 1, '" + legalEntity + "', 11, 11, 'erp:bpartner/" + partner + "', " + partner
+                + ", 'erp:vendor-invoice/" + invoice + "', " + invoice + ", '" + iso + "', " + currency + ", " + amount
+                + ", now() - interval '2 minutes', now() - interval '1 minute', 'Synthetic Payment Verifier', "
+                + "ARRAY['synthetic:gate-b/payment-execution'])";
+    }
+
+    /** Independently verified execution evidence, written by the ingest role in its own transaction. */
+    private static void ingestEvidence(int invoice, String amount, int partner, int currency, String iso)
+            throws SQLException {
+        try (Connection c = transaction()) {
+            ingestRole(c);
+            sql(c, "SET LOCAL ROLE " + INGEST);
+            sql(c, evidenceInsert(invoice, amount, partner, currency, iso, LE));
+            c.commit();
+        }
+    }
+
+    private static void refused(String statement, String message, boolean asIngest) throws SQLException {
+        try (Connection c = transaction()) {
+            ingestRole(c);
+            if (asIngest) sql(c, "SET LOCAL ROLE " + INGEST);
+            SQLException e = assertThrows(SQLException.class, () -> sql(c, statement));
+            assertTrue(e.getMessage().contains(message), e.getMessage());
+        }
+    }
+
+    @Test
+    void vendorPaymentRecordingNeedsItsOwnBoundExecutionEvidence() throws Exception {
+        int invoice;
+        try (Connection c = transaction()) {
+            invoice = vendorInvoice(c);
+            c.commit();
+        }
+        // No evidence: no class, at the JVM and in the database; a forged attribution cannot complete it.
+        int bare;
+        try (Connection c = transaction()) {
+            assertNull(new NativeOperationResolver(trx -> c).classify(payment(0, invoice, "300.00", "IsOnline", "N")),
+                    "an outbound payment without execution evidence has no class");
+            bare = vendorPayment(c, invoice, "300.00", true);
+            assertNull(storedClass_on(c, "C_Payment", bare));
+            attribute(c, new NativeOperation(NativeOperation.VENDOR_PAYMENT, "C_Payment", bare,
+                    payment(bare, invoice, "300.00", "IsOnline", "N")));
+            sql(c, "UPDATE adempiere.c_payment SET docstatus = 'CO' WHERE c_payment_id = " + bare);
+            denied(c);
+        }
+        // Evidence for other values never matches: amount, payee, obligation or currency.
+        int otherInvoice;
+        try (Connection c = transaction()) {
+            otherInvoice = vendorInvoice(c);
+            c.commit();
+        }
+        ingestEvidence(otherInvoice, "300.00", PARTNER, CURRENCY, "UGX");
+        ingestEvidence(invoice, "299.99", PARTNER, CURRENCY, "UGX");
+        try (Connection c = transaction()) {
+            var resolver = new NativeOperationResolver(trx -> c);
+            assertNull(resolver.classify(payment(0, invoice, "300.00", "IsOnline", "N")), "another obligation");
+            assertNull(resolver.classify(record("C_Payment", 0, "gate-b-pee", "IsReceipt", "N", "IsOnline", "N",
+                    "C_BPartner_ID", "702", "C_Currency_ID", String.valueOf(CURRENCY), "PayAmt", "299.99",
+                    "C_Invoice_ID", String.valueOf(invoice))), "another payee");
+            assertNull(resolver.classify(record("C_Payment", 0, "gate-b-pee", "IsReceipt", "N", "IsOnline", "N",
+                    "C_BPartner_ID", String.valueOf(PARTNER), "C_Currency_ID", "100", "PayAmt", "299.99",
+                    "C_Invoice_ID", String.valueOf(invoice))), "another currency");
+            assertNull(resolver.classify(payment(0, invoice, "0", "IsOnline", "N")), "no amount");
+        }
+        // Matching evidence: the payment is classified, bound on insert, and completes once attributed.
+        ingestEvidence(invoice, "300.00", PARTNER, CURRENCY, "UGX");
+        int paid;
+        try (Connection c = transaction()) {
+            var resolver = new NativeOperationResolver(trx -> c);
+            assertEquals(NativeOperation.VENDOR_PAYMENT,
+                    resolver.classify(payment(0, invoice, "300.00", "IsOnline", "N")).operationClass());
+            paid = vendorPayment(c, invoice, "300.00", true);
+            assertEquals(NativeOperation.VENDOR_PAYMENT, storedClass_on(c, "C_Payment", paid));
+            attribute(c, resolver.classify(payment(paid, invoice, "300.00", "IsOnline", "N")));
+            sql(c, "UPDATE adempiere.c_payment SET docstatus = 'CO' WHERE c_payment_id = " + paid);
+            c.commit();
+        }
+        assertEquals(1, count("SELECT count(*) FROM baobab_native.payment_execution_binding WHERE c_payment_id = " + paid));
+        // The evidence is consumed: an identical second payment has no class and binds nothing.
+        try (Connection c = transaction()) {
+            assertNull(new NativeOperationResolver(trx -> c).classify(payment(0, invoice, "300.00", "IsOnline", "N")),
+                    "evidence binds one payment only");
+            int again = vendorPayment(c, invoice, "300.00", true);
+            assertNull(storedClass_on(c, "C_Payment", again));
+            c.rollback();
+        }
+        // A bound payment whose values drift from its evidence loses its class (direct SQL included).
+        try (Connection c = transaction()) {
+            sql(c, "UPDATE adempiere.c_payment SET payamt = 310 WHERE c_payment_id = " + paid);
+            assertNull(storedClass_on(c, "C_Payment", paid), "a changed amount no longer matches the evidence");
+            assertNull(new NativeOperationResolver(trx -> c).classify(payment(paid, invoice, "310.00", "IsOnline", "N")));
+            c.rollback();
+        }
+        // Ambiguity denies: two unbound records for the same values bind neither.
+        ingestEvidence(invoice, "77.00", PARTNER, CURRENCY, "UGX");
+        ingestEvidence(invoice, "77.00", PARTNER, CURRENCY, "UGX");
+        try (Connection c = transaction()) {
+            assertNull(new NativeOperationResolver(trx -> c).classify(payment(0, invoice, "77.00", "IsOnline", "N")),
+                    "ambiguous evidence denies");
+            int ambiguous = vendorPayment(c, invoice, "77.00", true);
+            assertNull(storedClass_on(c, "C_Payment", ambiguous));
+            c.rollback();
+        }
+    }
+
+    @Test
+    void executionEvidenceIsWrittenOnlyByTheIngestRoleAndNeverChanges() throws Exception {
+        int invoice, salesInvoice;
+        try (Connection c = transaction()) {
+            invoice = vendorInvoice(c);
+            salesInvoice = insertDoc(c, "c_invoice", "issotrx", "Y");
+            sql(c, "UPDATE adempiere.c_invoice SET c_bpartner_id = " + PARTNER + ", c_currency_id = " + CURRENCY
+                    + " WHERE c_invoice_id = " + salesInvoice);
+            c.commit();
+        }
+        // A superuser (as iDempiere's runtime role is in the engine-local harness) is refused.
+        refused(evidenceInsert(invoice, "10.00", PARTNER, CURRENCY, "UGX", LE), "written only by the ingest role", false);
+        // Facts the evidence must agree with: legal entity, obligation class, payee and currency code.
+        refused(evidenceInsert(invoice, "10.00", PARTNER, CURRENCY, "UGX", "SYNTHETIC-OTHER-LE"), "open placement", true);
+        refused(evidenceInsert(salesInvoice, "10.00", PARTNER, CURRENCY, "UGX", LE), "not a vendor invoice", true);
+        refused(evidenceInsert(invoice, "10.00", 702, CURRENCY, "UGX", LE), "not a vendor invoice", true);
+        refused(evidenceInsert(invoice, "10.00", PARTNER, CURRENCY, "USD", LE), "currency code", true);
+        refused(evidenceInsert(invoice, "0", PARTNER, CURRENCY, "UGX", LE), "check constraint", true);
+        refused(evidenceInsert(invoice, "10.00", PARTNER, CURRENCY, "UGX", LE)
+                .replace("'SYNTHETIC_ENGINE_LOCAL'", "'PAYMENTS_PAYOUT'"), "check constraint", true);
+        // Append-only: neither evidence nor a binding is ever changed or removed.
+        ingestEvidence(invoice, "10.00", PARTNER, CURRENCY, "UGX");
+        int bound;
+        try (Connection c = transaction()) {
+            bound = vendorPayment(c, invoice, "10.00", true);
+            c.commit();
+        }
+        for (String statement : new String[] {
+                "UPDATE baobab_native.payment_execution_evidence SET amount = 11 WHERE c_invoice_id = " + invoice,
+                "DELETE FROM baobab_native.payment_execution_evidence WHERE c_invoice_id = " + invoice,
+                "UPDATE baobab_native.payment_execution_binding SET c_payment_id = c_payment_id + 1 WHERE c_payment_id = " + bound,
+                "DELETE FROM baobab_native.payment_execution_binding WHERE c_payment_id = " + bound}) {
+            refused(statement, "append-only", false);
+        }
+    }
+
+    @Test
+    void aVendorPaymentIsAllocatedOnlyToItsEvidenceObligation() throws Exception {
+        int obligation, otherInvoice, pay, allocation;
+        try (Connection c = transaction()) {
+            obligation = vendorInvoice(c);
+            otherInvoice = vendorInvoice(c);
+            c.commit();
+        }
+        ingestEvidence(obligation, "55.00", PARTNER, CURRENCY, "UGX");
+        try (Connection c = transaction()) {
+            pay = vendorPayment(c, obligation, "55.00", false);
+            allocation = emptyAllocation(c);
+            c.commit();
+        }
+        try (Connection c = transaction()) {
+            var resolver = new NativeOperationResolver(trx -> c);
+            assertEquals(NativeOperation.VENDOR_PAYMENT, storedClass_on(c, "C_Payment", pay));
+            assertNull(resolver.classify(record("C_AllocationLine", 0, "gate-b-ob", "C_AllocationHdr_ID",
+                    String.valueOf(allocation), "C_Invoice_ID", String.valueOf(otherInvoice),
+                    "C_Payment_ID", String.valueOf(pay))), "another vendor invoice is not the evidence's obligation");
+            assertNull(resolver.classify(record("C_AllocationLine", 0, "gate-b-ob", "C_AllocationHdr_ID",
+                    String.valueOf(allocation), "C_Payment_ID", String.valueOf(pay))),
+                    "a payment is never allocated on its own");
+            assertEquals(NativeOperation.PAYABLES_ALLOCATION, resolver.classify(record("C_AllocationLine", 0, "gate-b-ob",
+                    "C_AllocationHdr_ID", String.valueOf(allocation), "C_Invoice_ID", String.valueOf(obligation),
+                    "C_Payment_ID", String.valueOf(pay))).operationClass());
+            // Bypass: a direct SQL line to another invoice is refused at COMMIT even with payables authority.
+            attribute(c, new NativeOperation(NativeOperation.PAYABLES_ALLOCATION, "C_AllocationHdr", allocation,
+                    record("C_AllocationHdr", allocation, "gate-b-ob")));
+            sql(c, "INSERT INTO adempiere.c_allocationline (c_allocationline_id, c_allocationhdr_id, c_invoice_id, "
+                    + "c_payment_id, ad_client_id, ad_org_id) VALUES (" + IDS.incrementAndGet() + ", " + allocation + ", "
+                    + otherInvoice + ", " + pay + ", 11, 11)");
+            sql(c, "UPDATE adempiere.c_allocationhdr SET docstatus = 'CO' WHERE c_allocationhdr_id = " + allocation);
+            denied(c);
+        }
+    }
+
+    @Test
+    void uncataloguedFamiliesAreRefusedByNameInTheJvmAndInPostgres() throws Exception {
+        String[][] families = {{"C_BankStatement", "c_bankstatement"}, {"C_BankStatementLine", "c_bankstatementline"},
+                {"C_Cash", "c_cash"}, {"C_CashLine", "c_cashline"}, {"M_Inventory", "m_inventory"},
+                {"M_InventoryLine", "m_inventoryline"}, {"M_Movement", "m_movement"}, {"M_MovementLine", "m_movementline"},
+                {"M_Production", "m_production"}, {"M_ProductionLine", "m_productionline"},
+                {"M_ProductionPlan", "m_productionplan"}, {"C_LandedCost", "c_landedcost"},
+                {"C_LandedCostAllocation", "c_landedcostallocation"}};
+        for (String[] family : families) {
+            String table = family[0], relation = family[1];
+            // JVM: the table is protected and no write to it has a class.
+            assertTrue(NativeFinancePolicy.protectedTables().contains(table), table);
+            try (Connection c = transaction()) {
+                assertNull(new NativeOperationResolver(trx -> c).classify(new NativeRecord(table, CLIENT, ORG, 0,
+                        "model:TYPE_BEFORE_NEW", "gate-b-dbn", col -> null)), table);
+            }
+            // PostgreSQL: refused for a placed client, whoever writes it.
+            try (Connection c = transaction()) {
+                SQLException e = assertThrows(SQLException.class, () -> sql(c, "INSERT INTO adempiere." + relation
+                        + " (" + relation + "_id, ad_client_id, ad_org_id) VALUES (" + IDS.incrementAndGet() + ", 11, 11)"));
+                assertTrue(e.getMessage().contains("is not a catalogued operation family"), e.getMessage());
+            }
+            // An unplaced client is untouched, and its rows never move into a placed client.
+            int unplaced;
+            try (Connection c = transaction()) {
+                unplaced = otherClientDoc(c, relation, "", "");
+                c.commit();
+            }
+            try (Connection c = transaction()) {
+                // (Bank statements and cash journals are provenance-governed headers too: N0002 may refuse first.)
+                SQLException e = assertThrows(SQLException.class, () -> sql(c, "UPDATE adempiere." + relation
+                        + " SET ad_client_id = 11, ad_org_id = 11 WHERE " + relation + "_id = " + unplaced));
+                assertTrue(e.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"), e.getMessage());
+            }
+        }
+        // A bank statement never mints a payment: the statement write fails the whole transaction,
+        // including a receipt created and attributed in it, so nothing persists.
+        int receipt = IDS.incrementAndGet();
+        try (Connection c = transaction()) {
+            sql(c, "INSERT INTO adempiere.c_payment (c_payment_id, ad_client_id, ad_org_id, c_doctype_id, isreceipt) "
+                    + "VALUES (" + receipt + ", 11, 11, 201, 'Y')");
+            attribute(c, new NativeOperation(NativeOperation.PAYMENT, "C_Payment", receipt,
+                    record("C_Payment", receipt, "gate-b-bs", "IsReceipt", "Y")));
+            assertThrows(SQLException.class, () -> sql(c, "INSERT INTO adempiere.c_bankstatementline "
+                    + "(c_bankstatementline_id, ad_client_id, ad_org_id) VALUES (" + IDS.incrementAndGet() + ", 11, 11)"));
+            // PostgreSQL answers COMMIT of the aborted transaction with a rollback.
+            try { c.commit(); } catch (SQLException rolledBack) { /* either way nothing persists */ }
+        }
+        assertEquals(0, count("SELECT count(*) FROM adempiere.c_payment WHERE c_payment_id = " + receipt));
     }
 }

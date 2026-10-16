@@ -7,14 +7,19 @@ import java.util.Properties;
 import org.compiere.model.MAllocationHdr;
 import org.compiere.model.MAllocationLine;
 import org.compiere.model.MBPartner;
+import org.compiere.model.MBankAccount;
+import org.compiere.model.MBankStatement;
+import org.compiere.model.MCash;
 import org.compiere.model.MInOut;
 import org.compiere.model.MInOutLine;
 import org.compiere.model.MInvoice;
+import org.compiere.model.MInventory;
 import org.compiere.model.MInvoiceLine;
 import org.compiere.model.MOrder;
 import org.compiere.model.MOrderLine;
 import org.compiere.model.MPaySelection;
 import org.compiere.model.MPayment;
+import org.compiere.model.MWarehouse;
 import org.compiere.model.PO;
 import org.compiere.util.DB;
 
@@ -25,14 +30,16 @@ import org.compiere.util.DB;
  * allocation, each created, completed and posted through the REAL iDempiere
  * engine and the installed Baobab finance veto; plus the routes that must stay
  * denied (vendor return, AP credit memo, payment selection, online outbound
- * payment). Seed ids are found by query, never hard-coded. Holds no authority.
+ * payment) and, for ERP-B (ADR-SHARED-038), the uncatalogued families denied by
+ * name (bank statement, cash journal, physical inventory). Seed ids are found
+ * by query, never hard-coded. Holds no authority.
  */
 final class PurchaseFlow {
     private static final int CLIENT = 11;
 
     private PurchaseFlow() {}
 
-    /** action=pdoc kind=po|receipt|vinvoice|vpayment|vallocation|vreturn|apcredit|payselection [...]. */
+    /** action=pdoc kind=po|receipt|vinvoice|vpayment|vallocation|vreturn|apcredit|payselection|bankstatement|cash|inventory. */
     static Properties document(Properties in, Properties ctx) {
         String kind = in.getProperty("kind");
         return SalesFlow.process(in, ctx, trxName -> switch (kind) {
@@ -44,6 +51,9 @@ final class PurchaseFlow {
             case "vpayment" -> vendorPayment(in, ctx, trxName);
             case "vallocation" -> payablesAllocation(in, ctx, trxName);
             case "payselection" -> paySelection(in, ctx, trxName);
+            case "bankstatement" -> bankStatement(in, ctx, trxName);
+            case "cash" -> cashJournal(in, ctx, trxName);
+            case "inventory" -> inventory(in, ctx, trxName);
             default -> throw new IllegalArgumentException("unknown kind " + kind);
         });
     }
@@ -200,5 +210,38 @@ final class PurchaseFlow {
         ps.setPayDate(new Timestamp(System.currentTimeMillis()));
         ps.saveEx();
         return ps;
+    }
+
+    /** ERP-B: a bank statement header, through the native model. Denied by name for a placed client. */
+    private static PO bankStatement(Properties in, Properties ctx, String trx) {
+        int bankAccount = DB.getSQLValueEx(null, "SELECT MIN(C_BankAccount_ID) FROM C_BankAccount WHERE AD_Client_ID=?"
+                + " AND IsActive='Y'", CLIENT);
+        MBankStatement st = new MBankStatement(new MBankAccount(ctx, bankAccount, trx));
+        st.setAD_Org_ID(org(in));
+        st.setName("Baobab Gate D synthetic bank statement (CI only)");
+        st.saveEx();
+        return st;
+    }
+
+    /** ERP-B: the org's cash journal for today, through the native model. Denied by name for a placed client. */
+    private static PO cashJournal(Properties in, Properties ctx, String trx) {
+        int currency = DB.getSQLValueEx(null, "SELECT C_Currency_ID FROM C_AcctSchema WHERE C_AcctSchema_ID="
+                + "(SELECT C_AcctSchema1_ID FROM AD_ClientInfo WHERE AD_Client_ID=?)", CLIENT);
+        MCash cash = MCash.get(ctx, org(in), new Timestamp(System.currentTimeMillis()), currency, trx);
+        if (cash == null) throw new IllegalStateException("no cash book for the org");
+        return cash;
+    }
+
+    /** ERP-B: a physical inventory header, through the native model. Denied by name for a placed client. */
+    private static PO inventory(Properties in, Properties ctx, String trx) {
+        int warehouse = DB.getSQLValueEx(null, "SELECT MIN(M_Warehouse_ID) FROM M_Warehouse WHERE AD_Client_ID=? AND AD_Org_ID=?"
+                + " AND IsActive='Y'", CLIENT, org(in));
+        MInventory inv = new MInventory(new MWarehouse(ctx, warehouse, trx), trx);
+        // Mandatory before save: the physical-inventory type, so the refusal under test is Baobab's.
+        inv.setC_DocType_ID(DB.getSQLValueEx(null, "SELECT MIN(C_DocType_ID) FROM C_DocType WHERE AD_Client_ID=?"
+                + " AND DocBaseType='MMI' AND IsActive='Y'", CLIENT));
+        inv.setDescription("Baobab Gate D synthetic physical inventory (CI only)");
+        inv.saveEx();
+        return inv;
     }
 }
