@@ -237,6 +237,9 @@ final class PurchaseFlow {
         int warehouse = DB.getSQLValueEx(null, "SELECT MIN(M_Warehouse_ID) FROM M_Warehouse WHERE AD_Client_ID=? AND AD_Org_ID=?"
                 + " AND IsActive='Y'", CLIENT, org(in));
         MInventory inv = new MInventory(new MWarehouse(ctx, warehouse, trx), trx);
+        // Mandatory before save: the physical-inventory type, so the refusal under test is Baobab's.
+        inv.setC_DocType_ID(DB.getSQLValueEx(null, "SELECT MIN(C_DocType_ID) FROM C_DocType WHERE AD_Client_ID=?"
+                + " AND DocBaseType='MMI' AND IsActive='Y'", CLIENT));
         inv.setDescription("Baobab Gate D synthetic physical inventory (CI only)");
         inv.saveEx();
         return inv;
