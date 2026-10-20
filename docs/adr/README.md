@@ -36,4 +36,6 @@ engine. Kept for history; do not follow them for new work.
 - [ADR-ERP-020: ERP production readiness, governance and architecture conformance](ADR-ERP-020%20—%20ERP%20Production%20Readiness%2C%20Governance%20and%20Architecture%20Conformance.md)
 - [ADR-ERP-022: native placement, document provenance and posting-authority enforcement](ADR-ERP-022%20—%20Native%20Placement%2C%20Document%20Provenance%20and%20Posting-Authority%20Enforcement.md)
 
+- [ADR-ERP-023: Baobab People — African workforce, payroll, CDSoftware re-engineering and PostgreSQL 17](ADR-ERP-023%20%E2%80%94%20Baobab%20People%20African%20Workforce%2C%20Payroll%2C%20CDSoftware%20Re-engineering%20and%20PostgreSQL%2017.md)
+
 See `architecture/conformance.yaml` for how far each of these is actually implemented.
