@@ -29,6 +29,12 @@ Commercial intent is to create a reusable African HR/payroll and employer-compli
 
 ### 2.1 Product philosophy and independently owned roadmap
 
+**Baobab Platform engineering principle:**
+
+> Learn from established products. Reuse what is proven. Question what is inadequate. Re-engineer what must improve. Build what Africa needs.
+
+This is an explicit guiding design principle for Baobab People and a proposed standard for the wider Baobab Platform. Its operational interpretation in this repository is to assess existing products on evidence, selectively adopt validated work, challenge unsuitable assumptions, refactor or replace what does not meet requirements, and develop original African enterprise capabilities where warranted. It does not override copyright or open-source licensing, architecture ownership, independent statutory certification, or other accepted ADRs. Cross-platform adoption shall be recorded separately by Shared's governing architecture authority.
+
 Baobab People SHALL be built **for African enterprises first**, with first-party product strategy, domain models, user journeys, compliance engineering, operational support and a Baobab-controlled roadmap. The aim is an independently sustainable Baobab product, not a perpetual CDSoftware-branded implementation, clone, thin wrapper, or promise of vendor feature parity. Reference solutions may inspire design, but Baobab engineering SHALL judge every feature against African legal/employer needs, modern security and enterprise experience standards, not the source project's historical assumptions.
 
 Product decisions SHALL be evidence-based: explicitly defined HR/payroll journeys, accessibility and usability, API/SDK reliability, large-employer performance, ledger reconciliation, effective-dated compliance correctness, tenant isolation, incident recoverability, release/upgrade safety, pricing/operations feasibility and measurable acceptance criteria. Aspirations to become a leading African enterprise platform SHALL translate to demonstrable product and service quality, never unsupported marketing claims.
