@@ -2,7 +2,7 @@
 
 Date: 2026-10-08. Audited at ERP `main` `8dc1b79`, Shared pin `9e6e407` (`contracts.lock.yaml`).
 
-This extends, and does not replace, the canonical-capability census in PR #58
+> **20 October 2026 supersession note — ADR-ERP-023:** Workforce administration, attendance and payroll are now an approved ERP-local Baobab People engineering direction, including a governed CDSoftware iDempiere 13 feasibility/port and ZA→UG localisation programme. This supersedes the *planning priority* and 'out of scope until a staffing need' classification recorded in this historical 8 October census. It does **not** change the implementation evidence below: no accepted Shared People capability keys, qualified provider, completed statutory pack, live payroll, EA-09 certification or CP activation is claimed. Treat the following table as the dated audit snapshot, not the current roadmap.\n\nThis extends, and does not replace, the canonical-capability census in PR #58
 (`docs/architecture/capability-census-2026-10-07.md`, `.baobab/capability-provider.yaml`). It makes **no change to the
 provider declaration**. #58's declaration validates unchanged against Shared `9e6e407` and Shared `70f92ee`
 (`capability_catalogue.py validate-declaration`). This document creates no canonical key and claims no support: a key exists
