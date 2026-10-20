@@ -10,7 +10,7 @@
 ## 1. Decision
 
 1. **Baobab People SHALL be developed and operated within baobab-platform/baobab-erp.** It is a domain/product family, not a new canonical Engine, a separate Git repository, an automatic separate Tenant, or an independent financial system of record. A distinct commercial experience may consume its canonical capabilities.
-2. **The existing CDSoftware iDempiere HR/Payroll plugin family SHALL be evaluated as a candidate implementation foundation.** ERP engineering MAY refactor, modernise, adapt, port, replace components of, or re-engineer that plugin family when justified by iDempiere 13 support, security, maintainability, tenant separation or African localisation. It SHALL NOT imply permission to fork iDempiere core, bypass licence conditions or install unreviewed upstream artifacts.
+2. **Baobab People SHALL be a first-party, Baobab-directed African enterprise product; CDSoftware SHALL serve as inspiration, reference architecture and selectively reusable candidate implementation code, not the long-term product definition.** ERP engineering MAY independently redesign, refactor, modernise, port, replace or re-engineer components as justified by iDempiere 13, African localisation, security, performance, user experience, maintainability or commercial needs. Compatibility with CDSoftware's intended product behaviour is not a requirement where a deliberate, tested Baobab product decision differs. This authority does not permit an iDempiere core fork, licence/copyright violations or unreviewed upstream artifacts.
 3. **The ERP runtime target is iDempiere 13 (Orion) with PostgreSQL 17 and Java 17.** All new first-party People functionality and qualified CDSoftware components SHALL work against that tested tuple. PostgreSQL 16 deployments and volumes require a controlled major-version migration, not an unqualified image swap.
 4. **Workforce, time/attendance, payroll calculation, payroll approval, statutory filing, financial posting and payment execution SHALL remain separately governed capabilities and authorities.** A feature may use a CDSoftware implementation without exposing a CDSoftware-native API or vendor identity through canonical contracts.
 5. **South Africa (ZA) SHALL be the first independently qualified payroll localisation; Uganda (UG) SHALL be the next design target.** Further countries require separate evidence and certification. No country pack SHALL be assumed compliant from configuration or source-code completion.
@@ -26,6 +26,16 @@ Nabhold's accepted v2.0 masterplan makes Workforce/HR (G07) and Payroll (G08) pa
 At this decision date, upstream.lock.yaml selects idempiereofficial/idempiere:13-release (Orion), Java 17 and PostgreSQL 16; some acceptance tests already use PostgreSQL 17. Official iDempiere 13 development guidance uses PostgreSQL 17 and Java 17. CDSoftware's public Payroll page names older iDempiere compatibility; recent Attendance documentation explicitly references a Payroll 12.0.0 dependency, and a separate CDSoftware plugin documents v13 testing. **CDSoftware Payroll on iDempiere 13 is unproven.** Source dependency manifests, tests, supported-release matrix, 2Pack content and licences must be independently inspected before any executable adoption.
 
 Commercial intent is to create a reusable African HR/payroll and employer-compliance offering for independently governed companies, not merely Nabhold's internal payroll.
+
+### 2.1 Product philosophy and independently owned roadmap
+
+Baobab People SHALL be built **for African enterprises first**, with first-party product strategy, domain models, user journeys, compliance engineering, operational support and a Baobab-controlled roadmap. The aim is an independently sustainable Baobab product, not a perpetual CDSoftware-branded implementation, clone, thin wrapper, or promise of vendor feature parity. Reference solutions may inspire design, but Baobab engineering SHALL judge every feature against African legal/employer needs, modern security and enterprise experience standards, not the source project's historical assumptions.
+
+Product decisions SHALL be evidence-based: explicitly defined HR/payroll journeys, accessibility and usability, API/SDK reliability, large-employer performance, ledger reconciliation, effective-dated compliance correctness, tenant isolation, incident recoverability, release/upgrade safety, pricing/operations feasibility and measurable acceptance criteria. Aspirations to become a leading African enterprise platform SHALL translate to demonstrable product and service quality, never unsupported marketing claims.
+
+Re-use is transitional and selective. Teams SHALL maintain an **adopt / adapt / replace / independently develop** component-by-component decision register, with source provenance, fitness gaps, cost of ownership, technical debt and eventual retirement criteria. The target outcome is a Baobab-controlled implementation and independently governed roadmap, but modified GPL-licensed code remains subject to the applicable upstream copyright and licence obligations; Baobab ownership of its original code, localisation data and separate services must not be confused with exclusive ownership of copied or derivative upstream works.
+
+Upstream collaboration SHOULD begin with respectful maintainer outreach about the product inspiration, planned divergence, compatibility needs, source access, licence interpretation and potential contributions or support. The outreach is not a substitute for the actual open-source licence or a guarantee of dual licensing or vendor endorsement. The chosen implementation SHALL remain viable if upstream commercial collaboration is unavailable.
 
 ## 3. Architectural boundaries and ownership
 
@@ -58,11 +68,11 @@ Implementation lives in baobab-erp, initially under:
 These paths are a target layout, not an instruction to create empty placeholder bundles or a claim they exist. Separate first-party OSGi bundles SHALL be created only when required by a proven extension point. Third-party packages SHALL be installed reproducibly through supported p2/OSGi/2Pack mechanisms, never manually edited in a production container.
 
 CDSoftware treatment:
-1. Prefer a maintainers' supported iDempiere 13 release if independently verified, rather than an unnecessary fork.
+1. Evaluate each subsystem on business fit; **CDSoftware is not the canonical design authority and is not guaranteed to remain the production calculation engine**. Prefer a maintainers' supported iDempiere 13 release if independently verified and useful, but do not retain it solely for upstream feature parity.
 2. If unavailable, maintain a documented CDSoftware compatibility/port patch series with upstream source commit, exact dependency tree, semantic changes, tests, reviewer, licence and upstream contribution strategy. Vendor patching does not relax ADR-ERP-004's ban on a long-lived *iDempiere core* fork.
 3. Refactor unsafe hardcoded role, AD_Client, AD_Org, employee, process or country IDs; replace insecure direct SQL and undocumented ERP internals; repair OSGi dependencies, generated models, Application Dictionary/2Pack packages, schema migrations, reports and lifecycle logic.
-4. If an upstream component is irreparably unmaintainable, replace it with a Baobab-owned implementation behind the SAME canonical capability; record the rationale, evidence and migration/rollback in a reviewed ADR amendment. No sunk-cost mandate to preserve every CDSoftware module.
-5. Record and validate SPDX/licence notices, source provenance, modification attribution, source-offer obligations where distributed, SBOM, vulnerability status, dependency trust and commercial-hosting/distribution legal review. GPL licensing is neither prohibited nor a blanket proprietary exemption.
+4. Replace or fundamentally redesign any upstream component that fails Baobab People functional, African localisation, privacy, security, architectural or maintainability requirements, even when it technically runs. Keep the SAME accepted public canonical capability where its semantics still apply; when requirements change semantics, seek a separate Shared contract revision. Record change rationale, migration, historical payroll preservation, comparison tests and rollback in a reviewed design decision. No sunk-cost mandate to preserve any CDSoftware module.
+5. Record and validate SPDX/licence notices, source provenance, modification attribution, corresponding-source obligations where distributed, SBOM, vulnerability status, dependency trust and commercial-hosting/distribution legal review. GPL licensing is neither prohibited nor a blanket proprietary exemption. **Rewriting from an upstream source file does not make the result independently authored or free of its licence; a genuinely independent implementation requires a defensible independent-design/provenance process or an appropriate separately negotiated licence.** Preserve upstream notices, change history and any obligations for modified code. Obtain qualified IP/open-source counsel review for commercial distribution.
 6. Resolve all dependency/version conflicts, and prove a complete synthetic pay-run in an actual iDempiere 13 + PostgreSQL 17 runtime before implementation status can advance beyond experimental.
 
 Neither a successful OSGi ACTIVE state nor a successful 2Pack import is proof of valid payroll accounting, statutory localisation or production permission.
@@ -125,6 +135,7 @@ Development machines with disposable data MAY reprovision a fresh PG17 volume **
 | BP-02 / CD13-02 | CDSoftware 13 compatibility port or justified replacement | Clean Java 17 build; bundle resolve/ACTIVE; unsupported API fixes reviewed |
 | BP-03 / CD13-03 | 2Pack/AD/database installation and upgrade tests | Real iDempiere 13 + PostgreSQL 17; idempotent migrations; rollback rehearsal |
 | BP-04 / CD13-04 | Canonical workforce and payroll implementation | Shared accepted contract; strict tenancy/security/SoD and E2E synthetic runs |
+| BP-04B | First-party product design, component ownership and divergence review | Adopt/adapt/replace decisions, Baobab domain/UX ownership, provenance and migration path for retained CDSoftware code |
 | BP-05 / ZA | ZA country pack and practitioner validation | Signed statutory golden vectors, full payroll+filing+reversal+accounting reconciliation |
 | BP-06 / UG | UG country pack and practitioner validation | Independent URA/NSSF qualification and local filing/retention evidence |
 | BP-07 | Multi-tenant commercial service rollout | EA-09, CP bindings, support, incident and licence/commercial approvals |
@@ -155,16 +166,16 @@ Baobab People SHALL NOT:
 
 **Fork iDempiere core:** rejected by ADR-ERP-004; payroll belongs in governed plugins/services.
 
-**Build entirely from scratch immediately:** deferred; potentially useful if vendor audit fails, but should follow demonstrable reuse and cost analysis.
+**Build entirely from scratch immediately:** not mandatory; independently developed components may begin wherever justified by measurable Baobab People requirements, licence boundaries or maintenance economics. Reuse is optional, not a strategic obligation.
 
 **Single hardcoded African payroll calculator:** rejected; jurisdictions, employing entities, legal regimes, filing cycles and effective dates differ.
 
 ## 12. Consequences and follow-up work
 
-Benefits: reusable enterprise workforce domain, African payroll commercial opportunity, upgradeable extensions, provider neutrality, and a credible ZA→UG foundation.
+Benefits: first-party African enterprise workforce product and independent roadmap, reusable enterprise workforce domain, African payroll commercial opportunity, selective rather than mandatory plugin reuse, upgradeable extensions, provider neutrality, and a credible ZA→UG foundation.
 
 Costs: a continuing jurisdiction-specific legal/payroll expertise function, GPL and supply-chain management, deterministic statutory testing, sensitive-data operations, supervised migrations, upstream compatibility maintenance, customer support and country-by-country certification.
 
-Follow-ups SHALL be independent PRs/issues where appropriate: Shared People domain census/ADR and contracts; CDSoftware source audit; iDempiere 13 technical qualification; PostgreSQL 16→17 real-data migration rehearsals; ZA and UG statutory packs; Nabhold G07/G08 evidence reconciliation; external-provider contingency and supervised parallel pay runs.
+Follow-ups SHALL be independent PRs/issues where appropriate: Baobab People first-party product charter and component decision register; CDSoftware maintainer outreach and source/licence audit; Shared People domain census/ADR and contracts; iDempiere 13 technical qualification; PostgreSQL 16→17 real-data migration rehearsals; ZA and UG statutory packs; Nabhold G07/G08 evidence reconciliation; external-provider contingency and supervised parallel pay runs.
 
 **Decision boundary:** this ADR authorises ERP-local architecture and the controlled investigation/refactoring strategy; it does not self-approve Shared semantics, certify country payroll, activate provider bindings or authorise production employee data.
