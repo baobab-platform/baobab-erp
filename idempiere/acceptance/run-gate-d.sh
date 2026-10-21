@@ -57,6 +57,15 @@ docker network rm "$NET" >/dev/null 2>&1 || true
 docker network create "$NET" >/dev/null
 docker run -d --name gd-pg --network "$NET" -p "${PG_PORT}:5432" -e POSTGRES_PASSWORD=postgres "$PG_IMAGE" >/dev/null
 until docker exec gd-pg pg_isready -U postgres -q; do sleep 1; done
+# Verify the running server rather than treating an overridable image label as
+# compatibility evidence. This check precedes importing any iDempiere fixtures.
+PG_VERSION_NUM=$(docker exec gd-pg psql -U postgres -tA -v ON_ERROR_STOP=1 -c 'SHOW server_version_num')
+if [[ "$PG_VERSION_NUM" =~ ^17[0-9]{4}$ ]]; then
+  pass "PostgreSQL 17 actual server (server_version_num=$PG_VERSION_NUM)"
+else
+  fail "PostgreSQL baseline" "running server is not major 17"
+  exit 1
+fi
 
 # --- Synthetic CP/IAM ---------------------------------------------------------------------------
 echo authorized > "$WORK/state/mode"

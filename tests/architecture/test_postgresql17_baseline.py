@@ -25,7 +25,9 @@ class Postgres17BaselineTests(unittest.TestCase):
                 self.assertNotIn("postgres:16-alpine", data)
 
     def test_acceptance_default_and_operator_runbook(self):
-        harness = (ROOT / "idempiere/acceptance/run-gate-d.sh").read_text(encoding="utf-8")
+        path = ROOT / "idempiere/acceptance/run-gate-d.sh"
+        self.assertTrue(path.stat().st_mode & 0o111, "CI invokes the harness directly")
+        harness = path.read_text(encoding="utf-8")
         self.assertIn("GATE_D_PG_IMAGE:-postgres:17-alpine", harness)
         self.assertTrue((ROOT / "docs/operations/postgresql-17-upgrade.md").is_file())
 
