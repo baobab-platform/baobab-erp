@@ -52,11 +52,14 @@ native providers and protected posting certification remain separate requirement
 ## Pinned upstream
 
 - iDempiere: `13-release` ("Orion" LTS)
-- Database: PostgreSQL 16
+- Database: PostgreSQL 17
 - Java: 17
 
 See `upstream.lock.yaml`. Upgrades are reviewed changes and must run the compatibility
-suite.
+suite. Existing PostgreSQL 16 volumes require a deliberate, independently reviewed
+major-version migration; see [PG17 upgrade runbook](docs/operations/postgresql-17-upgrade.md).
+
+Baobab People is governed by [ADR-ERP-023](docs/adr/ADR-ERP-023%20%E2%80%94%20Baobab%20People%20African%20Workforce%2C%20Payroll%2C%20CDSoftware%20Re-engineering%20and%20PostgreSQL%2017.md).
 
 ## Development
 

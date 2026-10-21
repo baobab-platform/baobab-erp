@@ -1,5 +1,5 @@
 schema_version: "1.0"
-updated: "2026-09-06"
+updated: "2026-10-20"
 components:
   idempiere:
     repository: "https://github.com/idempiere/idempiere"
@@ -15,7 +15,7 @@ components:
 runtime:
   database:
     engine: "postgresql"
-    image: "postgres:16-alpine"
+    image: "postgres:17-alpine"
   java:
     release: "17"
 policy:

@@ -241,7 +241,7 @@ jobs:
     # asserts that the checkout is exactly that commit and never skips.
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:17-alpine
         env:
           POSTGRES_DB: baobab_test
           POSTGRES_USER: baobab
@@ -289,7 +289,7 @@ jobs:
     runs-on: ubuntu-26.04
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:17-alpine
         env:
           POSTGRES_DB: baobab_test
           POSTGRES_USER: baobab

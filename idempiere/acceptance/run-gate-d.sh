@@ -12,7 +12,7 @@ WORK=$(mkdir -p "${2:?work dir}" && cd "$2" && pwd)
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 NET=baobab-gate-d
 PG_PORT=${GATE_D_PG_PORT:-55432}
-PG_IMAGE=${GATE_D_PG_IMAGE:-postgres:16}
+PG_IMAGE=${GATE_D_PG_IMAGE:-postgres:17-alpine}
 PY_IMAGE=${GATE_D_PY_IMAGE:-python:3.12-slim}
 LE=SYNTHETIC-GATED-LE
 export DATABASE_URL="postgresql://adempiere:adempiere@localhost:${PG_PORT}/idempiere"
@@ -57,6 +57,15 @@ docker network rm "$NET" >/dev/null 2>&1 || true
 docker network create "$NET" >/dev/null
 docker run -d --name gd-pg --network "$NET" -p "${PG_PORT}:5432" -e POSTGRES_PASSWORD=postgres "$PG_IMAGE" >/dev/null
 until docker exec gd-pg pg_isready -U postgres -q; do sleep 1; done
+# Verify the running server rather than treating an overridable image label as
+# compatibility evidence. This check precedes importing any iDempiere fixtures.
+PG_VERSION_NUM=$(docker exec gd-pg psql -U postgres -tA -v ON_ERROR_STOP=1 -c 'SHOW server_version_num')
+if [[ "$PG_VERSION_NUM" =~ ^17[0-9]{4}$ ]]; then
+  pass "PostgreSQL 17 actual server (server_version_num=$PG_VERSION_NUM)"
+else
+  fail "PostgreSQL baseline" "running server is not major 17"
+  exit 1
+fi
 
 # --- Synthetic CP/IAM ---------------------------------------------------------------------------
 echo authorized > "$WORK/state/mode"
