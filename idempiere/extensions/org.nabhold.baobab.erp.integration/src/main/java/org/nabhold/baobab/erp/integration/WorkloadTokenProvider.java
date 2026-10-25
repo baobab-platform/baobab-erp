@@ -28,12 +28,24 @@ public final class WorkloadTokenProvider {
     private final String clientId;
     private final String clientSecret;
     private final String scope;
+    private final String audience;
     private final HttpClient httpClient;
 
     private volatile String cachedToken;
     private volatile Instant cachedTokenExpiry = Instant.EPOCH;
 
     public WorkloadTokenProvider(String tokenUrl, String clientId, String clientSecret, String scope) {
+        this(tokenUrl, clientId, clientSecret, scope, null);
+    }
+
+    /**
+     * A protected resource audience must be requested explicitly from Ory
+     * Hydra. The registered client's default audience is not assumed to be
+     * the Control Plane audience (ADR-IAM-0007 / DEV-09).
+     */
+    public WorkloadTokenProvider(String tokenUrl, String clientId, String clientSecret,
+                                 String scope, String audience) {
+        this.audience = audience;
         this.tokenUrl = tokenUrl;
         this.clientId = clientId;
         this.clientSecret = clientSecret;
@@ -50,7 +62,8 @@ public final class WorkloadTokenProvider {
         String form = "grant_type=client_credentials"
                 + "&client_id=" + urlEncode(clientId)
                 + "&client_secret=" + urlEncode(clientSecret)
-                + "&scope=" + urlEncode(scope);
+                + "&scope=" + urlEncode(scope)
+                + (audience == null ? "" : "&audience=" + urlEncode(audience));
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(tokenUrl))
                 .timeout(Duration.ofSeconds(10))
