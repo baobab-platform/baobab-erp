@@ -6,6 +6,7 @@ import java.util.Properties;
 import org.adempiere.util.ProcessUtil;
 import org.adempiere.util.ServerContext;
 import org.compiere.model.MAccount;
+import org.compiere.model.MAcctSchema;
 import org.compiere.model.MElementValue;
 import org.compiere.process.ProcessInfo;
 import org.compiere.process.ProcessInfoParameter;
@@ -141,6 +142,13 @@ final class NativeCompanySetup {
         Trx trx = Trx.get(name, true);
         ServerContext.setCurrentInstance(ctx);
         try {
+            // Automatic period control lazily writes C_AcctSchema while a
+            // journal is saved. Configuration is not a catalogued protected
+            // operation: choose standard period control during bootstrap,
+            // just as the existing GardenWorld fixture does.
+            MAcctSchema accounting = new MAcctSchema(ctx, schema, name);
+            accounting.setIsAutoPeriodControl(false);
+            accounting.saveEx();
             for (int i = 0; i < 2; i++) {
                 MElementValue value = new MElementValue(ctx, "DEV09_GL_" + i,
                         "DEV09 synthetic ordinary GL " + i, "Disposable native journal fixture",

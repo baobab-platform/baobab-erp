@@ -148,3 +148,8 @@ therefore creates two labelled synthetic ordinary GL accounts and combinations
 using MElementValue and MAccount, in B's own chart/schema and one transaction.
 It never changes existing accounts' control flags. These are disposable test
 accounting data, not a Finance-approved production chart or live legal fact.
+
+B's schema uses standard period control, configured through MAcctSchema during
+bootstrap. Automatic period-window updates would mutate C_AcctSchema during a
+journal save and are correctly refused by the protected configuration veto.
+Opening the synthetic fixture's current GL period does not supply CP authority.
