@@ -31,7 +31,8 @@ echo "[erp-a] run directory: $RUN"
 export RUN_DIR=$RUN ERP_IMAGE
 export CP_IMAGE=baobab-gate-d-erp-a/cp:local PYTHON_IMAGE=baobab-gate-d-erp-a/python:local
 export CPDB_PASSWORD="cpdb-$(openssl rand -hex 12)" ERP_WORKLOAD_SECRET=$(openssl rand -hex 24)
-COMPOSE=(docker compose -f "$HERE/compose.yaml" -p baobab-gate-d-erp-a)
+export ERP_A_PROJECT="baobab-erp-a-$(openssl rand -hex 8)"
+COMPOSE=(docker compose -f "$HERE/compose.yaml" -p "$ERP_A_PROJECT")
 log() { printf '[erp-a] %s\n' "$*" | tee -a "$OUT/run.log"; }
 
 collect() {
@@ -41,18 +42,27 @@ collect() {
   # Logs are evidence: they must never carry a token or the workload secret.
   if grep -l -e "$ERP_WORKLOAD_SECRET" "$OUT"/*.log >/dev/null 2>&1 \
      || grep -Pl 'eyJ[A-Za-z0-9_-]{20,}\.' "$OUT"/*.log >/dev/null 2>&1; then
-    log "a log carries a token or the workload secret"; exit 1
+    log "a log carries a token or the workload secret"; return 1
   fi
 }
 cleanup() {
-  collect
-  if [ "${GATE_D_KEEP:-0}" != "1" ]; then "${COMPOSE[@]}" down -v --remove-orphans >/dev/null 2>&1 || true; rm -rf "$RUN"; fi
+  local status=$?
+  trap - EXIT
+  collect || status=1
+  if [ "${GATE_D_KEEP:-0}" != "1" ]; then
+    "${COMPOSE[@]}" down -v --remove-orphans > "$OUT/cleanup.log" 2>&1 || status=1
+    rm -rf "$RUN" || status=1
+    python3 "$REPO/scripts/dev09_evidence.py" cleanup --project "$ERP_A_PROJECT" --run "$RUN" \
+      --output "$OUT/dev09-cleanup.json" || status=1
+  fi
+  exit "$status"
 }
+# Old receipts never survive an aborted rerun. Only these owned evidence files are removed.
+rm -f "$OUT"/{erp-a-receipt,dev09-cleanup,dev09-report,dev09-report.sha256}.json
 trap cleanup EXIT
 : > "$OUT/run.log"
 : > "$OUT/erp-a-report.txt"
-# Never reuse a previous run's containers or volumes.
-"${COMPOSE[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
+# Each invocation owns a fresh Compose project. A loopback port collision fails safely.
 
 log "throwaway CA, the TLS edge certificate and iDempiere's truststore"
 mkdir -p "$RUN"/{edge,cp,issuer,erp-tls,erp-secret,gate-d/requests,gate-d/results}
