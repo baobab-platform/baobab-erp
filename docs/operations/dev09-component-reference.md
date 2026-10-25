@@ -102,9 +102,9 @@ reference refuses copied `AD_Client`/`AD_Org` rows: it accepts only a
 successful native process result and independent read-back of native client,
 organisation and accounting schema before a versioned ERP-owned CP placement.
 Wrong-client placement and native-org reassignment remain denied. Neither
-native company setup nor a CP mandate constitutes independent second-company
-JVM GL posting; that next acceptance case remains **BLOCKED**, as do real
-legal registration and all protected environments.
+native company setup nor a CP mandate alone proves second-company JVM GL
+posting: the separate live case below must observe it. Real legal registration
+and all protected environments remain unqualified.
 
 ### Second-company real native GL posting proof — new mandatory DEV-09 gate
 
