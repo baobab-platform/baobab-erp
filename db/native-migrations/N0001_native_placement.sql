@@ -60,6 +60,17 @@ BEGIN
     RETURN NEW;
   END IF;
   PERFORM pg_advisory_xact_lock(hashtextextended('native-placement/' || NEW.ad_client_id || '/' || NEW.ad_org_id, 0));
+  -- A native AD_Org is owned by exactly one iDempiere AD_Client. CP grants
+  -- cannot make a foreign native organisation part of another client.
+  -- Verify the actual native catalogue, not an operator-supplied binding.
+  IF NOT EXISTS (
+    SELECT 1 FROM adempiere.ad_org o
+     WHERE o.ad_org_id = NEW.ad_org_id AND o.ad_client_id = NEW.ad_client_id
+       AND o.isactive = 'Y'
+  ) THEN
+    RAISE EXCEPTION 'BAOBAB_NATIVE_FINANCE_DENIED: AD_Org is absent, inactive or belongs to another AD_Client'
+      USING ERRCODE = '23514';
+  END IF;
   -- Versions of one placement are consecutive and keep their CP identity;
   -- a different Organisation, legal entity or tenant is a new placement.
   IF NEW.version > 1 AND NOT EXISTS (
