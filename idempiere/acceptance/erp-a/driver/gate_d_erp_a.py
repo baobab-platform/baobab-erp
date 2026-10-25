@@ -38,6 +38,14 @@ def seed(args, compose: Compose, evidence: Evidence) -> None:
     cp = ControlPlane(compose, evidence)
     state = cp.seed()
     state.update(maker=cp.maker, checker=cp.checker, operator=cp.operator, mandate=cp.mandate)
+    # Second CP tenant / legal entity / operating Organisation is genuinely
+    # independent, but its registration and verified-legal rows are synthetic.
+    cp_second = ControlPlane(compose, evidence, legal_entity="LE-ERPBUA", market="ZA",
+                             currency="ZAR", market_key="za.gate.erpab")
+    second = cp_second.seed()
+    second.update(maker=cp_second.maker, checker=cp_second.checker,
+                  operator=cp_second.operator, mandate=cp_second.mandate)
+    state["second"] = second
     Path(args.run, "cp-seed.json").write_text(json.dumps(state))
     Path(args.out, "seed-notes.json").write_text(json.dumps(evidence.notes, indent=2))
 
