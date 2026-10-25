@@ -4,7 +4,8 @@
 Requires a running *real* iDempiere JVM and its unmodified native process,
 configured accounting schema, plus a distinct CP-governed tenant, operating
 Organisation, legal entity and market. Records never represent production
-registration or grants and no second-company GL posting is claimed here.
+registration or grants; GL qualification requires durable facts and a matching
+CP decision for this independent company.
 """
 from __future__ import annotations
 

@@ -61,7 +61,7 @@ cleanup() {
   exit "$status"
 }
 # Old receipts never survive an aborted rerun. Only these owned evidence files are removed.
-rm -f "$OUT"/{erp-a-receipt,dev09-cleanup,dev09-report,dev09-report.sha256}.json
+rm -f "$OUT"/{erp-a-receipt,dev09-cleanup,dev09-report,dev09-report.sha256,dev09-ory-provision,dev09-ory-consumption,dev09-native-company,dev09-connected-report,dev09-connected-report.sha256}.json
 trap cleanup EXIT
 : > "$OUT/run.log"
 : > "$OUT/erp-a-report.txt"

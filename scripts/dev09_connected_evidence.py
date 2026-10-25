@@ -2,8 +2,8 @@
 """Closed DEV-09 real-Ory + second native-company component observations.
 
 This deliberately does not upgrade the original 40 PASS / 8 BLOCKED ERP-A
-receipt, certify a company provisioned by iDempiere's native setup process,
-or claim Kratos-backed CP human authority.
+receipt or claim Kratos-backed CP human authority. Native company setup and
+its own JVM GL posting must both be independently observed before reporting.
 """
 import argparse
 import hashlib
@@ -76,7 +76,7 @@ def build(root: Path, erp_sha: str, cp_sha: str, iam_sha: str) -> dict:
     if source["dev09-ory-provision.json"].get("iam_source_sha") != iam_sha:
         raise ValueError("DEV09_REFERENCE_IAM_SOURCE_MISMATCH")
     # Both independent issuer/provisioning and native role-bound evidence exist.
-    # Neither proves protected identity onboarding nor independent full GL.
+    # Neither proves protected identity onboarding or joined cross-engine accounting.
     return {
         "schema": "dev09-erp-connected-components.v1",
         "erp_source_sha": erp_sha, "cp_source_sha": cp_sha, "iam_source_sha": iam_sha,
