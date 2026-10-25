@@ -46,6 +46,7 @@ class NativeFinancePostgresGateBTest {
         assumeTrue(URL != null && !URL.isBlank(), "BAOBAB_NATIVE_TEST_JDBC_URL not set");
         try (Connection c = open(); Statement s = c.createStatement()) {
             s.execute("INSERT INTO adempiere.ad_client VALUES (11, 'Y') ON CONFLICT DO NOTHING");
+            s.execute("INSERT INTO adempiere.ad_org (ad_org_id, ad_client_id) VALUES (11, 11) ON CONFLICT DO NOTHING");
             s.execute("INSERT INTO adempiere.c_acctschema VALUES (101, 11, 'Y') ON CONFLICT DO NOTHING");
             s.execute("INSERT INTO adempiere.c_doctype VALUES (201, 'GLJ') ON CONFLICT DO NOTHING");
             s.execute("INSERT INTO adempiere.c_period VALUES (301, 11, current_date - 1, current_date + 1) ON CONFLICT DO NOTHING");
@@ -1538,5 +1539,79 @@ class NativeFinancePostgresGateBTest {
             try { c.commit(); } catch (SQLException rolledBack) { /* either way nothing persists */ }
         }
         assertEquals(0, count("SELECT count(*) FROM adempiere.c_payment WHERE c_payment_id = " + receipt));
+    }
+
+
+    // DEV-09: real PostgreSQL/JDBC proof for two synthetic, distinct native
+    // company/org pairs. This is not two provisioned iDempiere JVM companies.
+    @Test
+    void distinctNativeClientsHaveIsolatedDocumentsAndContext() throws Exception {
+        int a = IDS.incrementAndGet(), b = IDS.incrementAndGet();
+        try (Connection c = transaction(); Statement s = c.createStatement()) {
+            s.execute("INSERT INTO adempiere.ad_client (ad_client_id) VALUES (31), (32)");
+            s.execute("INSERT INTO adempiere.ad_org (ad_org_id, ad_client_id) VALUES (31, 31), (32, 32)");
+            s.execute("""
+                INSERT INTO baobab_native.native_placement
+                  (placement_id, version, tenant_id, engine_instance_id, operating_organisation_id,
+                   legal_entity_id, market, ad_client_id, ad_org_id, effective_from, approved_by,
+                   checked_by, evidence_reference, erp_assignment_reference)
+                VALUES
+                  ('%s', 1, 'tn_deva31', 'ei_deva31', '29e7e63e-78c2-4d49-94b8-2c8951bb8001',
+                   'LE-DEV09A', 'UG', 31, 31, now() - interval '1 hour',
+                   'Company A Maker', 'Company A Checker', 'synthetic:dev09/a', 'synthetic:dev09/a'),
+                  ('%s', 1, 'tn_devb32', 'ei_devb32', '29e7e63e-78c2-4d49-94b8-2c8951bb8002',
+                   'LE-DEV09B', 'ZA', 32, 32, now() - interval '1 hour',
+                   'Company B Maker', 'Company B Checker', 'synthetic:dev09/b', 'synthetic:dev09/b')
+                """.formatted(UUID.randomUUID(), UUID.randomUUID()));
+            s.execute("INSERT INTO adempiere.c_order (c_order_id, ad_client_id, ad_org_id) VALUES ("
+                    + a + ", 31, 31), (" + b + ", 32, 32)");
+            PlacementContextSource resolver = new PlacementContextSource(trx -> c);
+            NativeOperation sourceA = new NativeOperation(NativeOperation.PURCHASE_ORDER, "C_Order", a,
+                    new NativeRecord("C_Order", 31, 31, a, "model:TYPE_BEFORE_CHANGE", "dev09-a", col -> null));
+            NativeOperation sourceB = new NativeOperation(NativeOperation.PURCHASE_ORDER, "C_Order", b,
+                    new NativeRecord("C_Order", 32, 32, b, "model:TYPE_BEFORE_CHANGE", "dev09-b", col -> null));
+            NativePlacement pa = resolver.currentPlacement(sourceA), pb = resolver.currentPlacement(sourceB);
+            assertNotNull(pa);
+            assertNotNull(pb);
+            assertEquals("tn_deva31", pa.tenantId());
+            assertEquals("LE-DEV09A", pa.legalEntityId());
+            assertEquals("UG", pa.market());
+            assertEquals("tn_devb32", pb.tenantId());
+            assertEquals("LE-DEV09B", pb.legalEntityId());
+            assertEquals("ZA", pb.market());
+            assertNotEquals(pa.placementId(), pb.placementId());
+            // A source document cannot be reassigned through a forged native
+            // callback from another AD_Client or an altered header AD_Org.
+            NativeOperation wrongClient = new NativeOperation(NativeOperation.PURCHASE_ORDER, "C_Order", a,
+                    new NativeRecord("C_Order", 32, 32, a, "model:TYPE_BEFORE_CHANGE", "dev09-cross", col -> null));
+            NativeOperation wrongOrg = new NativeOperation(NativeOperation.PURCHASE_ORDER, "C_Order", a,
+                    new NativeRecord("C_Order", 31, 32, a, "model:TYPE_BEFORE_CHANGE", "dev09-cross", col -> null));
+            assertNull(resolver.currentPlacement(wrongClient));
+            assertNull(resolver.currentPlacement(wrongOrg));
+            c.rollback();
+        }
+        assertEquals(0, count("SELECT count(*) FROM baobab_native.native_placement WHERE ad_client_id IN (31,32)"));
+        assertEquals(0, count("SELECT count(*) FROM baobab_native.document_provenance WHERE record_id IN ("
+                + a + "," + b + ")"));
+    }
+
+    @Test
+    void placementCannotAssociateAnOrgOwnedByAnotherCompany() throws Exception {
+        try (Connection c = transaction(); Statement s = c.createStatement()) {
+            s.execute("INSERT INTO adempiere.ad_client (ad_client_id) VALUES (41), (42)");
+            s.execute("INSERT INTO adempiere.ad_org (ad_org_id, ad_client_id) VALUES (41, 41), (42, 42)");
+            SQLException denied = assertThrows(SQLException.class, () -> s.execute("""
+                INSERT INTO baobab_native.native_placement
+                  (placement_id, version, tenant_id, engine_instance_id, operating_organisation_id,
+                   legal_entity_id, market, ad_client_id, ad_org_id, effective_from, approved_by,
+                   checked_by, evidence_reference, erp_assignment_reference)
+                VALUES ('%s', 1, 'tn_devc41', 'ei_devc41', '29e7e63e-78c2-4d49-94b8-2c8951bb8003',
+                        'LE-DEV09C', 'UG', 41, 42, now() - interval '1 hour',
+                        'Company C Maker', 'Company C Checker', 'synthetic:dev09/c', 'synthetic:dev09/c')
+                """.formatted(UUID.randomUUID())));
+            assertTrue(denied.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"), denied.getMessage());
+            c.rollback();
+        }
+        assertEquals(0, count("SELECT count(*) FROM baobab_native.native_placement WHERE ad_client_id = 41"));
     }
 }
