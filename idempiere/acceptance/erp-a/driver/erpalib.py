@@ -17,7 +17,7 @@ from pathlib import Path
 
 CP = "http://127.0.0.1:18092"
 ISSUER = "http://127.0.0.1:18010"
-PROJECT = "baobab-gate-d-erp-a"
+PROJECT = os.environ.get("ERP_A_PROJECT", "baobab-gate-d-erp-a")
 
 
 class Response:

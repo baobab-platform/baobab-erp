@@ -225,6 +225,20 @@ jobs:
         run: |
           cat "$RUNNER_TEMP/erp-a/erp-a-report.txt" || true
           grep -qx 'ERP-A failures: 0' "$RUNNER_TEMP/erp-a/erp-a-report.txt"
+      - name: DEV-09 sanitised component receipt (complete native inventory and teardown required)
+        run: >-
+          python3 scripts/dev09_evidence.py report --directory "$RUNNER_TEMP/erp-a"
+          --source-sha "${{ github.sha }}" --cp-sha "$CP_COMMIT"
+          --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      - name: DEV-09 original sanitised receipt
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dev09-erp-components
+          path: |
+            ${{ runner.temp }}/erp-a/dev09-report.json
+            ${{ runner.temp }}/erp-a/dev09-report.sha256.json
+          if-no-files-found: error
+          retention-days: 30
       - name: ERP-A evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
