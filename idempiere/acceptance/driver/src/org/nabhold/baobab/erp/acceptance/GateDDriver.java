@@ -145,11 +145,34 @@ public final class GateDDriver implements BundleActivator, Runnable {
     }
 
     private static Properties context(int org) {
+        return context(CLIENT, org);
+    }
+
+    /** Accept only a genuine native client with its own native user/role.
+     *  The system-admin fixture of InitialClientSetup is never promoted to
+     *  runtime finance authority; CP still independently authorises posting.
+     */
+    private static Properties context(int client, int org) {
         Properties ctx = new Properties();
-        Env.setContext(ctx, Env.AD_CLIENT_ID, CLIENT);
+        Env.setContext(ctx, Env.AD_CLIENT_ID, client);
         Env.setContext(ctx, Env.AD_ORG_ID, org);
-        Env.setContext(ctx, Env.AD_USER_ID, 101);   // GardenAdmin
-        Env.setContext(ctx, Env.AD_ROLE_ID, 102);   // GardenWorld Admin
+        if (client == CLIENT) {
+            Env.setContext(ctx, Env.AD_USER_ID, 101);  // GardenAdmin, CI reference only
+            Env.setContext(ctx, Env.AD_ROLE_ID, 102);
+        } else {
+            int user = DB.getSQLValueEx(null,
+                    "SELECT AD_User_ID FROM AD_User WHERE AD_Client_ID=? AND Name='DEV09B-Admin'", client);
+            int role = DB.getSQLValueEx(null,
+                    "SELECT MIN(ur.AD_Role_ID) FROM AD_User_Roles ur "
+                    + "JOIN AD_Role r ON r.AD_Role_ID=ur.AD_Role_ID "
+                    + "WHERE ur.AD_User_ID=? AND r.AD_Client_ID=? AND r.IsActive='Y'",
+                    user, client);
+            if (user <= 0 || role <= 0) {
+                throw new IllegalStateException("DEV09_NATIVE_CLIENT_ROLE_NOT_PROVISIONED");
+            }
+            Env.setContext(ctx, Env.AD_USER_ID, user);
+            Env.setContext(ctx, Env.AD_ROLE_ID, role);
+        }
         Env.setContext(ctx, Env.LANGUAGE, "en_US");
         Env.setContext(ctx, "#Date", new Timestamp(System.currentTimeMillis()));
         ServerContext.setCurrentInstance(ctx);
@@ -160,24 +183,29 @@ public final class GateDDriver implements BundleActivator, Runnable {
     private static Properties journal(Properties in, String prefix) {
         Properties out = new Properties();
         int org = Integer.parseInt(in.getProperty("org", "11"));
+        int client = Integer.parseInt(in.getProperty("client", "11"));
+        if (client != CLIENT
+                && !"DEV09_SECOND_COMPANY_ONLY".equals(in.getProperty("profile"))) {
+            throw new IllegalArgumentException("DEV09_SECOND_JOURNAL_PROFILE_REQUIRED");
+        }
         BigDecimal amount = new BigDecimal(in.getProperty("amount", "100.00"));
         boolean complete = Boolean.parseBoolean(in.getProperty("complete", "true"));
         boolean post = Boolean.parseBoolean(in.getProperty("post", "true"));
         boolean rollbackAfterPost = Boolean.parseBoolean(in.getProperty("rollbackAfterPost", "false"));
-        Properties ctx = context(org);
+        Properties ctx = context(client, org);
         String trxName = Trx.createTrxName("BaobabGateD");
         Trx trx = Trx.get(trxName, true);
         int id = 0;
         try {
-            int schema = DB.getSQLValueEx(null, "SELECT C_AcctSchema1_ID FROM AD_ClientInfo WHERE AD_Client_ID=?", CLIENT);
+            int schema = DB.getSQLValueEx(null, "SELECT C_AcctSchema1_ID FROM AD_ClientInfo WHERE AD_Client_ID=?", client);
             Timestamp today = new Timestamp(System.currentTimeMillis());
             MJournal j = new MJournal(ctx, 0, trxName);
             j.setAD_Org_ID(org);
             j.setC_AcctSchema_ID(schema);
-            j.setC_DocType_ID(DB.getSQLValueEx(null, "SELECT MIN(C_DocType_ID) FROM C_DocType WHERE AD_Client_ID=? AND DocBaseType='GLJ' AND IsActive='Y'", CLIENT));
-            j.setGL_Category_ID(DB.getSQLValueEx(null, "SELECT MIN(GL_Category_ID) FROM GL_Category WHERE AD_Client_ID=? AND CategoryType='M'", CLIENT));
+            j.setC_DocType_ID(DB.getSQLValueEx(null, "SELECT MIN(C_DocType_ID) FROM C_DocType WHERE AD_Client_ID=? AND DocBaseType='GLJ' AND IsActive='Y'", client));
+            j.setGL_Category_ID(DB.getSQLValueEx(null, "SELECT MIN(GL_Category_ID) FROM GL_Category WHERE AD_Client_ID=? AND CategoryType='M'", client));
             j.setC_Currency_ID(DB.getSQLValueEx(null, "SELECT C_Currency_ID FROM C_AcctSchema WHERE C_AcctSchema_ID=?", schema));
-            j.setC_ConversionType_ID(DB.getSQLValueEx(null, "SELECT MIN(C_ConversionType_ID) FROM C_ConversionType WHERE IsDefault='Y' AND AD_Client_ID IN (0, ?)", CLIENT));
+            j.setC_ConversionType_ID(DB.getSQLValueEx(null, "SELECT MIN(C_ConversionType_ID) FROM C_ConversionType WHERE IsDefault='Y' AND AD_Client_ID IN (0, ?)", client));
             j.setDateDoc(today);
             j.setDateAcct(today);
             j.setPostingType("A");
@@ -198,7 +226,7 @@ public final class GateDDriver implements BundleActivator, Runnable {
             if (rollbackAfterPost) {
                 // Injected failure AFTER Fact_Acct rows were written in this
                 // transaction and BEFORE commit: nothing may survive.
-                String err = DocumentEngine.postImmediate(ctx, CLIENT, GL_JOURNAL_TABLE, id, true, trxName);
+                String err = DocumentEngine.postImmediate(ctx, client, GL_JOURNAL_TABLE, id, true, trxName);
                 int facts = DB.getSQLValueEx(trxName, "SELECT COUNT(*) FROM Fact_Acct WHERE AD_Table_ID=? AND Record_ID=?", GL_JOURNAL_TABLE, id);
                 out.setProperty(prefix + "facts_before_rollback", String.valueOf(facts));
                 out.setProperty(prefix + "post_error", String.valueOf(err));
@@ -207,7 +235,7 @@ public final class GateDDriver implements BundleActivator, Runnable {
             } else {
                 out.setProperty(prefix + "committed", String.valueOf(trx.commit(true)));
                 if (complete && post) {
-                    String err = DocumentEngine.postImmediate(ctx, CLIENT, GL_JOURNAL_TABLE, id, false, null);
+                    String err = DocumentEngine.postImmediate(ctx, client, GL_JOURNAL_TABLE, id, false, null);
                     out.setProperty(prefix + "post_error", String.valueOf(err));
                 }
             }
