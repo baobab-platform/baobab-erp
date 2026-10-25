@@ -587,8 +587,8 @@ def receipt(args, evidence: Evidence) -> None:
         "executing_profile": "engine-local integration (BAOBAB_ENVIRONMENT=integration; iDempiere acceptance runtime)",
         "components": {
             "real": ["iDempiere 13 with the shipped Baobab finance veto", "Baobab native migrations and COMMIT fences",
-                     "CP release binary and its migrations", "PostgreSQL 17 (ERP and CP)", "TLS edge (nginx)"],
-            "simulated": ["IAM: test OIDC issuer with real RS256 JWTs (not Keycloak)",
+                     "CP release binary and its migrations", "PostgreSQL 17 (ERP and CP)", "genuine Hydra OAuth workload and Kratos native identity records", "TLS edge (nginx)"],
+            "simulated": ["CP administrative fixtures: test OIDC issuer with real RS256 JWTs; genuine Hydra workload and Kratos readback do NOT prove human admin authorisation",
                           "recorded synthetic CP rows: legal-entity verification, market assignment, "
                           + "engine instance binding, human identities",
                           "GardenWorld synthetic business data",
