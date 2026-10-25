@@ -42,7 +42,8 @@ def seed(args, compose: Compose, evidence: Evidence) -> None:
     # independent, but its registration and verified-legal rows are synthetic.
     cp_second = ControlPlane(compose, evidence, legal_entity="LE-ERPBUA", market="ZA",
                              currency="ZAR", market_key="za.gate.erpab")
-    second = cp_second.seed()
+    second = cp_second.seed(mandate_scope={
+        "roles": ["ACCOUNTING_ENTITY"], "activities": ["GENERAL_LEDGER_POSTING"]})
     second.update(maker=cp_second.maker, checker=cp_second.checker,
                   operator=cp_second.operator, mandate=cp_second.mandate)
     state["second"] = second
