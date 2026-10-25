@@ -177,7 +177,8 @@ public final class FinanceActivator implements BundleActivator {
         }
         WorkloadTokenProvider token = new WorkloadTokenProvider(
                 tokenUrl, client, secret,
-                "context:resolve erp-posting-authority:resolve documentary:restriction-assess");
+                "context:resolve erp-posting-authority:resolve documentary:restriction-assess",
+                "baobab-control-plane");
         CpNativeFinancialAuthority service = new CpNativeFinancialAuthority(
                 cp, () -> {
                     try {
