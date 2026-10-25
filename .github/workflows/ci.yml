@@ -230,6 +230,10 @@ jobs:
           IAM_COMMIT: ${{ env.IAM_COMMIT }}
           EVIDENCE_LOCATION: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} (artifact erp-a-real-cp-evidence)
         run: idempiere/acceptance/erp-a/run-gate-d-erp-a.sh "$RUNNER_TEMP/erp-a"
+      - name: DEV-09 genuine Ory workload and CP consumption evidence
+        run: |
+          test -s "$RUNNER_TEMP/erp-a/dev09-ory-provision.json"
+          test -s "$RUNNER_TEMP/erp-a/dev09-ory-consumption.json"
       - name: ERP-A report
         if: always()
         run: |
