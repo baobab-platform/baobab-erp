@@ -76,8 +76,8 @@ final class NativeCompanySetup {
                 parameter("InactivateDefaults", "Y")
         });
 
-        ProcessUtil.startJavaProcess(ctx, pi, null, false);
-        if (pi.isError()) {
+        boolean completed = ProcessUtil.startJavaProcess(ctx, pi, null, false);
+        if (!completed || pi.isError()) {
             // Do not write process parameters, generated login details or
             // native exception bodies into evidence/logs.
             throw new IllegalStateException("DEV09_NATIVE_INITIAL_CLIENT_SETUP_FAILED");
