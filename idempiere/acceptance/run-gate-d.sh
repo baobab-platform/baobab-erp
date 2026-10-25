@@ -56,10 +56,17 @@ docker rm -f gd-erp gd-cp gd-pg >/dev/null 2>&1 || true
 docker network rm "$NET" >/dev/null 2>&1 || true
 docker network create "$NET" >/dev/null
 docker run -d --name gd-pg --network "$NET" -p "${PG_PORT}:5432" -e POSTGRES_PASSWORD=postgres "$PG_IMAGE" >/dev/null
-until docker exec gd-pg pg_isready -U postgres -q; do sleep 1; done
-# Verify the running server rather than treating an overridable image label as
-# compatibility evidence. This check precedes importing any iDempiere fixtures.
-PG_VERSION_NUM=$(docker exec gd-pg psql -U postgres -tA -v ON_ERROR_STOP=1 -c 'SHOW server_version_num')
+# PostgreSQL's image briefly serves a *temporary* initialization socket.
+# pg_isready can succeed during that phase immediately before the server
+# restarts; therefore require the actual version query to succeed after startup
+# instead of accepting the first ready observation.
+PG_VERSION_NUM=""
+for _ in $(seq 1 90); do
+  if PG_VERSION_NUM=$(docker exec gd-pg psql -U postgres -tA -v ON_ERROR_STOP=1 -c 'SHOW server_version_num' 2>/dev/null); then
+    break
+  fi
+  sleep 1
+done
 if [[ "$PG_VERSION_NUM" =~ ^17[0-9]{4}$ ]]; then
   pass "PostgreSQL 17 actual server (server_version_num=$PG_VERSION_NUM)"
 else
