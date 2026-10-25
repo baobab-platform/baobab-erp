@@ -1597,6 +1597,14 @@ class NativeFinancePostgresGateBTest {
 
     @Test
     void placementCannotAssociateAnOrgOwnedByAnotherCompany() throws Exception {
+        // Moving/deactivating an already governed AD_Org cannot invalidate
+        // an open legal/tenant placement behind CP's back.
+        try (Connection c = transaction(); Statement s = c.createStatement()) {
+            SQLException inactive = assertThrows(SQLException.class, () ->
+                    s.execute("UPDATE adempiere.ad_org SET isactive = 'N' WHERE ad_org_id = 11"));
+            assertTrue(inactive.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"), inactive.getMessage());
+            c.rollback();
+        }
         try (Connection c = transaction(); Statement s = c.createStatement()) {
             s.execute("INSERT INTO adempiere.ad_client (ad_client_id) VALUES (41), (42)");
             s.execute("INSERT INTO adempiere.ad_org (ad_org_id, ad_client_id) VALUES (41, 41), (42, 42)");
