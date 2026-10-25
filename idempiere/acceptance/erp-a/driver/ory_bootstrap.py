@@ -104,7 +104,9 @@ def prepare(run: Path, iam: Path, pinned_sha: str) -> None:
     hydra += "\nttl:\n  access_token: 2m\n"
     kratos = kratos.replace("http://127.0.0.1:4433/", "https://kratos.gated.test/")
     kratos = kratos.replace("http://127.0.0.1:4434/", "http://kratos:4434/")
-    kratos = kratos.replace("http://127.0.0.1:4455", "https://rp.gated.test")
+    # Preserve the two distinct IAM-owned browser origins. Collapsing them
+    # makes Kratos reject uniqueItems in CORS and allowed-return lists.
+    kratos = kratos.replace("http://127.0.0.1:4455", "https://selfservice.gated.test")
     kratos = kratos.replace("http://127.0.0.1:3000", "https://rp.gated.test")
     kratos = kratos.replace("local_dev_only_cookie_secret_32b",
                             os.environ["ORY_SYSTEM_SECRET"][:32])
