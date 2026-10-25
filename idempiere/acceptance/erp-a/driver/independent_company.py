@@ -74,6 +74,24 @@ def place(compose: Compose, state: dict, run: Path) -> None:
             'synthetic:dev09/independent-native-company',
             'synthetic:dev09/erp-assignment-b');
     """)
+    # Finance readiness is ERP-owned and does not grant CP legal authority.
+    # The private synthetic acceptance baseline must follow native setup;
+    # only the second company's accounting schema is selected.
+    compose.psql("erpdb", "postgres", "idempiere", f"""
+    INSERT INTO baobab.financial_configuration_baseline (
+      legal_entity_id, version, functional_currency, fiscal_year_start_month,
+      chart_of_accounts_template, accounting_schema, tax_profile, costing_method,
+      effective_from, approved_by, approved_at, evidence_reference)
+    VALUES ('{legal}', 1, 'ZAR', 1, 'synthetic-default-coa',
+            'idempiere-initial-client-setup-53161', 'synthetic-za',
+            'AVERAGE_PO', current_date - 30, 'Synthetic Finance Approver B',
+            now(), 'synthetic:dev09/finance-baseline-b');
+    UPDATE adempiere.c_periodcontrol pc SET periodstatus='O'
+      FROM adempiere.c_period p
+      WHERE p.c_period_id=pc.c_period_id AND p.ad_client_id={client}
+        AND pc.docbasetype='GLJ'
+        AND current_date BETWEEN p.startdate AND p.enddate;
+    """)
     # Private ephemeral state, not published in the sanitised evidence report.
     (run / "native-company.json").write_text(json.dumps({"client": client, "org": org}) + "\n")
 
