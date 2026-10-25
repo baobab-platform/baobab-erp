@@ -155,10 +155,10 @@ final class NativeCompanySetup {
                     throw new IllegalStateException("DEV09_NATIVE_JOURNAL_COMBINATION_MISSING");
                 }
             }
-            trx.commit(true);
-        } catch (RuntimeException failed) {
+            if (!trx.commit(true)) throw new IllegalStateException("DEV09_NATIVE_FIXTURE_COMMIT_FAILED");
+        } catch (Exception failed) {
             trx.rollback();
-            throw failed;
+            throw new IllegalStateException("DEV09_NATIVE_FIXTURE_ACCOUNTS_FAILED", failed);
         } finally {
             trx.close();
             ServerContext.dispose();
