@@ -91,9 +91,9 @@ def verified(compose: Compose, state: dict) -> dict:
         raise RuntimeError("DEV09_SECOND_NATIVE_COMPANY_SCOPE_MISMATCH")
     # Verify the correct second row, and refusal of wrong-company resolution.
     isolated = compose.scalar("erpdb", "postgres", "idempiere", f"""
-      SELECT baobab_native.current_placement({SECOND_CLIENT}, {SECOND_ORG}) IS NOT NULL
-          AND baobab_native.current_placement(11, {SECOND_ORG}) IS NULL
-          AND baobab_native.current_placement({SECOND_CLIENT}, 11) IS NULL
+      SELECT (baobab_native.current_placement({SECOND_CLIENT}, {SECOND_ORG})).placement_id IS NOT NULL
+          AND (baobab_native.current_placement(11, {SECOND_ORG})).placement_id IS NULL
+          AND (baobab_native.current_placement({SECOND_CLIENT}, 11)).placement_id IS NULL
           AND (SELECT count(*) FROM baobab_native.native_placement
                 WHERE ad_client_id IN (11, {SECOND_CLIENT}) AND effective_to IS NULL) = 2
     """) == "t"
