@@ -182,6 +182,7 @@ public final class GateDDriver implements BundleActivator, Runnable {
     /** Create a balanced two-line GL journal and complete/post it as requested. */
     private static Properties journal(Properties in, String prefix) {
         Properties out = new Properties();
+        out.setProperty("native_environment", System.getProperty("baobab.erp.native.environment", "unknown"));
         int org = Integer.parseInt(in.getProperty("org", "11"));
         int client = Integer.parseInt(in.getProperty("client", "11"));
         if (client != CLIENT

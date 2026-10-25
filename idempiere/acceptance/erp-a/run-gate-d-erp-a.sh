@@ -123,14 +123,26 @@ log "seeding CP through its admin API (and the recorded synthetic rows)"
 python3 "$HERE/driver/gate_d_erp_a.py" seed --run "$RUN" --out "$OUT" --compose "$HERE/compose.yaml"
 python3 "$HERE/driver/ory_bootstrap.py" provision --run "$RUN" --out "$OUT" --iam-sha "$IAM_COMMIT"
 
-log "iDempiere (imports GardenWorld on first start), protected acceptance runtime"
-"${COMPOSE[@]}" up -d erp >/dev/null
-for _ in $(seq 1 180); do
-  [ -f "$RUN/gate-d/ready" ] && "${COMPOSE[@]}" exec -T erp test -s /opt/idempiere/.baobab/native-finance-veto-active && break
-  "${COMPOSE[@]}" ps -q erp | grep -q . || { log "iDempiere exited"; exit 1; }
-  sleep 5
-done
-[ -f "$RUN/gate-d/ready" ] || { log "iDempiere did not become ready"; exit 1; }
+start_erp() {
+  rm -f "$RUN/gate-d/ready"
+  "${COMPOSE[@]}" up -d --force-recreate erp >/dev/null
+  for _ in $(seq 1 180); do
+    [ -f "$RUN/gate-d/ready" ] && "${COMPOSE[@]}" exec -T erp test -s /opt/idempiere/.baobab/native-finance-veto-active && break
+    "${COMPOSE[@]}" ps -q erp | grep -q . || { log "iDempiere exited"; exit 1; }
+    sleep 5
+  done
+  [ -f "$RUN/gate-d/ready" ] || { log "iDempiere did not become ready"; exit 1; }
+}
+
+log "isolated native fixture bootstrap, before placements or protected acceptance"
+export ERP_NATIVE_ENVIRONMENT=integration
+start_erp
+python3 "$HERE/driver/independent_company.py" setup --run "$RUN" --out "$OUT" --compose "$HERE/compose.yaml"
+
+log "restart with the unchanged protected finance veto before any governed posting"
+"${COMPOSE[@]}" stop erp >/dev/null
+export ERP_NATIVE_ENVIRONMENT=acceptance
+start_erp
 
 log "Baobab migrations on iDempiere's database, then the ERP-owned placement and baseline"
 export DATABASE_URL="postgresql://adempiere:adempiere@127.0.0.1:55462/idempiere"

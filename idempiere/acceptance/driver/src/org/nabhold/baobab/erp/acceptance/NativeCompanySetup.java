@@ -36,6 +36,12 @@ final class NativeCompanySetup {
             throw new IllegalStateException("DEV09_NATIVE_COMPANY_ALREADY_PROVISIONED");
         }
 
+        // Account configuration has no permitted native posting class.
+        // Fixture bootstrap must finish before governed acceptance starts;
+        // never relax the shipped veto to provision a company in that mode.
+        if (!"integration".equals(System.getProperty("baobab.erp.native.environment"))) {
+            throw new IllegalStateException("DEV09_NATIVE_SETUP_REQUIRES_ISOLATED_BOOTSTRAP");
+        }
         int currency = DB.getSQLValueEx(null,
                 "SELECT C_Currency_ID FROM C_Currency WHERE ISO_Code='ZAR' AND IsActive='Y'");
         int country = DB.getSQLValueEx(null,
@@ -107,6 +113,7 @@ final class NativeCompanySetup {
         result.setProperty("org", Integer.toString(org));
         result.setProperty("accounting_schema_present", "true");
         result.setProperty("native_setup_process", "53161");
+        result.setProperty("native_setup_environment", "integration");
         return result;
     }
 

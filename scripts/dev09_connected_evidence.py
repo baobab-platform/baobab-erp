@@ -44,6 +44,7 @@ REQUIRED = {
         "company_b_configured_via_idempiere_client_setup": True,
         "second_company_accounting_schema_observed": True,
         "second_company_native_jvm_posting_qualified": True,
+        "second_company_posting_runtime_acceptance": True,
         "second_company_cp_decision_and_balanced_fact_acct": True,
         "protected_qualified": False,
     },

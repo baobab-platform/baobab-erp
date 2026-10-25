@@ -40,7 +40,7 @@ services:
       DB_PASS: adempiere
       # The protected (acceptance) runtime: every governed native write needs CP authority.
       JAVA_OPTS: >-
-        -Xms256m -Xmx2g -Dbaobab.erp.native.environment=acceptance
+        -Xms256m -Xmx2g -Dbaobab.erp.native.environment=${ERP_NATIVE_ENVIRONMENT:-acceptance}
         -Dbaobab.cp.native.base.url=https://cp.gated.test/
         -Dbaobab.iam.token.url=https://hydra.gated.test/oauth2/token
         -Dbaobab.iam.native.client.id=baobab-erp-legal-actor-assessor-staging

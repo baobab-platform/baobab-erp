@@ -43,14 +43,14 @@ def observed_company(compose: Compose, client: int, org: int) -> None:
         raise RuntimeError("DEV09_NATIVE_CLIENT_SETUP_NOT_VERIFIED")
 
 
-def place(compose: Compose, state: dict, run: Path) -> None:
-    second = state["second"]
+def setup(compose: Compose, run: Path) -> None:
     # Actual iDempiere InitialClientSetup Process 53161 must create all
     # accounting and security material; direct AD_Client INSERT is forbidden.
     result = Erp(compose, str(run)).request(
         "dev09-company-b-setup", timeout=540,
         action="initClient", profile="DEV09_SECOND_COMPANY_ONLY")
-    if result.get("native_setup_process") != "53161" or result.get("accounting_schema_present") != "true":
+    if (result.get("native_setup_process") != "53161" or result.get("accounting_schema_present") != "true"
+            or result.get("native_setup_environment") != "integration"):
         raise RuntimeError("DEV09_NATIVE_CLIENT_SETUP_PROCESS_FAILED")
     try:
         client, org = int(result["client"]), int(result["org"])
@@ -58,6 +58,15 @@ def place(compose: Compose, state: dict, run: Path) -> None:
         raise RuntimeError("DEV09_NATIVE_CLIENT_SETUP_INVALID_IDS") from e
     if client <= 11 or org <= 11:
         raise RuntimeError("DEV09_NATIVE_CLIENT_SETUP_INVALID_IDS")
+    observed_company(compose, client, org)
+    # Private fixture identity survives the restart into protected acceptance.
+    (run / "native-company.json").write_text(json.dumps({"client": client, "org": org}) + "\n")
+
+
+def place(compose: Compose, state: dict, run: Path) -> None:
+    second = state["second"]
+    native = json.loads((run / "native-company.json").read_text())
+    client, org = native["client"], native["org"]
     observed_company(compose, client, org)
     tenant = sqlsafe(second["tenant"])
     engine = sqlsafe(second["engine_instance"])
@@ -164,6 +173,8 @@ def verified(compose: Compose, state: dict, run: Path) -> dict:
         "dev09-company-b-gl", timeout=300, action="journal",
         client=client, org=org, profile="DEV09_SECOND_COMPANY_ONLY",
         amount="45.00", complete="true", post="true")
+    if journal.get("native_environment") != "acceptance":
+        raise RuntimeError("DEV09_SECOND_NATIVE_GL_PROTECTED_VETO_REQUIRED")
     try:
         journal_id = int(journal["journal_id"])
     except (KeyError, TypeError, ValueError) as exc:
@@ -220,6 +231,7 @@ def verified(compose: Compose, state: dict, run: Path) -> dict:
         "company_b_configured_via_idempiere_client_setup": True,
         "second_company_accounting_schema_observed": True,
         "second_company_native_jvm_posting_qualified": True,
+        "second_company_posting_runtime_acceptance": True,
         "second_company_cp_decision_and_balanced_fact_acct": True,
         "protected_qualified": False,
     }
@@ -227,7 +239,7 @@ def verified(compose: Compose, state: dict, run: Path) -> dict:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("phase", choices=["place", "verify"])
+    parser.add_argument("phase", choices=["setup", "place", "verify"])
     parser.add_argument("--run", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--compose", required=True)
@@ -236,7 +248,9 @@ def main():
     if state["tenant"] == state["second"]["tenant"] or state["organisation"] == state["second"]["organisation"]:
         raise RuntimeError("DEV09_SECOND_CP_TENANT_OR_ORG_NOT_INDEPENDENT")
     cp = Compose(args.compose)
-    if args.phase == "place":
+    if args.phase == "setup":
+        setup(cp, args.run)
+    elif args.phase == "place":
         place(cp, state, args.run)
     else:
         (args.out / "dev09-native-company.json").write_text(

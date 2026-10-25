@@ -128,3 +128,17 @@ assertions) and the earlier standalone GardenWorld Gate D must continue to
 pass unchanged. Even with a successful second-company GL proof, Kratos-backed
 human CP onboarding, independent verified legal data, subscriptions, Payments,
 real bank/PSP settlement and protected staging/production remain unqualified.
+
+
+### Fixture bootstrap precedes governed acceptance
+
+Native account setup is deliberately not a catalogued protected financial
+operation. Company B is created by the real native InitialClientSetup process
+only in the disposable `integration` fixture-bootstrap JVM, before native
+placements and migrations. The CI-only setup action refuses any other mode.
+The stack then stops and recreates ERP in `acceptance` mode with the unchanged
+shipped veto. Every GL/purchase/recording assertion runs after that restart.
+The company-B journal reports its actual JVM mode; its proof is rejected unless
+that mode is `acceptance`, the native ledger persists and CP independently
+records the exact authorisation. This qualifies neither governed production
+company provisioning nor permission to change accounting configuration.
