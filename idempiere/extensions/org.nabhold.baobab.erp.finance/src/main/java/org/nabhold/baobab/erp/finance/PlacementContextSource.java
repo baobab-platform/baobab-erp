@@ -43,6 +43,7 @@ final class PlacementContextSource implements NativeFinancialContextSource {
                = (origin.tenant_id, origin.operating_organisation_id, origin.legal_entity_id, origin.market,
                   origin.ad_client_id, origin.ad_org_id)
          WHERE d.native_table = ? AND d.record_id = ? AND d.ad_client_id = ?
+           AND (? = false OR d.ad_org_id = ?)
          FOR SHARE OF p, d
         """;
 
@@ -69,6 +70,12 @@ final class PlacementContextSource implements NativeFinancialContextSource {
                 statement.setString(1, operation.sourceTable());
                 statement.setInt(2, operation.sourceRecordId());
                 statement.setInt(3, record.adClientId());
+                // A governed header must still have its creation-time AD_Org.
+                // Its child/ledger rows can legitimately use another AD_Org,
+                // so for those the source document remains the authority.
+                statement.setBoolean(4, operation.sourceTable().equals(record.table())
+                        && operation.sourceRecordId() == record.recordId());
+                statement.setInt(5, record.adOrgId());
             }
             try (statement; ResultSet r = statement.executeQuery()) {
                 if (!r.next()) return null;
