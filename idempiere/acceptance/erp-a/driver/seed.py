@@ -49,8 +49,7 @@ def human_token(subject: str) -> str:
 
 
 class ControlPlane:
-    def __init__(self, compose: Compose, evidence, *, legal_entity=self.legal_entity,
-                 market=self.market, currency=self.currency, market_key="us.gate.erpa"):
+    def __init__(self, compose: Compose, evidence, *, legal_entity=LEGAL_ENTITY, market=MARKET, currency=CURRENCY, market_key="us.gate.erpa"):
         self.c, self.evidence = compose, evidence
         self.legal_entity, self.market = legal_entity, market
         self.currency, self.market_key = currency, market_key
