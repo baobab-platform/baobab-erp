@@ -309,7 +309,7 @@ public final class GateDDriver implements BundleActivator, Runnable {
                    AND vc.C_BPartner_ID IS NULL AND vc.M_Product_ID IS NULL AND vc.C_Project_ID IS NULL
                  ORDER BY ev.Value, vc.AD_Org_ID DESC, vc.C_ValidCombination_ID) x
                  ORDER BY x.v OFFSET ? LIMIT 1""",
-                CLIENT, j.getAD_Org_ID(), j.getC_AcctSchema_ID(), rank);
+                j.getAD_Client_ID(), j.getAD_Org_ID(), j.getC_AcctSchema_ID(), rank);
         if (combination <= 0) {
             throw new IllegalStateException("no ordinary GL account combination for rank " + rank);
         }
