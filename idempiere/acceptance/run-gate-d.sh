@@ -62,7 +62,10 @@ docker run -d --name gd-pg --network "$NET" -p "${PG_PORT}:5432" -e POSTGRES_PAS
 # instead of accepting the first ready observation.
 PG_VERSION_NUM=""
 for _ in $(seq 1 90); do
-  if PG_VERSION_NUM=$(docker exec gd-pg psql -U postgres -tA -v ON_ERROR_STOP=1 -c 'SHOW server_version_num' 2>/dev/null); then
+  # The image's temporary initdb server has only a Unix socket. Require
+  # TCP readiness before version readback so success cannot precede restart.
+  if docker exec gd-pg pg_isready -h 127.0.0.1 -U postgres -q \
+     && PG_VERSION_NUM=$(docker exec gd-pg psql -U postgres -tA -v ON_ERROR_STOP=1 -c 'SHOW server_version_num' 2>/dev/null); then
     break
   fi
   sleep 1
