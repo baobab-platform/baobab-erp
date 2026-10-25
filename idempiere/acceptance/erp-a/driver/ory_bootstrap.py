@@ -62,7 +62,9 @@ def await_up(url: str) -> None:
             if status == 200:
                 return
         except (OSError, RuntimeError):
-            pass
+            # An unavailable provider during bounded startup is transient.
+            time.sleep(2)
+            continue
         time.sleep(2)
     raise RuntimeError("DEV09_ORY_PROVIDER_NOT_READY")
 
