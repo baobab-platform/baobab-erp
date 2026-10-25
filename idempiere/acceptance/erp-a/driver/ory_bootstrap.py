@@ -192,10 +192,24 @@ def consume(run: Path, out: Path) -> None:
     attempted = dict(context, organisation_id=str(uuid.uuid4()))
     status, _ = http("POST", CP + "/v1/platform-context/resolve", attempted, token=token)
     require(status in (400, 401, 403, 404, 409, 422), "CROSS_ORG_DENIAL")
+    second = state["second"]
+    status, b = http("POST", CP + "/v1/platform-context/resolve",
+                     {"tenant_id": second["tenant"],
+                      "organisation_id": second["organisation"],
+                      "country_code": second["market"]}, token=token)
+    require(status == 200 and b.get("tenant_id") == second["tenant"]
+            and b.get("organisation_id") == second["organisation"],
+            "SECOND_TENANT_CP_CURRENT_AUTHORITY")
+    cross = {"tenant_id": state["tenant"],
+             "organisation_id": second["organisation"],
+             "country_code": state["market"]}
+    status, _ = http("POST", CP + "/v1/platform-context/resolve", cross, token=token)
+    require(status in (400, 401, 403, 404, 409, 422), "MIXED_TENANT_ORG_DENIAL")
     (out / "dev09-ory-consumption.json").write_text(json.dumps({
         "schema": "dev09-ory-consumption.v1",
         "real_hydra_issued": True, "cp_current_tenant_org_context": True,
-        "wrong_org_denied": True, "legal_actor_decision_tested_by_native_erp": True,
+        "wrong_org_denied": True, "second_tenant_org_context": True,
+        "mixed_tenant_org_denied": True, "legal_actor_decision_tested_by_native_erp": True,
         "independent_provider_qualified": False, "protected_qualified": False,
     }, indent=2) + "\n")
 
