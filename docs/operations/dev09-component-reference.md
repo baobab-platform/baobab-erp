@@ -71,3 +71,24 @@ provider where available, and Payments simulated execution-evidence handoff.
 Neither an ERP payment record nor a simulated Payments state implies bank/PSP
 settlement. Absent sources remain explicitly BLOCKED; DEV-09/INT-08 and protected
 acceptance remain open.
+
+## DEV-09 Ory issuer / CP native authority increment (under qualification)
+
+The additional reference stack runs IAM-source-pinned **real Hydra and Kratos
+processes**, separate stores and a private TLS edge. The ERP workload token
+uses Hydra client credentials with a run-registered exact audience and scopes;
+Hydra's authenticated private token hook emits only workload actor/client
+identity claims. CP verifies the signed token and decides its current operating
+Context and per-native-operation legal authority. A dedicated probe reads back
+Hydra registration, creates and reads two distinct Kratos identity records,
+verifies CP accepts the authorised tenant/Organisation and refuses an unrelated
+Organisation. Native S22/S23/S24/S25 still enforce CP mandate revocation,
+scoped activities, outages and renewed authority, now using a Hydra workload.
+
+Crucially, Kratos native human records in this ERP-specific harness do **not**
+replace the synthetic CP administrative login fixture. That end-to-end human
+administrative identity journey and legal-register evidence must not be called
+qualified. No production IAM client is provisioned, no live company or legal
+entity is modified, and no protected runtime is authorized. Exact IAM image and
+source pins and bounded, run-owned credentials are mandatory; an unavailable
+issuer or CP denies all posting.
