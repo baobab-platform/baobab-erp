@@ -19,6 +19,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: DEV-09 native harness syntax and guarded evidence unit tests
+        run: |
+          python3 -m py_compile \
+            idempiere/acceptance/erp-a/driver/ory_bootstrap.py \
+            idempiere/acceptance/erp-a/driver/independent_company.py \
+            idempiere/acceptance/erp-a/driver/seed.py \
+            idempiere/acceptance/erp-a/driver/gate_d_erp_a.py \
+            scripts/dev09_connected_evidence.py \
+            tests/unit/test_dev09_connected_evidence.py
+          bash -n idempiere/acceptance/erp-a/run-gate-d-erp-a.sh
+          bash -n idempiere/acceptance/run-gate-d.sh
+          python3 -m unittest discover -s tests/unit -p 'test_dev09_connected_evidence.py' -v
       - name: Authenticate to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io --username "${{ github.actor }}" --password-stdin
       - name: Validate source and contracts in the Baobab environment
