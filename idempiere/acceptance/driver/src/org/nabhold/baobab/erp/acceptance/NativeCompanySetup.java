@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.Properties;
 
 import org.adempiere.util.ProcessUtil;
+import org.adempiere.util.ServerContext;
 import org.compiere.process.ProcessInfo;
 import org.compiere.process.ProcessInfoParameter;
 import org.compiere.util.DB;
@@ -78,7 +79,17 @@ final class NativeCompanySetup {
                 parameter("InactivateDefaults", "N")
         });
 
-        boolean completed = ProcessUtil.startJavaProcess(ctx, pi, null, false);
+        // InitialClientSetup constructs MSetup from Env.getCtx(), even
+        // though ProcessUtil also accepts a ctx argument. Install that same
+        // run-owned system context for the native process, then always clear
+        // it before the driver handles another request.
+        boolean completed;
+        ServerContext.setCurrentInstance(ctx);
+        try {
+            completed = ProcessUtil.startJavaProcess(ctx, pi, null, false);
+        } finally {
+            ServerContext.dispose();
+        }
         if (!completed || pi.isError()) {
             // Do not write process parameters, generated login details or
             // native exception bodies into evidence/logs.
