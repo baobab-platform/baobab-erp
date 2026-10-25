@@ -108,7 +108,7 @@ services:
 
   hydra-migrate:
     image: oryd/hydra:v26.2.0@sha256:ff67c7fb5f95074fa53374d41151713554960504b340cd3f95b09e65deaea2a9
-    command: ["migrate", "sql", "-e", "--yes", "-c", "/etc/config/hydra/hydra.yml"]
+    command: ["-c", "/etc/config/hydra/hydra.yml", "migrate", "sql", "-e", "--yes"]
     environment: {DSN: "postgres://hydra:${ORY_DB_PASSWORD}@hydra-db:5432/hydra?sslmode=disable"}
     volumes: ["${RUN_DIR}/ory/hydra:/etc/config/hydra:ro"]
     depends_on: {hydra-db: {condition: service_healthy}}
@@ -116,7 +116,7 @@ services:
 
   kratos-migrate:
     image: oryd/kratos:v26.2.0@sha256:2a13bb8d362c7a7ae33bd7c0f5168aee46921f15c916a06346db91c06dc76643
-    command: ["migrate", "sql", "-e", "--yes", "-c", "/etc/config/kratos/kratos.yml"]
+    command: ["-c", "/etc/config/kratos/kratos.yml", "migrate", "sql", "-e", "--yes"]
     environment: {DSN: "postgres://kratos:${ORY_DB_PASSWORD}@kratos-db:5432/kratos?sslmode=disable"}
     volumes: ["${RUN_DIR}/ory/kratos:/etc/config/kratos:ro"]
     depends_on: {kratos-db: {condition: service_healthy}}
