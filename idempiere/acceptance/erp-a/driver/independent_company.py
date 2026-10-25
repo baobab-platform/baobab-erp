@@ -89,12 +89,20 @@ def verified(compose: Compose, state: dict) -> dict:
     if actual != [wanted]:
         raise RuntimeError("DEV09_SECOND_NATIVE_COMPANY_SCOPE_MISMATCH")
     # Verify the correct second row, and refusal of wrong-company resolution.
+    # There is deliberately no invented "current_placement" database function:
+    # use the owner table and the live native catalogues directly.
     isolated = compose.scalar("erpdb", "postgres", "idempiere", f"""
-      SELECT (baobab_native.current_placement({SECOND_CLIENT}, {SECOND_ORG})).placement_id IS NOT NULL
-          AND (baobab_native.current_placement(11, {SECOND_ORG})).placement_id IS NULL
-          AND (baobab_native.current_placement({SECOND_CLIENT}, 11)).placement_id IS NULL
-          AND (SELECT count(*) FROM baobab_native.native_placement
-                WHERE ad_client_id IN (11, {SECOND_CLIENT}) AND effective_to IS NULL) = 2
+      SELECT
+        (SELECT count(*) FROM baobab_native.native_placement p
+          JOIN adempiere.ad_org o ON o.ad_org_id = p.ad_org_id
+                                AND o.ad_client_id = p.ad_client_id
+          WHERE p.ad_client_id = {SECOND_CLIENT} AND p.ad_org_id = {SECOND_ORG}
+            AND p.effective_to IS NULL AND o.isactive = 'Y') = 1
+        AND (SELECT count(*) FROM baobab_native.native_placement
+          WHERE (ad_client_id = 11 AND ad_org_id = {SECOND_ORG})
+             OR (ad_client_id = {SECOND_CLIENT} AND ad_org_id = 11)) = 0
+        AND (SELECT count(*) FROM baobab_native.native_placement
+          WHERE ad_client_id IN (11, {SECOND_CLIENT}) AND effective_to IS NULL) = 2
     """) == "t"
     if not isolated:
         raise RuntimeError("DEV09_SECOND_NATIVE_MAPPING_NOT_ISOLATED")
