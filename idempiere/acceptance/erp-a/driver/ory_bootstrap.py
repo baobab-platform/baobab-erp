@@ -183,6 +183,39 @@ def consume(run: Path, out: Path) -> None:
             "HYDRA_TOKEN")
     token = body["access_token"]
     require(body.get("token_type", "").lower() == "bearer", "HYDRA_TOKEN_TYPE")
+    # A genuine Hydra token is a transport credential, never a grant. An
+    # issuer may refuse an unregistered audience outright; if it emits one,
+    # CP must reject that token for the CP resource server.
+    wrong_status, wrong_issuer = http("POST", HYDRA_PUBLIC + "/oauth2/token", {
+        "grant_type": "client_credentials", "client_id": CLIENT,
+        "client_secret": os.environ["ERP_WORKLOAD_SECRET"],
+        "scope": "context:resolve", "audience": "baobab-erp"
+    }, form=True)
+    if wrong_status == 200:
+        require(isinstance(wrong_issuer.get("access_token"), str), "WRONG_AUD_TOKEN")
+        wrong_token = wrong_issuer["access_token"]
+        status, _ = http("POST", CP + "/v1/platform-context/resolve",
+                         {"tenant_id": state["tenant"],
+                          "organisation_id": state["organisation"],
+                          "country_code": state["market"]}, token=wrong_token)
+        require(status in (401, 403), "WRONG_AUDIENCE_CP_DENIAL")
+    else:
+        require(wrong_status in (400, 401, 403), "WRONG_AUDIENCE_ISSUER_REFUSAL")
+
+    reduced_status, reduced = http("POST", HYDRA_PUBLIC + "/oauth2/token", {
+        "grant_type": "client_credentials", "client_id": CLIENT,
+        "client_secret": os.environ["ERP_WORKLOAD_SECRET"],
+        "scope": "legal-actor:assess", "audience": "baobab-control-plane"
+    }, form=True)
+    require(reduced_status == 200
+            and isinstance(reduced.get("access_token"), str), "REDUCED_SCOPE_ISSUANCE")
+    reduced_token = reduced["access_token"]
+    reduced_status, _ = http("POST", CP + "/v1/platform-context/resolve",
+                             {"tenant_id": state["tenant"],
+                              "organisation_id": state["organisation"],
+                              "country_code": state["market"]}, token=reduced_token)
+    require(reduced_status in (401, 403), "MISSING_CONTEXT_SCOPE_DENIAL")
+
     # CP, not the issuer or this test driver, resolves actual tenant/org context.
     context = {"tenant_id": state["tenant"], "organisation_id": state["organisation"],
                "country_code": state["market"]}
@@ -211,7 +244,9 @@ def consume(run: Path, out: Path) -> None:
         "schema": "dev09-ory-consumption.v1",
         "real_hydra_issued": True, "cp_current_tenant_org_context": True,
         "wrong_org_denied": True, "second_tenant_org_context": True,
-        "mixed_tenant_org_denied": True, "legal_actor_decision_tested_by_native_erp": True,
+        "mixed_tenant_org_denied": True, "wrong_audience_denied": True,
+        "missing_context_scope_denied": True,
+        "legal_actor_decision_tested_by_native_erp": True,
         "independent_provider_qualified": False, "protected_qualified": False,
     }, indent=2) + "\n")
 
