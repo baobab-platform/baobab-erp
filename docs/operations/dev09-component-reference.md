@@ -105,3 +105,26 @@ Wrong-client placement and native-org reassignment remain denied. Neither
 native company setup nor a CP mandate constitutes independent second-company
 JVM GL posting; that next acceptance case remains **BLOCKED**, as do real
 legal registration and all protected environments.
+
+### Second-company real native GL posting proof — new mandatory DEV-09 gate
+
+The dedicated disposable reference now requests a **real journal** for company
+B through the shipped JVM/OSGi veto and native accounting engine. The Java
+driver must use B's actual provisioned `AD_Client`, `AD_Org`, admin user and
+native role; it may not use GardenWorld credentials for that operation. CP B
+has the exact `ACCOUNTING_ENTITY` / `GENERAL_LEDGER_POSTING` mandate, not
+an inherited Nabhold or company-A grant. The test refuses success unless:
+(1) the native `GL_Journal` is completed and posted, (2) its `Fact_Acct`
+rows are balanced and belong only to B's company and Organisation, and
+(3) the native attribution names CP-persisted `AUTHORIZED` decisions for the
+exact B Tenant, operating Organisation, legal entity, market, operation and
+document reference. A missing accounting structure, permit, active period or
+native journal is a failed test, not a skipped PASS. No finance authority
+is derived from a native client or from successful initial setup.
+
+The connected DEV-09 component receipt adds this assertion **only if the live
+run observes all of it**. Original ERP-A evidence (39 independent purchase
+assertions) and the earlier standalone GardenWorld Gate D must continue to
+pass unchanged. Even with a successful second-company GL proof, Kratos-backed
+human CP onboarding, independent verified legal data, subscriptions, Payments,
+real bank/PSP settlement and protected staging/production remain unqualified.
