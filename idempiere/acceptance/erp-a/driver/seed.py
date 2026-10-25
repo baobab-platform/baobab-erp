@@ -66,7 +66,7 @@ class ControlPlane:
         h = {"Authorization": "Bearer " + human_token(who), **(headers or {})}
         return must(call(method, CP + path, body, h), *ok)
 
-    def seed(self) -> dict:
+    def seed(self, *, mandate_scope: dict | None = None) -> dict:
         humans = ", ".join(f"('{p}','human','ACTIVE')" for p in (self.maker, self.checker, self.operator))
         links = ", ".join(f"('{p}','{ISS}','{p}','ACTIVE')" for p in (self.maker, self.checker, self.operator))
         self.sql(f"INSERT INTO identity.principal (principal_id, actor_type, status) VALUES {humans};"
@@ -143,7 +143,7 @@ class ControlPlane:
             SELECT engine_instance_key FROM i""")
         self.evidence.note("synthetic-cp-seed", {"label": "baobab-erp engine instance and binding",
                                                  "engine_instance_key": self.engine_instance})
-        self.mandate = self.propose(PURCHASE, "erp-a/mandate-purchase")
+        self.mandate = self.propose(mandate_scope or PURCHASE, "erp-a/mandate-purchase")
         self.evidence.note("cp", {"tenant_id": self.tenant, "organisation_id": self.organisation,
                                   "legal_entity_id": self.legal_entity, "market_id": market_id,
                                   "mandate_id": self.mandate, "engine_instance_key": self.engine_instance})
