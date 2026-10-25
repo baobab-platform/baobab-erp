@@ -66,7 +66,7 @@ BEGIN
       USING ERRCODE = '42501';
   END IF;
   RETURN NEW;
-END $;
+END $$;
 
 CREATE TRIGGER baobab_placed_ad_org_change_guard
   BEFORE UPDATE OF ad_client_id, isactive OR DELETE ON adempiere.ad_org
