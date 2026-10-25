@@ -71,7 +71,11 @@ jobs:
           ORY_DB_PASSWORD: parse-only
           ORY_SYSTEM_SECRET: parse-only
           ORY_HOOK_SECRET: parse-only
-        run: docker compose -f idempiere/acceptance/erp-a/compose.yaml config --quiet
+        run: |
+          # The PG user is expanded inside each independent service, not by
+          # the Compose host (or all Ory stores become deceptively unhealthy).
+          grep -Fq '$${POSTGRES_USER}' idempiere/acceptance/erp-a/compose.yaml
+          docker compose -f idempiere/acceptance/erp-a/compose.yaml config --quiet
 
   build-extensions:
     runs-on: ubuntu-26.04
