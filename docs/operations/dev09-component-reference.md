@@ -43,3 +43,31 @@ onboarding, with current CP binding/resource enforcement and all original negati
 
 Unit tests exercise rejection and sanitisation only; they are not native evidence.
 Only a successful final-head owner CI run supplies real-component observations.
+
+## DEV-09 next increment: real PostgreSQL company/Organisation isolation
+
+The native PostgreSQL Gate B suite now includes two additional transaction-backed
+isolation tests (39 total): independent synthetic AD_Client/AD_Org pairs
+(31/31, 32/32) have distinct Tenants, operating Organisations, Markets, legal
+entities, immutable document provenance and native authority lookups. A foreign
+AD_Client, a forged header AD_Org and an AD_Org owned by another native client
+fail closed. Placement creation verifies actual iDempiere AD_Org ownership and
+active state. All new fixtures roll back.
+
+This proves **native JDBC/PostgreSQL transaction isolation rules**, not two
+provisioned real iDempiere JVM companies, genuine Hydra/Kratos workload issuance,
+production-verified legal standing, or an authorised provider. The original
+39 ERP-A JVM assertions and 40 PASS / 8 BLOCKED development component receipt
+remain separate and unchanged; it would be wrong to count these JDBC tests as
+additional native JVM cases or to declare the independent-company obligation
+fully qualified.
+
+Next integration slices: (1) create two real independent iDempiere clients/orgs
+through the approved test provisioning path and repeat positive/negative native
+writes; (2) compose a genuine IAM-issued workload token with current CP Principal,
+Tenant, Organisation, mandate and grant decisions and revocation/deactivation;
+(3) connect Subscriptions current INTERNAL classification and live commercial
+provider where available, and Payments simulated execution-evidence handoff.
+Neither an ERP payment record nor a simulated Payments state implies bank/PSP
+settlement. Absent sources remain explicitly BLOCKED; DEV-09/INT-08 and protected
+acceptance remain open.
