@@ -184,7 +184,8 @@ jobs:
     timeout-minutes: 60
     env:
       # baobab-cp main after the ERP-A resolver (baobab-platform/baobab-cp#402).
-      CP_COMMIT: 0337632756dea1bd99db098d02e71d8a170027f2
+      CP_COMMIT: 50a130576f6b126066a56e97a09676b2015f1261
+      IAM_COMMIT: 0ad103606b9705fcb33c468ea01b54d8ce76f9ae
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -194,6 +195,13 @@ jobs:
           repository: baobab-platform/baobab-cp
           ref: ${{ env.CP_COMMIT }}
           path: .erp-a/cp
+          persist-credentials: false
+      - name: Check out IAM-owned Ory configs at a pinned merged commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/baobab-iam
+          ref: ${{ env.IAM_COMMIT }}
+          path: .erp-a/iam
           persist-credentials: false
       - name: Set up Go from CP's go.mod
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -218,6 +226,8 @@ jobs:
           BAOBAB_ENVIRONMENT: integration
           ERP_IMAGE: baobab-erp:gate-d
           CP_SRC: ${{ github.workspace }}/.erp-a/cp
+          IAM_SRC: ${{ github.workspace }}/.erp-a/iam
+          IAM_COMMIT: ${{ env.IAM_COMMIT }}
           EVIDENCE_LOCATION: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} (artifact erp-a-real-cp-evidence)
         run: idempiere/acceptance/erp-a/run-gate-d-erp-a.sh "$RUNNER_TEMP/erp-a"
       - name: ERP-A report
