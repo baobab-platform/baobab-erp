@@ -58,6 +58,20 @@ jobs:
           BAOBAB_WEBHOOK_URL: https://validation.example.com/baobab/events
           BAOBAB_IAM_OIDC_ISSUER: https://validation.example.com/realms/baobab
         run: docker compose -f compose.yaml config --quiet
+      - name: Validate actual DEV-09 ERP-A Hydra/Kratos Compose model
+        # The main Compose model is not the ERP-A acceptance model: validate
+        # both. These values are syntax-only and never start an issuer.
+        env:
+          RUN_DIR: /tmp/dev09-parse-only
+          ERP_IMAGE: local/erp:parse-only
+          CP_IMAGE: local/cp:parse-only
+          PYTHON_IMAGE: local/py:parse-only
+          CPDB_PASSWORD: parse-only
+          ERP_WORKLOAD_SECRET: parse-only
+          ORY_DB_PASSWORD: parse-only
+          ORY_SYSTEM_SECRET: parse-only
+          ORY_HOOK_SECRET: parse-only
+        run: docker compose -f idempiere/acceptance/erp-a/compose.yaml config --quiet
 
   build-extensions:
     runs-on: ubuntu-26.04
