@@ -122,7 +122,6 @@ curl -sf http://127.0.0.1:18092/healthz >/dev/null || { log "CP did not start"; 
 log "seeding CP through its admin API (and the recorded synthetic rows)"
 python3 "$HERE/driver/gate_d_erp_a.py" seed --run "$RUN" --out "$OUT" --compose "$HERE/compose.yaml"
 python3 "$HERE/driver/ory_bootstrap.py" provision --run "$RUN" --out "$OUT" --iam-sha "$IAM_COMMIT"
-python3 "$HERE/driver/ory_bootstrap.py" consume --run "$RUN" --out "$OUT"
 
 log "iDempiere (imports GardenWorld on first start), protected acceptance runtime"
 "${COMPOSE[@]}" up -d erp >/dev/null
@@ -138,6 +137,9 @@ export DATABASE_URL="postgresql://adempiere:adempiere@127.0.0.1:55462/idempiere"
 "$REPO/db/migrate.sh" > "$OUT/erp-migrate.log"
 "$REPO/db/migrate-native.sh" >> "$OUT/erp-migrate.log"
 python3 "$HERE/driver/gate_d_erp_a.py" place --run "$RUN" --out "$OUT" --compose "$HERE/compose.yaml"
+python3 "$HERE/driver/independent_company.py" place --run "$RUN" --out "$OUT" --compose "$HERE/compose.yaml"
+python3 "$HERE/driver/independent_company.py" verify --run "$RUN" --out "$OUT" --compose "$HERE/compose.yaml"
+python3 "$HERE/driver/ory_bootstrap.py" consume --run "$RUN" --out "$OUT"
 
 log "scenarios"
 export CP_COMMIT ERP_COMMIT=$(git -C "$REPO" rev-parse HEAD)
