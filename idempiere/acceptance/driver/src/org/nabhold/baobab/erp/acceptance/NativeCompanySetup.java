@@ -73,7 +73,9 @@ final class NativeCompanySetup {
                 parameter("IsUseSalesRegionDimension", "N"),
                 parameter("IsUseActivityDimension", "N"),
                 parameter("UseDefaultCoA", "Y"),
-                parameter("InactivateDefaults", "Y")
+                // Journals must have active default account combinations; no
+                // test may silently activate a production account afterwards.
+                parameter("InactivateDefaults", "N")
         });
 
         boolean completed = ProcessUtil.startJavaProcess(ctx, pi, null, false);
