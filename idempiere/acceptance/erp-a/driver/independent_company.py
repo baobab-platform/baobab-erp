@@ -155,6 +155,60 @@ def verified(compose: Compose, state: dict, run: Path) -> dict:
     if reassigned.returncode == 0 or "BAOBAB_NATIVE_FINANCE_DENIED" not in reassigned.stderr:
         raise RuntimeError("DEV09_NATIVE_ORG_REASSIGNMENT_NOT_DENIED")
 
+    # Execute an actual iDempiere GL journal through its native model and
+    # posting engine, with company B's own user/role and accounting schema.
+    # The success criterion is BOTH durable iDempiere facts and a distinct
+    # current CP AUTHORISED decision for the exact B tenant/legal actor.
+    journal = Erp(compose, str(run)).request(
+        "dev09-company-b-gl", timeout=300, action="journal",
+        client=client, org=org, profile="DEV09_SECOND_COMPANY_ONLY",
+        amount="45.00", complete="true", post="true")
+    try:
+        journal_id = int(journal["journal_id"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError("DEV09_SECOND_NATIVE_JVM_JOURNAL_NOT_CREATED") from exc
+
+    persisted = compose.scalar("erpdb", "postgres", "idempiere", f"""
+        SELECT j.docstatus='CO' AND j.posted='Y'
+          AND (SELECT count(*) >= 2 AND sum(f.amtacctdr)=sum(f.amtacctcr)
+               FROM adempiere.fact_acct f
+               WHERE f.ad_table_id=224 AND f.record_id={journal_id}
+                 AND f.ad_client_id={client} AND f.ad_org_id={org})
+          AND NOT EXISTS (
+               SELECT 1 FROM adempiere.fact_acct f
+               WHERE f.ad_table_id=224 AND f.record_id={journal_id}
+                 AND (f.ad_client_id<> {client} OR f.ad_org_id<> {org}))
+        FROM adempiere.gl_journal j
+        WHERE j.gl_journal_id={journal_id} AND j.ad_client_id={client}
+          AND j.ad_org_id={org}
+    """) == "t"
+    if not persisted:
+        raise RuntimeError("DEV09_SECOND_NATIVE_JVM_GL_NOT_ATOMICALLY_POSTED")
+
+    decisions = compose.sql("erpdb", "postgres", "idempiere", f"""
+        SELECT DISTINCT a.decision_id::text
+        FROM baobab_native.finance_authority_attribution a
+        WHERE lower(a.source_table)='gl_journal'
+          AND a.source_record_id={journal_id}
+          AND a.operation_class='erp.gl-journal.post'
+          AND a.decision_id IS NOT NULL
+    """)
+    if not decisions or any(not re.fullmatch(r"[0-9a-f-]{36}", row[0]) for row in decisions):
+        raise RuntimeError("DEV09_SECOND_NATIVE_GL_ATTRIBUTION_MISSING")
+    quoted = ",".join("'" + row[0] + "'" for row in decisions)
+    cp_count = compose.scalar("cpdb", "controlplane", "controlplane", f"""
+        SELECT count(*) FROM registry.erp_posting_authority_decision
+         WHERE decision_id IN ({quoted}) AND outcome='AUTHORIZED'
+           AND operation_class='erp.gl-journal.post'
+           AND tenant_id='{sqlsafe(second["tenant"])}'
+           AND operating_organisation_id='{str(uuid.UUID(second["organisation"]))}'
+           AND responsible_legal_entity_id='{sqlsafe(second["legal_entity"])}'
+           AND market='{sqlsafe(second["market"])}'
+           AND operation_reference LIKE 'erp/erp.gl-journal.post/GL_Journal/{journal_id}/%'
+    """)
+    if cp_count != str(len(decisions)):
+        raise RuntimeError("DEV09_SECOND_NATIVE_GL_NO_CURRENT_CP_DECISION")
+
     return {
         "schema": "dev09-independent-native-company.v1",
         "native_company_and_org_rows_observed": True,
@@ -164,7 +218,8 @@ def verified(compose: Compose, state: dict, run: Path) -> dict:
         "native_org_reassignment_denied": True,
         "company_b_configured_via_idempiere_client_setup": True,
         "second_company_accounting_schema_observed": True,
-        "second_company_native_jvm_posting_qualified": False,
+        "second_company_native_jvm_posting_qualified": True,
+        "second_company_cp_decision_and_balanced_fact_acct": True,
         "protected_qualified": False,
     }
 
