@@ -92,3 +92,16 @@ qualified. No production IAM client is provisioned, no live company or legal
 entity is modified, and no protected runtime is authorized. Exact IAM image and
 source pins and bounded, run-owned credentials are mandatory; an unavailable
 issuer or CP denies all posting.
+
+### Second company native setup
+
+Company B now requests actual iDempiere 13 `InitialClientSetup` process **53161**
+inside the real JVM, using the documented native `ProcessInfo` parameter
+contract with the default chart of accounts, South Africa and ZAR. The
+reference refuses copied `AD_Client`/`AD_Org` rows: it accepts only a
+successful native process result and independent read-back of native client,
+organisation and accounting schema before a versioned ERP-owned CP placement.
+Wrong-client placement and native-org reassignment remain denied. Neither
+native company setup nor a CP mandate constitutes independent second-company
+JVM GL posting; that next acceptance case remains **BLOCKED**, as do real
+legal registration and all protected environments.
