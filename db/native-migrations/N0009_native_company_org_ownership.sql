@@ -41,3 +41,28 @@ END $$;
 CREATE TRIGGER native_placement_org_owner_guard
   BEFORE INSERT ON baobab_native.native_placement
   FOR EACH ROW EXECUTE FUNCTION baobab_native.native_placement_org_owner_guard();
+
+-- Closing a placement is a governed prerequisite to moving or deactivating
+-- a native AD_Org. This also prevents the catalogue changing between the
+-- creation-time check and the next current-authority lookup.
+CREATE FUNCTION baobab_native.placed_ad_org_change_guard()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM baobab_native.native_placement p
+     WHERE p.ad_org_id = OLD.ad_org_id AND p.ad_client_id = OLD.ad_client_id
+       AND p.effective_to IS NULL
+  ) AND (
+    TG_OP = 'DELETE' OR NEW.ad_client_id IS DISTINCT FROM OLD.ad_client_id
+    OR NEW.isactive IS DISTINCT FROM OLD.isactive
+  ) THEN
+    RAISE EXCEPTION 'BAOBAB_NATIVE_FINANCE_DENIED: close governed native placement before reassigning or deactivating AD_Org'
+      USING ERRCODE = '42501';
+  END IF;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER baobab_placed_ad_org_change_guard
+  BEFORE UPDATE OF ad_client_id, isactive OR DELETE ON adempiere.ad_org
+  FOR EACH ROW EXECUTE FUNCTION baobab_native.placed_ad_org_change_guard();
