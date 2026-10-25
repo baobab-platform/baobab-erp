@@ -147,7 +147,7 @@ final class NativeCompanySetup {
             // operation: choose standard period control during bootstrap,
             // just as the existing GardenWorld fixture does.
             MAcctSchema accounting = new MAcctSchema(ctx, schema, name);
-            accounting.setIsAutoPeriodControl(false);
+            accounting.setAutoPeriodControl(false);
             accounting.saveEx();
             for (int i = 0; i < 2; i++) {
                 MElementValue value = new MElementValue(ctx, "DEV09_GL_" + i,
