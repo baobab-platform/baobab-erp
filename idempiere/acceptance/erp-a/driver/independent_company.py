@@ -195,7 +195,29 @@ def verified(compose: Compose, state: dict, run: Path) -> dict:
           AND j.ad_org_id={org}
     """) == "t"
     if not persisted:
-        raise RuntimeError("DEV09_SECOND_NATIVE_JVM_GL_NOT_ATOMICALLY_POSTED")
+        # Forensic diagnostics are closed codes/counters, never native bodies,
+        # CP responses, credentials or generated account/user details.
+        error_text = str(journal.get("error", ""))
+        code = ("ORDINARY_GL_ACCOUNT_MISSING" if "no ordinary GL account" in error_text
+                else "NATIVE_AUTHORITY_DENIED" if "BAOBAB_NATIVE_FINANCE_DENIED" in error_text
+                else "NATIVE_EXCEPTION" if error_text else "NO_NATIVE_EXCEPTION")
+        diagnostic = {
+            "code": code, "complete_ok": journal.get("complete_ok") == "true",
+            "committed": journal.get("committed") == "true",
+            "post_error_present": journal.get("post_error") not in (None, "null", ""),
+            "state": compose.sql("erpdb", "postgres", "idempiere", f"""
+                SELECT docstatus, posted FROM adempiere.gl_journal WHERE gl_journal_id={journal_id}
+            """),
+            "ordinary_account_combinations": compose.scalar("erpdb", "postgres", "idempiere", f"""
+                SELECT count(*) FROM adempiere.c_validcombination vc
+                JOIN adempiere.c_elementvalue ev ON ev.c_elementvalue_id=vc.account_id
+                WHERE vc.ad_client_id={client} AND vc.ad_org_id IN (0,{org})
+                  AND vc.c_acctschema_id=(SELECT c_acctschema1_id FROM adempiere.ad_clientinfo WHERE ad_client_id={client})
+                  AND vc.isactive='Y' AND ev.isactive='Y' AND ev.issummary='N'
+                  AND ev.isdoccontrolled='N' AND ev.postactual='Y'
+                  AND vc.c_bpartner_id IS NULL AND vc.m_product_id IS NULL AND vc.c_project_id IS NULL
+            """)}
+        raise RuntimeError("DEV09_SECOND_NATIVE_JVM_GL_NOT_ATOMICALLY_POSTED " + json.dumps(diagnostic))
 
     decisions = compose.sql("erpdb", "postgres", "idempiere", f"""
         SELECT DISTINCT a.decision_id::text
