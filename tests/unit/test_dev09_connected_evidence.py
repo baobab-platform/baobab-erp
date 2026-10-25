@@ -28,7 +28,7 @@ class ConnectedEvidenceTest(unittest.TestCase):
             receipt = mod.build(root, SHA, SHA, SHA)
             self.assertEqual("BLOCKED", receipt["result"])
             self.assertFalse(receipt["full_dev09_qualified"])
-            self.assertEqual(3, sum(c["result"] == "PASS" for c in receipt["cases"]))
+            self.assertEqual(4, sum(c["result"] == "PASS" for c in receipt["cases"]))
 
     def test_missing_observation_refuses(self):
         with tempfile.TemporaryDirectory() as temp:
