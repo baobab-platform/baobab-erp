@@ -49,8 +49,11 @@ def human_token(subject: str) -> str:
 
 
 class ControlPlane:
-    def __init__(self, compose: Compose, evidence):
+    def __init__(self, compose: Compose, evidence, *, legal_entity=self.legal_entity,
+                 market=self.market, currency=self.currency, market_key="us.gate.erpa"):
         self.c, self.evidence = compose, evidence
+        self.legal_entity, self.market = legal_entity, market
+        self.currency, self.market_key = currency, market_key
         self.maker, self.checker, self.operator = (str(uuid.uuid4()) for _ in range(3))
 
     def sql(self, statement: str, label: str):
@@ -72,7 +75,7 @@ class ControlPlane:
                  "three human administrators (IAM user provisioning)")
 
         registration = self.admin("POST", "/v1/tenants/bootstrap-registrations", self.maker, {
-            "legal_entity_id": LEGAL_ENTITY, "display_name": "ERP-A Synthetic Buyer Inc",
+            "legal_entity_id": self.legal_entity, "display_name": "ERP-A Synthetic Buyer Inc",
             "isolation_strategy": "row_level_security", "residency_region": "us-east-1",
             "bootstrap_reason": "EA-R03 ERP-A synthetic buyer for engine-local purchase-side acceptance",
             "evidence_reference": "erp-a/synthetic-registration"},
@@ -92,9 +95,9 @@ class ControlPlane:
 
         frm = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 3600))
         created = call("POST", CP + "/v1/markets", {
-            "canonical_key": "us.gate.erpa", "name": "United States (ERP-A)", "owner_tenant_id": self.tenant,
-            "market_type": "MARKETPLACE", "default_country": MARKET, "default_currency": CURRENCY,
-            "default_locale": "en-US", "timezone": "America/New_York", "effective_from": frm},
+            "canonical_key": self.market_key, "name": self.market + " (ERP-A synthetic)", "owner_tenant_id": self.tenant,
+            "market_type": "MARKETPLACE", "default_country": self.market, "default_currency": self.currency,
+            "default_locale": "en-US", "timezone": "Africa/Johannesburg" if self.market == "ZA" else "America/New_York", "effective_from": frm},
             {"Authorization": "Bearer " + human_token(self.maker), "Idempotency-Key": key()})
         must(created, 201)
         market_id = created.body["market_id"]
@@ -103,7 +106,7 @@ class ControlPlane:
         self.sql(f"""INSERT INTO market.market_assignment (tenant_id, market_id, status, source, policy_version,
                        effective_from)
                      SELECT '{self.tenant}', m.market_id, 'ACTIVE', 'PROVISIONING', '1', now() - interval '1 hour'
-                       FROM market.market m WHERE m.code = '{MARKET}' AND m.is_active;
+                       FROM market.market m WHERE m.code = '{self.market}' AND m.is_active;
                      INSERT INTO market.market_participation_capability (market_assignment_id, capability)
                      SELECT market_assignment_id, 'PROCUREMENT' FROM market.market_assignment WHERE tenant_id='{self.tenant}'""",
                  "tenant market assignment (tenant provisioning has no admin API)")
@@ -114,7 +117,7 @@ class ControlPlane:
                             evidence_references='["erp-a/synthetic-legal-registry"]'::jsonb,
                             verified_by='{self.checker}', verified_at=clock_timestamp() - interval '1 minute',
                             updated_at=clock_timestamp()
-                      WHERE legal_entity_id='{LEGAL_ENTITY}'""",
+                      WHERE legal_entity_id='{self.legal_entity}'""",
                  "legal-entity verification (an independent legal registry)")
 
         self.engine_instance = self.scalar(f"""
@@ -127,12 +130,12 @@ class ControlPlane:
               RETURNING engine_instance_id, engine_id, engine_instance_key),
             c AS (
               INSERT INTO capability.capability (code, name) VALUES ('erp.erp-a', 'ERP-A finance recording')
-              RETURNING capability_id),
+              ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name RETURNING capability_id),
             s AS (INSERT INTO capability.capability_scope (tenant_id) VALUES ('{self.tenant}') RETURNING scope_id),
             p AS (
               INSERT INTO capability.capability_provider (provider_key, name, provider_type, engine_id, status)
               SELECT 'erp-a.erp', 'ERP-A iDempiere', 'BAOBAB_ENGINE', engine_id, 'ACTIVE' FROM e
-              RETURNING provider_id),
+              ON CONFLICT (provider_key) DO UPDATE SET status = 'ACTIVE' RETURNING provider_id),
             b AS (
               INSERT INTO capability.capability_binding (capability_id, engine_instance_id, scope_id, binding_mode,
                   status, contract_version, effective_from, provider_id)
@@ -143,10 +146,10 @@ class ControlPlane:
                                                  "engine_instance_key": self.engine_instance})
         self.mandate = self.propose(PURCHASE, "erp-a/mandate-purchase")
         self.evidence.note("cp", {"tenant_id": self.tenant, "organisation_id": self.organisation,
-                                  "legal_entity_id": LEGAL_ENTITY, "market_id": market_id,
+                                  "legal_entity_id": self.legal_entity, "market_id": market_id,
                                   "mandate_id": self.mandate, "engine_instance_key": self.engine_instance})
         return {"tenant": self.tenant, "organisation": self.organisation, "engine_instance": self.engine_instance,
-                "legal_entity": LEGAL_ENTITY, "market": MARKET}
+                "legal_entity": self.legal_entity, "market": self.market}
 
     def propose(self, scope: dict, evidence: str) -> str:
         """Propose (maker), approve (checker) and activate (operator) one mandate.
@@ -155,8 +158,8 @@ class ControlPlane:
         frm = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 300))
         proposed = self.admin("POST", "/v2/legal-actor-mandates", self.maker, {
             "tenant_id": self.tenant, "operating_organisation_id": self.organisation,
-            "responsible_legal_entity_id": LEGAL_ENTITY, "roles": scope["roles"],
-            "activity_scope": scope["activities"], "market_scope": [MARKET],
+            "responsible_legal_entity_id": self.legal_entity, "roles": scope["roles"],
+            "activity_scope": scope["activities"], "market_scope": [self.market],
             "authority_basis_reference": "erp-a/board-resolution", "evidence_references": [evidence],
             "effective_from": frm}, {"Idempotency-Key": key()})
         mandate = proposed["mandate_id"]
