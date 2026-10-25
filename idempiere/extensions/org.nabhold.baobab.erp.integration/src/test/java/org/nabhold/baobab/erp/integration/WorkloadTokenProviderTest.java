@@ -10,6 +10,7 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,14 +23,17 @@ class WorkloadTokenProviderTest {
 
     private HttpServer server;
     private AtomicInteger tokenRequests;
+    private AtomicReference<String> postedForm;
     private String tokenUrl;
 
     @BeforeEach
     void startServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         tokenRequests = new AtomicInteger();
+        postedForm = new AtomicReference<>();
         server.createContext("/token", exchange -> {
             tokenRequests.incrementAndGet();
+            postedForm.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             respond(exchange, 200, "{\"access_token\": \"tok-" + tokenRequests.get()
                     + "\", \"expires_in\": 300, \"token_type\": \"Bearer\"}");
         });
@@ -64,6 +68,17 @@ class WorkloadTokenProviderTest {
     void fetchesAndReturnsAnAccessToken() throws Exception {
         WorkloadTokenProvider provider = new WorkloadTokenProvider(tokenUrl, "baobab-erp-workload", "secret", "erp:integrate");
         assertEquals("tok-1", provider.getAccessToken());
+    }
+
+    @Test
+    void nativeCpTokenRequestBindsAnExplicitAudience() throws Exception {
+        WorkloadTokenProvider provider = new WorkloadTokenProvider(tokenUrl,
+                "baobab-erp-legal-actor-assessor-staging", "secret",
+                "context:resolve erp-posting-authority:resolve", "baobab-control-plane");
+        assertEquals("tok-1", provider.getAccessToken());
+        assertTrue(postedForm.get().contains("audience=baobab-control-plane"),
+                "Hydra must receive CP as the requested resource audience");
+        assertTrue(postedForm.get().contains("scope=context%3Aresolve+erp-posting-authority%3Aresolve"));
     }
 
     @Test
