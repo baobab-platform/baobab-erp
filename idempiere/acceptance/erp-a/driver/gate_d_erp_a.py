@@ -38,6 +38,15 @@ def seed(args, compose: Compose, evidence: Evidence) -> None:
     cp = ControlPlane(compose, evidence)
     state = cp.seed()
     state.update(maker=cp.maker, checker=cp.checker, operator=cp.operator, mandate=cp.mandate)
+    # Second CP tenant / legal entity / operating Organisation is genuinely
+    # independent, but its registration and verified-legal rows are synthetic.
+    cp_second = ControlPlane(compose, evidence, legal_entity="LE-ERPBUA", market="ZA",
+                             currency="ZAR", market_key="za.gate.erpab")
+    second = cp_second.seed(mandate_scope={
+        "roles": ["ACCOUNTING_ENTITY"], "activities": ["GENERAL_LEDGER_POSTING"]})
+    second.update(maker=cp_second.maker, checker=cp_second.checker,
+                  operator=cp_second.operator, mandate=cp_second.mandate)
+    state["second"] = second
     Path(args.run, "cp-seed.json").write_text(json.dumps(state))
     Path(args.out, "seed-notes.json").write_text(json.dumps(evidence.notes, indent=2))
 
@@ -587,8 +596,8 @@ def receipt(args, evidence: Evidence) -> None:
         "executing_profile": "engine-local integration (BAOBAB_ENVIRONMENT=integration; iDempiere acceptance runtime)",
         "components": {
             "real": ["iDempiere 13 with the shipped Baobab finance veto", "Baobab native migrations and COMMIT fences",
-                     "CP release binary and its migrations", "PostgreSQL 17 (ERP and CP)", "TLS edge (nginx)"],
-            "simulated": ["IAM: test OIDC issuer with real RS256 JWTs (not Keycloak)",
+                     "CP release binary and its migrations", "PostgreSQL 17 (ERP and CP)", "genuine Hydra OAuth workload and Kratos native identity records", "TLS edge (nginx)"],
+            "simulated": ["CP administrative fixtures: test OIDC issuer with real RS256 JWTs; genuine Hydra workload and Kratos readback do NOT prove human admin authorisation",
                           "recorded synthetic CP rows: legal-entity verification, market assignment, "
                           + "engine instance binding, human identities",
                           "GardenWorld synthetic business data",

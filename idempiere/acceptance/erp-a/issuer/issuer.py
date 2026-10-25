@@ -139,6 +139,29 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         path = urlsplit(self.path).path
         raw = self.body()
+        # DEV-09 only: Hydra calls this over the private Compose network.
+        # Hydra, not this fixture, signs actual ERP workload access tokens.
+        # The separate test issuer remains for synthetic CP human admin setup.
+        if path == "/_token_hook":
+            expected = os.environ.get("ORY_HOOK_SECRET", "")
+            supplied = self.headers.get("X-ERP-A-Hook-Key", "")
+            if not expected or not hmac.compare_digest(expected, supplied) or len(raw) > 65536:
+                self.send_json(403, {"error": "invalid_hook"})
+                return
+            try:
+                body = json.loads(raw)
+                request, session = body["request"], body["session"]
+                client_id = request["client_id"]
+                if (client_id not in CLIENTS or session["client_id"] != client_id
+                        or request["grant_types"] != ["client_credentials"]
+                        or session["id_token"]["subject"] != client_id):
+                    raise ValueError("wrong client or grant")
+            except (KeyError, TypeError, ValueError):
+                self.send_json(403, {"error": "invalid_hook"})
+                return
+            self.send_json(200, {"session": {"access_token": {
+                "actor_type": "workload", "azp": client_id}}})
+            return
         if path == REALM + "/token":
             form = dict(parse_qsl(raw))
             client = CLIENTS.get(form.get("client_id", ""))

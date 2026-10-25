@@ -13,7 +13,7 @@ import subprocess
 NATIVE_CASES = tuple([f"S{i:02}" for i in range(1, 27)] + ["S04b", "S22b"]
                      + [f"B{i:02}" for i in range(1, 12)])
 BLOCKED = {
-    "current-iam-and-cp-joined-authority": "TEST_ISSUER_AND_SYNTHETIC_AUTHORITY_ROWS_ONLY",
+    "current-iam-and-cp-joined-authority": "NATIVE_HYDRA_WORKLOAD_WITH_SYNTHETIC_CP_ADMIN_LEGAL_AUTHORITY_NOT_INDEPENDENTLY_QUALIFIED",
     "independent-company-org-isolation": "SECOND_NATIVE_COMPANY_ORG_NOT_EXERCISED",
     "gl-journal-joined-provenance": "SEPARATE_GATE_D_NOT_THIS_PROFILE",
     "subscriptions-internal-current-authority": "SUBSCRIPTIONS_NOT_JOINED",

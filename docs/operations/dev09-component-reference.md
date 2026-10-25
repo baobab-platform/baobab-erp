@@ -71,3 +71,85 @@ provider where available, and Payments simulated execution-evidence handoff.
 Neither an ERP payment record nor a simulated Payments state implies bank/PSP
 settlement. Absent sources remain explicitly BLOCKED; DEV-09/INT-08 and protected
 acceptance remain open.
+
+## DEV-09 Ory issuer / CP native authority increment (under qualification)
+
+The additional reference stack runs IAM-source-pinned **real Hydra and Kratos
+processes**, separate stores and a private TLS edge. The ERP workload token
+uses Hydra client credentials with a run-registered exact audience and scopes;
+Hydra's authenticated private token hook emits only workload actor/client
+identity claims. CP verifies the signed token and decides its current operating
+Context and per-native-operation legal authority. A dedicated probe reads back
+Hydra registration, creates and reads two distinct Kratos identity records,
+verifies CP accepts the authorised tenant/Organisation and refuses an unrelated
+Organisation. Native S22/S23/S24/S25 still enforce CP mandate revocation,
+scoped activities, outages and renewed authority, now using a Hydra workload.
+
+Crucially, Kratos native human records in this ERP-specific harness do **not**
+replace the synthetic CP administrative login fixture. That end-to-end human
+administrative identity journey and legal-register evidence must not be called
+qualified. No production IAM client is provisioned, no live company or legal
+entity is modified, and no protected runtime is authorized. Exact IAM image and
+source pins and bounded, run-owned credentials are mandatory; an unavailable
+issuer or CP denies all posting.
+
+### Second company native setup
+
+Company B now requests actual iDempiere 13 `InitialClientSetup` process **53161**
+inside the real JVM, using the documented native `ProcessInfo` parameter
+contract with the default chart of accounts, South Africa and ZAR. The
+reference refuses copied `AD_Client`/`AD_Org` rows: it accepts only a
+successful native process result and independent read-back of native client,
+organisation and accounting schema before a versioned ERP-owned CP placement.
+Wrong-client placement and native-org reassignment remain denied. Neither
+native company setup nor a CP mandate alone proves second-company JVM GL
+posting: the separate live case below must observe it. Real legal registration
+and all protected environments remain unqualified.
+
+### Second-company real native GL posting proof — new mandatory DEV-09 gate
+
+The dedicated disposable reference now requests a **real journal** for company
+B through the shipped JVM/OSGi veto and native accounting engine. The Java
+driver must use B's actual provisioned `AD_Client`, `AD_Org`, admin user and
+native role; it may not use GardenWorld credentials for that operation. CP B
+has the exact `ACCOUNTING_ENTITY` / `GENERAL_LEDGER_POSTING` mandate, not
+an inherited Nabhold or company-A grant. The test refuses success unless:
+(1) the native `GL_Journal` is completed and posted, (2) its `Fact_Acct`
+rows are balanced and belong only to B's company and Organisation, and
+(3) the native attribution names CP-persisted `AUTHORIZED` decisions for the
+exact B Tenant, operating Organisation, legal entity, market, operation and
+document reference. A missing accounting structure, permit, active period or
+native journal is a failed test, not a skipped PASS. No finance authority
+is derived from a native client or from successful initial setup.
+
+The connected DEV-09 component receipt adds this assertion **only if the live
+run observes all of it**. Original ERP-A evidence (39 independent purchase
+assertions) and the earlier standalone GardenWorld Gate D must continue to
+pass unchanged. Even with a successful second-company GL proof, Kratos-backed
+human CP onboarding, independent verified legal data, subscriptions, Payments,
+real bank/PSP settlement and protected staging/production remain unqualified.
+
+
+### Fixture bootstrap precedes governed acceptance
+
+Native account setup is deliberately not a catalogued protected financial
+operation. Company B is created by the real native InitialClientSetup process
+only in the disposable `integration` fixture-bootstrap JVM, before native
+placements and migrations. The CI-only setup action refuses any other mode.
+The stack then stops and recreates ERP in `acceptance` mode with the unchanged
+shipped veto. Every GL/purchase/recording assertion runs after that restart.
+The company-B journal reports its actual JVM mode; its proof is rejected unless
+that mode is `acceptance`, the native ledger persists and CP independently
+records the exact authorisation. This qualifies neither governed production
+company provisioning nor permission to change accounting configuration.
+
+The native default chart supplies document-controlled accounts. The bootstrap
+therefore creates two labelled synthetic ordinary GL accounts and combinations
+using MElementValue and MAccount, in B's own chart/schema and one transaction.
+It never changes existing accounts' control flags. These are disposable test
+accounting data, not a Finance-approved production chart or live legal fact.
+
+B's schema uses standard period control, configured through MAcctSchema during
+bootstrap. Automatic period-window updates would mutate C_AcctSchema during a
+journal save and are correctly refused by the protected configuration veto.
+Opening the synthetic fixture's current GL period does not supply CP authority.

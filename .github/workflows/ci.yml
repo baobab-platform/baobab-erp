@@ -19,6 +19,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: DEV-09 native harness syntax and guarded evidence unit tests
+        run: |
+          python3 -m py_compile \
+            idempiere/acceptance/erp-a/driver/ory_bootstrap.py \
+            idempiere/acceptance/erp-a/driver/independent_company.py \
+            idempiere/acceptance/erp-a/driver/seed.py \
+            idempiere/acceptance/erp-a/driver/gate_d_erp_a.py \
+            scripts/dev09_connected_evidence.py \
+            tests/unit/test_dev09_connected_evidence.py
+          bash -n idempiere/acceptance/erp-a/run-gate-d-erp-a.sh
+          bash -n idempiere/acceptance/run-gate-d.sh
+          python3 -m unittest discover -s tests/unit -p 'test_dev09_connected_evidence.py' -v
       - name: Authenticate to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io --username "${{ github.actor }}" --password-stdin
       - name: Validate source and contracts in the Baobab environment
@@ -46,6 +58,24 @@ jobs:
           BAOBAB_WEBHOOK_URL: https://validation.example.com/baobab/events
           BAOBAB_IAM_OIDC_ISSUER: https://validation.example.com/realms/baobab
         run: docker compose -f compose.yaml config --quiet
+      - name: Validate actual DEV-09 ERP-A Hydra/Kratos Compose model
+        # The main Compose model is not the ERP-A acceptance model: validate
+        # both. These values are syntax-only and never start an issuer.
+        env:
+          RUN_DIR: /tmp/dev09-parse-only
+          ERP_IMAGE: local/erp:parse-only
+          CP_IMAGE: local/cp:parse-only
+          PYTHON_IMAGE: local/py:parse-only
+          CPDB_PASSWORD: parse-only
+          ERP_WORKLOAD_SECRET: parse-only
+          ORY_DB_PASSWORD: parse-only
+          ORY_SYSTEM_SECRET: parse-only
+          ORY_HOOK_SECRET: parse-only
+        run: |
+          # The PG user is expanded inside each independent service, not by
+          # the Compose host (or all Ory stores become deceptively unhealthy).
+          grep -Fq '$${POSTGRES_USER}' idempiere/acceptance/erp-a/compose.yaml
+          docker compose -f idempiere/acceptance/erp-a/compose.yaml config --quiet
 
   build-extensions:
     runs-on: ubuntu-26.04
@@ -184,7 +214,8 @@ jobs:
     timeout-minutes: 60
     env:
       # baobab-cp main after the ERP-A resolver (baobab-platform/baobab-cp#402).
-      CP_COMMIT: 0337632756dea1bd99db098d02e71d8a170027f2
+      CP_COMMIT: 50a130576f6b126066a56e97a09676b2015f1261
+      IAM_COMMIT: 0ad103606b9705fcb33c468ea01b54d8ce76f9ae
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -194,6 +225,13 @@ jobs:
           repository: baobab-platform/baobab-cp
           ref: ${{ env.CP_COMMIT }}
           path: .erp-a/cp
+          persist-credentials: false
+      - name: Check out IAM-owned Ory configs at a pinned merged commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/baobab-iam
+          ref: ${{ env.IAM_COMMIT }}
+          path: .erp-a/iam
           persist-credentials: false
       - name: Set up Go from CP's go.mod
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -218,8 +256,19 @@ jobs:
           BAOBAB_ENVIRONMENT: integration
           ERP_IMAGE: baobab-erp:gate-d
           CP_SRC: ${{ github.workspace }}/.erp-a/cp
+          IAM_SRC: ${{ github.workspace }}/.erp-a/iam
+          IAM_COMMIT: ${{ env.IAM_COMMIT }}
           EVIDENCE_LOCATION: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} (artifact erp-a-real-cp-evidence)
         run: idempiere/acceptance/erp-a/run-gate-d-erp-a.sh "$RUNNER_TEMP/erp-a"
+      - name: Validate DEV-09 joined evidence parser
+        run: python3 -m unittest discover -s tests/unit -p 'test_dev09_connected_evidence.py' -v
+      - name: DEV-09 connected Ory/CP and second native-company component receipt
+        run: |
+          python3 scripts/dev09_connected_evidence.py \
+            --directory "$RUNNER_TEMP/erp-a" \
+            --erp-sha "${{ github.sha }}" \
+            --cp-sha "$CP_COMMIT" --iam-sha "$IAM_COMMIT"
+          test -s "$RUNNER_TEMP/erp-a/dev09-connected-report.sha256.json"
       - name: ERP-A report
         if: always()
         run: |
@@ -230,13 +279,15 @@ jobs:
           python3 scripts/dev09_evidence.py report --directory "$RUNNER_TEMP/erp-a"
           --source-sha "${{ github.sha }}" --cp-sha "$CP_COMMIT"
           --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-      - name: DEV-09 original sanitised receipt
+      - name: DEV-09 connected component receipt and original sanitised reference
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dev09-erp-components
           path: |
             ${{ runner.temp }}/erp-a/dev09-report.json
             ${{ runner.temp }}/erp-a/dev09-report.sha256.json
+            ${{ runner.temp }}/erp-a/dev09-connected-report.json
+            ${{ runner.temp }}/erp-a/dev09-connected-report.sha256.json
           if-no-files-found: error
           retention-days: 30
       - name: ERP-A evidence

@@ -12,7 +12,7 @@ name: baobab-gate-d-erp-a
 x-pg: &pg
   image: mirror.gcr.io/library/postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
   healthcheck:
-    test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+    test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER}"]
     interval: 2s
     retries: 60
 
@@ -40,9 +40,9 @@ services:
       DB_PASS: adempiere
       # The protected (acceptance) runtime: every governed native write needs CP authority.
       JAVA_OPTS: >-
-        -Xms256m -Xmx2g -Dbaobab.erp.native.environment=acceptance
+        -Xms256m -Xmx2g -Dbaobab.erp.native.environment=${ERP_NATIVE_ENVIRONMENT:-acceptance}
         -Dbaobab.cp.native.base.url=https://cp.gated.test/
-        -Dbaobab.iam.token.url=https://iam.gated.test/realms/baobab/token
+        -Dbaobab.iam.token.url=https://hydra.gated.test/oauth2/token
         -Dbaobab.iam.native.client.id=baobab-erp-legal-actor-assessor-staging
         -Dbaobab.iam.native.client.secret.file=/run/secrets/erp/workload-secret
         -Djavax.net.ssl.trustStore=/gate-d-tls/truststore.p12 -Djavax.net.ssl.trustStoreType=PKCS12
@@ -75,7 +75,7 @@ services:
       # ERP accepts a runtime context living at most 10 minutes (CpNativeFinancialAuthority);
       # CP's 15-minute default is longer, so the deployment sets it explicitly.
       PLATFORM_CONTEXT_TTL: 5m
-      WORKLOAD_OIDC_ISSUER: https://iam.gated.test/realms/baobab
+      WORKLOAD_OIDC_ISSUER: https://hydra.gated.test
       WORKLOAD_OIDC_AUDIENCE: baobab-control-plane
       ADMIN_OIDC_ISSUER: https://iam.gated.test/realms/baobab
       ADMIN_OIDC_AUDIENCE: baobab-control-plane-admin
@@ -94,6 +94,52 @@ services:
     networks: [erpa]
     ports: ["127.0.0.1:18092:8080"]
 
+  # Genuine, pinned Ory workloads, with IAM-owned configuration inputs.
+  # Human admin CP setup remains a separate synthetic issuer fixture.
+  hydra-db:
+    <<: *pg
+    environment: {POSTGRES_DB: hydra, POSTGRES_USER: hydra, POSTGRES_PASSWORD: "${ORY_DB_PASSWORD}"}
+    networks: [erpa]
+
+  kratos-db:
+    <<: *pg
+    environment: {POSTGRES_DB: kratos, POSTGRES_USER: kratos, POSTGRES_PASSWORD: "${ORY_DB_PASSWORD}"}
+    networks: [erpa]
+
+  hydra-migrate:
+    image: oryd/hydra:v26.2.0@sha256:ff67c7fb5f95074fa53374d41151713554960504b340cd3f95b09e65deaea2a9
+    command: ["-c", "/etc/config/hydra/hydra.yml", "migrate", "sql", "-e", "--yes"]
+    environment: {DSN: "postgres://hydra:${ORY_DB_PASSWORD}@hydra-db:5432/hydra?sslmode=disable"}
+    volumes: ["${RUN_DIR}/ory/hydra:/etc/config/hydra:ro"]
+    depends_on: {hydra-db: {condition: service_healthy}}
+    networks: [erpa]
+
+  kratos-migrate:
+    image: oryd/kratos:v26.2.0@sha256:2a13bb8d362c7a7ae33bd7c0f5168aee46921f15c916a06346db91c06dc76643
+    command: ["-c", "/etc/config/kratos/kratos.yml", "migrate", "sql", "-e", "--yes"]
+    environment: {DSN: "postgres://kratos:${ORY_DB_PASSWORD}@kratos-db:5432/kratos?sslmode=disable"}
+    volumes: ["${RUN_DIR}/ory/kratos:/etc/config/kratos:ro"]
+    depends_on: {kratos-db: {condition: service_healthy}}
+    networks: [erpa]
+
+  hydra:
+    image: oryd/hydra:v26.2.0@sha256:ff67c7fb5f95074fa53374d41151713554960504b340cd3f95b09e65deaea2a9
+    command: ["serve", "all", "-c", "/etc/config/hydra/hydra.yml", "--dev"]
+    environment: {DSN: "postgres://hydra:${ORY_DB_PASSWORD}@hydra-db:5432/hydra?sslmode=disable"}
+    volumes: ["${RUN_DIR}/ory/hydra:/etc/config/hydra:ro"]
+    depends_on: {hydra-migrate: {condition: service_completed_successfully}}
+    networks: [erpa]
+    ports: ["127.0.0.1:18015:4444", "127.0.0.1:18013:4445"]
+
+  kratos:
+    image: oryd/kratos:v26.2.0@sha256:2a13bb8d362c7a7ae33bd7c0f5168aee46921f15c916a06346db91c06dc76643
+    command: ["serve", "-c", "/etc/config/kratos/kratos.yml", "--dev"]
+    environment: {DSN: "postgres://kratos:${ORY_DB_PASSWORD}@kratos-db:5432/kratos?sslmode=disable"}
+    volumes: ["${RUN_DIR}/ory/kratos:/etc/config/kratos:ro"]
+    depends_on: {kratos-migrate: {condition: service_completed_successfully}}
+    networks: [erpa]
+    ports: ["127.0.0.1:18014:4434"]
+
   # --- Test IAM and the TLS edge.
   issuer:
     image: ${PYTHON_IMAGE}
@@ -102,16 +148,17 @@ services:
       BAOBAB_ENVIRONMENT: integration
       ISSUER: https://iam.gated.test/realms/baobab
       CLIENTS_FILE: /run/erpa/clients.json
+      ORY_HOOK_SECRET: ${ORY_HOOK_SECRET}
     volumes: ["${RUN_DIR}/issuer:/run/erpa:ro"]
     networks: [erpa]
     ports: ["127.0.0.1:18010:8000"]
 
   edge:
     image: mirror.gcr.io/library/nginx:1.27-alpine
-    depends_on: [issuer]
+    depends_on: [issuer, hydra]
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ${RUN_DIR}/edge:/etc/nginx/tls:ro
     networks:
       erpa:
-        aliases: [cp.gated.test, iam.gated.test]
+        aliases: [cp.gated.test, iam.gated.test, hydra.gated.test]
