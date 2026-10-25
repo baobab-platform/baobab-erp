@@ -142,3 +142,9 @@ The company-B journal reports its actual JVM mode; its proof is rejected unless
 that mode is `acceptance`, the native ledger persists and CP independently
 records the exact authorisation. This qualifies neither governed production
 company provisioning nor permission to change accounting configuration.
+
+The native default chart supplies document-controlled accounts. The bootstrap
+therefore creates two labelled synthetic ordinary GL accounts and combinations
+using MElementValue and MAccount, in B's own chart/schema and one transaction.
+It never changes existing accounts' control flags. These are disposable test
+accounting data, not a Finance-approved production chart or live legal fact.

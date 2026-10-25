@@ -5,10 +5,13 @@ import java.util.Properties;
 
 import org.adempiere.util.ProcessUtil;
 import org.adempiere.util.ServerContext;
+import org.compiere.model.MAccount;
+import org.compiere.model.MElementValue;
 import org.compiere.process.ProcessInfo;
 import org.compiere.process.ProcessInfoParameter;
 import org.compiere.util.DB;
 import org.compiere.util.Env;
+import org.compiere.util.Trx;
 
 /**
  * DEV-09 CI-only native company provisioning. This intentionally invokes
@@ -109,12 +112,57 @@ final class NativeCompanySetup {
         if (client <= 11 || org <= 0 || schema <= 0) {
             throw new IllegalStateException("DEV09_NATIVE_ACCOUNTING_SETUP_INCOMPLETE");
         }
+        seedJournalAccounts(client, org, schema);
         result.setProperty("client", Integer.toString(client));
         result.setProperty("org", Integer.toString(org));
         result.setProperty("accounting_schema_present", "true");
         result.setProperty("native_setup_process", "53161");
         result.setProperty("native_setup_environment", "integration");
         return result;
+    }
+
+    /** Native, synthetic ordinary GL accounts for this disposable company.
+     * InitialClientSetup supplies document-control defaults, not a usable
+     * manual-journal pair. Never change those defaults' control flags or
+     * create accounting configuration after the protected restart.
+     */
+    private static void seedJournalAccounts(int client, int org, int schema) {
+        int element = DB.getSQLValueEx(null,
+                "SELECT C_Element_ID FROM C_AcctSchema_Element WHERE C_AcctSchema_ID=? AND ElementType='AC'",
+                schema);
+        if (element <= 0) throw new IllegalStateException("DEV09_NATIVE_ACCOUNT_ELEMENT_MISSING");
+        Properties ctx = new Properties();
+        Env.setContext(ctx, Env.AD_CLIENT_ID, client);
+        Env.setContext(ctx, Env.AD_ORG_ID, org);
+        Env.setContext(ctx, Env.AD_USER_ID, 100); // isolated system fixture bootstrap
+        Env.setContext(ctx, Env.AD_ROLE_ID, 0);
+        Env.setContext(ctx, Env.LANGUAGE, "en_US");
+        String name = Trx.createTrxName("Dev09FixtureAccounts");
+        Trx trx = Trx.get(name, true);
+        ServerContext.setCurrentInstance(ctx);
+        try {
+            for (int i = 0; i < 2; i++) {
+                MElementValue value = new MElementValue(ctx, "DEV09_GL_" + i,
+                        "DEV09 synthetic ordinary GL " + i, "Disposable native journal fixture",
+                        "A", "N", false, false, name);
+                value.setC_Element_ID(element);
+                value.setPostActual(true);
+                value.saveEx();
+                MAccount account = MAccount.get(ctx, client, org, schema,
+                        value.getC_ElementValue_ID(), 0,
+                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, name);
+                if (account == null || account.getC_ValidCombination_ID() <= 0) {
+                    throw new IllegalStateException("DEV09_NATIVE_JOURNAL_COMBINATION_MISSING");
+                }
+            }
+            trx.commit(true);
+        } catch (RuntimeException failed) {
+            trx.rollback();
+            throw failed;
+        } finally {
+            trx.close();
+            ServerContext.dispose();
+        }
     }
 
     private static ProcessInfoParameter parameter(String name, Object value) {
