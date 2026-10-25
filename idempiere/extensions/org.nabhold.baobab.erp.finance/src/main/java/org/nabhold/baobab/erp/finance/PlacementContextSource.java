@@ -25,6 +25,8 @@ final class PlacementContextSource implements NativeFinancialContextSource {
         """;
     private static final String CURRENT_FOR_ORG = "SELECT " + COLUMNS + """
           FROM baobab_native.native_placement p
+          JOIN adempiere.ad_org o ON o.ad_org_id = p.ad_org_id
+             AND o.ad_client_id = p.ad_client_id AND o.isactive = 'Y'
          WHERE p.ad_client_id = ? AND p.ad_org_id = ?
            AND p.effective_from <= clock_timestamp()
            AND (p.effective_to IS NULL OR p.effective_to > clock_timestamp())
@@ -42,7 +44,10 @@ final class PlacementContextSource implements NativeFinancialContextSource {
            AND (p.tenant_id, p.operating_organisation_id, p.legal_entity_id, p.market, p.ad_client_id, p.ad_org_id)
                = (origin.tenant_id, origin.operating_organisation_id, origin.legal_entity_id, origin.market,
                   origin.ad_client_id, origin.ad_org_id)
+          JOIN adempiere.ad_org o ON o.ad_org_id = p.ad_org_id
+             AND o.ad_client_id = p.ad_client_id AND o.isactive = 'Y'
          WHERE d.native_table = ? AND d.record_id = ? AND d.ad_client_id = ?
+           AND (? = false OR d.ad_org_id = ?)
          FOR SHARE OF p, d
         """;
 
@@ -69,6 +74,12 @@ final class PlacementContextSource implements NativeFinancialContextSource {
                 statement.setString(1, operation.sourceTable());
                 statement.setInt(2, operation.sourceRecordId());
                 statement.setInt(3, record.adClientId());
+                // A governed header must still have its creation-time AD_Org.
+                // Its child/ledger rows can legitimately use another AD_Org,
+                // so for those the source document remains the authority.
+                statement.setBoolean(4, operation.sourceTable().equals(record.table())
+                        && operation.sourceRecordId() == record.recordId());
+                statement.setInt(5, record.adOrgId());
             }
             try (statement; ResultSet r = statement.executeQuery()) {
                 if (!r.next()) return null;

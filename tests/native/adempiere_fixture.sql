@@ -5,6 +5,10 @@
 -- found the native triggers failing on real types that an integer fixture hid.
 CREATE SCHEMA adempiere;
 CREATE TABLE adempiere.ad_client (ad_client_id numeric(10) PRIMARY KEY, isactive char(1) NOT NULL DEFAULT 'Y');
+-- Native placement verifies the real AD_Org -> AD_Client ownership. This
+-- fixture expresses only that invariant, not a complete iDempiere catalogue.
+CREATE TABLE adempiere.ad_org (ad_org_id numeric(10) PRIMARY KEY,
+  ad_client_id numeric(10) NOT NULL, isactive char(1) NOT NULL DEFAULT 'Y');
 CREATE TABLE adempiere.ad_table (ad_table_id numeric(10) PRIMARY KEY, tablename text NOT NULL);
 CREATE TABLE adempiere.c_acctschema (c_acctschema_id numeric(10) PRIMARY KEY, ad_client_id numeric(10) NOT NULL,
   isactive char(1) NOT NULL DEFAULT 'Y');
