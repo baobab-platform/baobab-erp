@@ -28,6 +28,8 @@ REQUIRED = {
         "wrong_org_denied": True,
         "second_tenant_org_context": True,
         "mixed_tenant_org_denied": True,
+        "wrong_audience_denied": True,
+        "missing_context_scope_denied": True,
         "legal_actor_decision_tested_by_native_erp": True,
         "independent_provider_qualified": False,
         "protected_qualified": False,
