@@ -84,6 +84,16 @@ class Dev09EvidenceTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     evidence.cleanup("baobab-erp-a-abc", absent)
 
+    def test_cleanup_checks_stopped_containers_and_all_owned_resource_types(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(evidence.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "")) as docker:
+                result = evidence.cleanup("baobab-erp-a-abc", Path(tmp) / "removed")
+                self.assertEqual("COMPLETE", result["status"])
+                commands = [call.args[0] for call in docker.call_args_list]
+                self.assertEqual(["container", "volume", "network"], [cmd[1] for cmd in commands])
+                self.assertIn("--all", commands[0])
+                self.assertTrue(all("label=com.docker.compose.project=baobab-erp-a-abc" in cmd for cmd in commands))
+
     def test_failed_rerun_removes_stale_outputs_and_duplicate_fields_refused(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

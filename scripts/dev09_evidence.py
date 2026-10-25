@@ -49,7 +49,8 @@ def cleanup(project: str, run: Path) -> dict:
     remaining = {}
     for resource in ("container", "volume", "network"):
         result = subprocess.run(
-            ["docker", resource, "ls", "-q", "--filter", f"label=com.docker.compose.project={project}"],
+            ["docker", resource, "ls", "-q"] + (["--all"] if resource == "container" else [])
+            + ["--filter", f"label=com.docker.compose.project={project}"],
             check=True, capture_output=True, text=True)
         remaining[resource] = len(result.stdout.split())
     require(not any(remaining.values()) and not run.exists(), "owned resources remain")
