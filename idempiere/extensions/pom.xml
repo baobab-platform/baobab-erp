@@ -60,7 +60,7 @@
         <!-- Gate B only: drives the native providers over real PostgreSQL. Never bundled. -->
         <groupId>org.postgresql</groupId>
         <artifactId>postgresql</artifactId>
-        <version>42.7.8</version>
+        <version>42.7.12</version>
         <scope>test</scope>
       </dependency>
       <dependency>
