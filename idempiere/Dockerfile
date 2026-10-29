@@ -84,6 +84,11 @@ RUN set -eu; mkdir -p /build/jackson; cd /build/jackson; \
       done; \
     [ "$(ls /build/jackson/*.jar | wc -l)" = 11 ]
 
+RUN set -eu; mkdir -p /build/guava; \
+    curl -fsSL --retry 5 --retry-all-errors -o /build/guava/com.google.guava_33.7.2.jre.jar \
+      https://repo1.maven.org/maven2/com/google/guava/guava/33.7.2-jre/guava-33.7.2-jre.jar; \
+    echo "b530942257fb935f8b2cfaa5f8eb5bd59c555fd8e8d01b8ce98912e077ea606c  /build/guava/com.google.guava_33.7.2.jre.jar" | sha256sum --check --strict
+
 FROM ${IDEMPIERE_IMAGE}
 ARG VERSION=0.0.0-dev
 ARG REVISION=unknown
@@ -126,11 +131,9 @@ RUN set -eu; \
 
 # CVE-2026-102554: replace the native Guava OSGi bundle and its exact
 # Equinox registration together. Preserve bundle count; never mask the scan.
+COPY --from=extensions-builder /build/guava/ /tmp/
 RUN set -eu; \
     file=com.google.guava_33.7.2.jre.jar; \
-    curl -fsSL --retry 5 --retry-all-errors -o "/tmp/$file" \
-      https://repo1.maven.org/maven2/com/google/guava/guava/33.7.2-jre/guava-33.7.2-jre.jar; \
-    echo "b530942257fb935f8b2cfaa5f8eb5bd59c555fd8e8d01b8ce98912e077ea606c  /tmp/$file" | sha256sum --check --strict; \
     info="${IDEMPIERE_HOME}/configuration/org.eclipse.equinox.simpleconfigurator/bundles.info"; \
     old="${IDEMPIERE_PLUGINS_DIR}/com.google.guava_33.2.1.jre.jar"; \
     [ -f "$old" ]; \
