@@ -124,6 +124,22 @@ RUN set -eu; \
     done; \
     rm -rf /tmp/bc
 
+# CVE-2026-102554: replace the native Guava OSGi bundle and its exact
+# Equinox registration together. Preserve bundle count; never mask the scan.
+RUN set -eu; \
+    file=com.google.guava_33.7.2.jre.jar; \
+    curl -fsSL --retry 5 --retry-all-errors -o "/tmp/$file" \
+      https://repo1.maven.org/maven2/com/google/guava/guava/33.7.2-jre/guava-33.7.2-jre.jar; \
+    echo "b530942257fb935f8b2cfaa5f8eb5bd59c555fd8e8d01b8ce98912e077ea606c  /tmp/$file" | sha256sum --check --strict; \
+    info="${IDEMPIERE_HOME}/configuration/org.eclipse.equinox.simpleconfigurator/bundles.info"; \
+    old="${IDEMPIERE_PLUGINS_DIR}/com.google.guava_33.2.1.jre.jar"; \
+    [ -f "$old" ]; \
+    [ "$(awk -F, '$1=="com.google.guava" && $2=="33.2.1.jre"' "$info" | wc -l)" = 1 ]; \
+    install -o idempiere -g idempiere -m 0644 "/tmp/$file" "${IDEMPIERE_PLUGINS_DIR}/$file"; \
+    awk -F, -v OFS=, '$1=="com.google.guava" && $2=="33.2.1.jre" {$2="33.7.2.jre"; $3="plugins/com.google.guava_33.7.2.jre.jar"} {print}' "$info" > /tmp/guava-bundles.info; \
+    cat /tmp/guava-bundles.info > "$info"; \
+    rm -f "$old" "/tmp/$file" /tmp/guava-bundles.info
+
 # Swap in the patched Jackson bundles (see extensions-builder), the same way as
 # Bouncy Castle above: replace each 2.15.4 jar and rewrite its bundles.info entry.
 # The guard fails the build if the base image stops shipping exactly one 2.15.4
