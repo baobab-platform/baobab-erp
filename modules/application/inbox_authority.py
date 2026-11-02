@@ -114,7 +114,11 @@ class AuthorityEntry:
                            for key in ("idempotency_key", "commerce_order_id"))
                 or not isinstance(raw["legal_entity_id"], str)
                 or not _LEGAL.fullmatch(raw["legal_entity_id"])
-                or raw["market"] not in {"UG", "ZA"}
+                or (raw["market"] not in {"UG", "ZA"} and not (
+                    raw["market"] == "US"
+                    and os.environ.get("BAOBAB_ENVIRONMENT") == "integration"
+                    and os.environ.get("BAOBAB_DEV11_REAL_JVM_GATE_ENABLED") == "true"
+                    and os.environ.get("BAOBAB_DEV11_GARDENWORLD_US_FIXTURE") == "true"))
                 or not isinstance(raw["activity"], str) or not _ACTIVITY.fullmatch(raw["activity"])
                 or not isinstance(raw["capability"], str) or not _CAPABILITY.fullmatch(raw["capability"])
                 or not isinstance(raw["authority_reference"], str)
