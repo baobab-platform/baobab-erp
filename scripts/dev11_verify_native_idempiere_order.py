@@ -131,6 +131,32 @@ def verify(connection, tenant, event_id, legal_entity, ad_client, ad_org):
         (tenant, legal_entity, ad_client, ad_org)).fetchone()[0]
     require(placement_count == 1, "NATIVE_PLACEMENT_NOT_UNIQUE_OR_ACTIVE")
 
+    # The protected iDempiere JVM PEP writes its *own* CP-derived native
+    # attribution in the same JDBC transaction. A matching native order row
+    # inserted outside the JVM is insufficient. At least one C_OrderLine
+    # must be bound to its exact C_Order source and approved company/placement.
+    native_attributions = connection.execute(
+        """SELECT count(*)
+           FROM baobab_native.finance_authority_attribution a
+           JOIN baobab_native.native_placement p
+             ON p.placement_id=a.placement_id
+            AND p.version=a.placement_version
+           WHERE a.tenant_id=%s AND a.responsible_legal_entity_id=%s
+             AND a.ad_client_id=%s AND a.ad_org_id=%s
+             AND a.native_table IN ('C_Order', 'C_OrderLine')
+             AND a.source_table='C_Order'
+             AND a.source_record_id=%s
+             AND a.operation_class='erp.sales-order.complete'
+             AND a.decision_id IS NOT NULL AND a.cp_mandate_id IS NOT NULL
+             AND a.context_id IS NOT NULL
+             AND a.finance_baseline_version >= 1
+             AND p.tenant_id=a.tenant_id
+             AND p.operating_organisation_id=a.operating_organisation_id
+             AND p.legal_entity_id=a.responsible_legal_entity_id""",
+        (tenant, legal_entity, ad_client, ad_org, native_id)).fetchone()[0]
+    require(native_attributions >= 1,
+            "NATIVE_JVM_AUTHORITY_ATTRIBUTION_MISSING")
+
     return {
         "schema": "erp.dev11.independent-real-native-order.v1",
         "real_idempiere_order_readback": True,
@@ -139,6 +165,7 @@ def verify(connection, tenant, event_id, legal_entity, ad_client, ad_org):
         "native_order_line_count_verified": True,
         "erp_consequence_and_outbox_proven": True,
         "current_native_placement_proven": True,
+        "native_jvm_authority_attribution_observed": True,
         "adopted_after_recovery": bool(adopted),
         "native_order_effect_qualified": True,
         "financial_posting_inferred": False,
