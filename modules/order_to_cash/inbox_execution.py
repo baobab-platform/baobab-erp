@@ -212,7 +212,16 @@ def _find_or_create(engine: IdempiereOrders, order: PlacedOrder, customer: int, 
         if len(existing) > 1:
             raise _dead("DUPLICATE_NATIVE_ORDERS", f"{len(existing)} engine orders carry the order's reference")
         if existing:
-            return int(existing[0]["id"] if "id" in existing[0] else existing[0]["C_Order_ID"]), True
+            native_id = int(existing[0]["id"] if "id" in existing[0] else existing[0]["C_Order_ID"])
+            # A retry after an ambiguous remote JVM commit must adopt only
+            # the SAME business order in the SAME native company/organisation.
+            # The DEV-11 real-JVM adapter independently reads back all lines
+            # before marking an event processed; a different payload or
+            # foreign company never becomes 'adopted' by POReference alone.
+            verify_existing = getattr(engine, "assert_existing_order_matches", None)
+            if verify_existing is not None:
+                verify_existing(native_id, order, customer, lines)
+            return native_id, True
         _verify_units(engine, order, lines)
         # The inbox is a native iDempiere writer in its own right; it must
         # not bypass the exact-operation REST egress PEP used by direct O2C.
