@@ -31,6 +31,7 @@ from typing import Callable
 import psycopg
 
 from inbox.postgres_queue import Claim, PostgresInboxQueue
+from application.observability import configure, consumer_span, diagnostic_outcome
 from integration.idempiere_client import RestIdempiereClient
 from order_to_cash.execution_policy import ALL_ORGANIZATIONS_AD_ORG_ID, ORDER_PLACED
 from customers.projection_execution import CUSTOMER_PROJECTED, run_claim as run_customer_claim
@@ -63,20 +64,29 @@ def run_once(connection: psycopg.Connection, engine_for, *, worker_id: str, limi
             claim = queue.claim(event_type=event_type, worker_id=worker_id, lease_seconds=lease_seconds)
             if claim is None:
                 break
-            if event_type == ORDER_PLACED:
-                # The operator-controlled worker composition resolves the
-                # exact IAM/CP authority per CLAIM, never from event data.
-                # Missing/failed lookup becomes an explicitly blocked inbox
-                # item; it must never fall back to the tenant's default actor.
-                authority = None
-                if authority_for is not None:
-                    try:
-                        authority = authority_for(claim)
-                    except Exception:
-                        authority = None
-                outcome = run_claim(claim, connection, queue, engine_for, authority=authority)
-            else:
-                outcome = run_customer_claim(claim, connection, queue, engine_for)
+            with consumer_span(claim.traceparent, "baobab.erp.inbox.execute") as span:
+                span.set_attribute("messaging.system", "rabbitmq")
+                span.set_attribute("messaging.operation.type", "process")
+                span.set_attribute("baobab.erp.event_type", event_type)
+                if event_type == ORDER_PLACED:
+                    # Authority is re-resolved per CLAIM, never inferred from
+                    # a W3C trace or a signed message's tenant field.
+                    authority = None
+                    if authority_for is not None:
+                        try:
+                            authority = authority_for(claim)
+                        except Exception:
+                            authority = None
+                    outcome = run_claim(claim, connection, queue, engine_for, authority=authority)
+                else:
+                    outcome = run_customer_claim(claim, connection, queue, engine_for)
+                classification = {
+                    "processed": "BUSINESS_PROCESSED",
+                    "blocked": "BUSINESS_BLOCKED",
+                    "retry": "BUSINESS_RETRY",
+                    "dead_letter": "BUSINESS_DEAD_LETTER",
+                }.get(outcome.status, "BUSINESS_BLOCKED")
+                diagnostic_outcome(span, classification, failed=classification != "BUSINESS_PROCESSED")
             done[outcome.status] = done.get(outcome.status, 0) + 1
             codes[outcome.code] = codes.get(outcome.code, 0) + 1
     return {"event": "inbox.execute", "worker": worker_id, "pass": done, "codes": codes,
@@ -93,6 +103,7 @@ def main() -> None:
     lease = int(os.environ.get("BAOBAB_INBOX_LEASE_SECONDS", "300"))
     if limit < 1 or lease < 30:
         raise RuntimeError("BAOBAB_INBOX_BATCH_LIMIT must be >= 1 and BAOBAB_INBOX_LEASE_SECONDS >= 30")
+    configure()
     engine_for = _engine_factory(_load_idempiere_credentials())
     with psycopg.connect(database_url) as connection:
         report = run_once(connection, engine_for, worker_id=f"{socket.gethostname()}-{os.getpid()}", limit=limit,
