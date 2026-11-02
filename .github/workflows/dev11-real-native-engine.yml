@@ -116,6 +116,9 @@ jobs:
           assert json.loads((root/"dev11-engine-local.json").read_text())["l4_ops_01"]=="BLOCKED"
           assert json.loads((root/"dev11-native-effect.json").read_text())["native_order_effect_qualified"]
           assert json.loads((root/"dev11-cp-jvm-lineage.json").read_text())["native_cp_lineage_qualified"]
+          adopted=json.loads((root/"dev11-native-unknown-adopted.json").read_text())
+          assert adopted["native_order_effect_qualified"]
+          assert adopted["adopted_after_recovery"]
           assert (root/"dev09-cleanup.json").is_file()
           print("DEV11_REAL_JVM_HYDRA_CP_RABBIT_LOCAL_PASS; FULL_L4_BLOCKED")
           PY
@@ -127,6 +130,7 @@ jobs:
           path: |
             artifacts/dev11-real-native/dev11-engine-local.json
             artifacts/dev11-real-native/dev11-native-effect.json
+            artifacts/dev11-real-native/dev11-native-unknown-adopted.json
             artifacts/dev11-real-native/dev11-cp-jvm-lineage.json
             artifacts/dev11-real-native/dev09-cleanup.json
           if-no-files-found: warn
