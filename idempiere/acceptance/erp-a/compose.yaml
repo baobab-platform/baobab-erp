@@ -20,6 +20,24 @@ networks:
   erpa: {}
 
 services:
+  # Optional disposable DEV-11 signed CloudEvent transport. The ordinary
+  # ERP-A suites never start this profile; no public listener or production
+  # broker configuration may be inherited from this fixture.
+  rabbitmq:
+    image: rabbitmq:4.3.5-alpine
+    profiles: [dev11]
+    hostname: dev11-real-native-rabbit
+    environment:
+      RABBITMQ_DEFAULT_USER: dev11
+      RABBITMQ_DEFAULT_PASS: ${DEV11_RABBIT_PASSWORD:-dev11-only-disabled-default}
+    ports: ["127.0.0.1:15673:5672"]
+    networks: [erpa]
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
   # --- ERP: iDempiere's own PostgreSQL (the image entrypoint imports GardenWorld) and the engine.
   erpdb:
     <<: *pg
