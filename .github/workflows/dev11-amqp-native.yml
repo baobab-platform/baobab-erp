@@ -15,7 +15,13 @@ on:
       - tests/unit/test_dev11_amqp_consumer.py
       - tests/unit/test_dev11_operator_inbox_authority.py
       - scripts/dev11_verify_native_idempiere_order.py
+      - scripts/dev11_verify_cp_native_lineage.py
       - tests/unit/test_dev11_native_order_verifier.py
+      - tests/unit/test_dev11_cp_native_lineage.py
+      - modules/integration/idempiere_gate_d_real.py
+      - tests/unit/test_dev11_real_jvm_adapter.py
+      - idempiere/acceptance/erp-a/driver/dev11_native_connected.py
+      - idempiere/acceptance/driver/src/org/nabhold/baobab/erp/acceptance/SalesFlow.java
   workflow_dispatch:
 
 permissions:
@@ -48,5 +54,18 @@ jobs:
         env:
           PYTHONPATH: modules
         run: python -m unittest discover -s tests/unit -p test_dev11_native_order_verifier.py -v
-      - name: Compile native ERP receiver and worker
-        run: python -m compileall -q modules/application modules/inbox
+      - name: Real CP-to-JVM immutable authority decision provenance negatives
+        env:
+          PYTHONPATH: modules
+        run: python -m unittest discover -s tests/unit -p test_dev11_cp_native_lineage.py -v
+      - name: Real JVM protected test-only bridge and foreign company negatives
+        env:
+          PYTHONPATH: modules
+        run: python -m unittest discover -s tests/unit -p test_dev11_real_jvm_adapter.py -v
+      - name: Compile native ERP receiver, protected worker, real-engine verifier and connected scenario
+        run: |
+          python -m compileall -q modules/application modules/inbox modules/integration \
+            scripts/dev11_verify_native_idempiere_order.py \
+            scripts/dev11_verify_cp_native_lineage.py \
+            idempiere/acceptance/erp-a/driver/dev11_native_connected.py
+          bash -n idempiere/acceptance/erp-a/run-gate-d-erp-a.sh
