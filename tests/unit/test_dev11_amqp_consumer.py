@@ -128,6 +128,28 @@ class DEV11AMQPAdmissionTests(unittest.TestCase):
         self.assertFalse(self.store.rows)
         self.assertEqual(self.channel.calls[0][0], "REJECT")
 
+    def test_post_commit_crash_boundary_leaves_delivery_unacked(self):
+        wire = event_wire()
+        body, signature = signed(wire, self.secret)
+        props = SimpleNamespace(
+            content_type=EVENT_CONTENT_TYPE,
+            headers={EVENT_SIGNATURE_HEADER: signature},
+        )
+
+        def crash():
+            raise SystemExit(73)
+
+        # Only the disposable Trade-owned CI caller injects this hook.
+        # Production always uses the normal ACK-after-commit path.
+        with self.assertRaises(SystemExit):
+            delivery_callback(
+                self.channel, self.delivery, props, body,
+                store_factory=lambda: Scope(self.store), secret=self.secret,
+                after_commit_hook=crash,
+            )
+        self.assertEqual(len(self.store.rows), 1)
+        self.assertEqual(self.channel.calls, [])
+
     def test_broker_not_acked_when_postgres_unavailable(self):
         with self.assertRaisesRegex(RuntimeError, "ERP_AMQP_ADMISSION_BLOCKED"):
             self.call(fails=True)
