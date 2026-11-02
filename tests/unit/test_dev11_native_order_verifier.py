@@ -58,6 +58,8 @@ class FakeDatabase:
             return FakeResult([(1,)])
         if "FROM baobab_native.native_placement" in query:
             return FakeResult([(1,)])
+        if "FROM baobab_native.finance_authority_attribution" in query:
+            return FakeResult([(1,)])
         raise AssertionError("Unrecognised SQL in test fixture")
 
 
@@ -67,6 +69,12 @@ class NativeReadbackSafetyTests(unittest.TestCase):
         self.assertTrue(observed["native_order_effect_qualified"])
         self.assertEqual(observed["l4_ops_01"], "BLOCKED")
         self.assertFalse(observed["financial_posting_inferred"])
+
+    def test_missing_native_jvm_cp_mandate_attribution_denied(self):
+        with self.assertRaisesRegex(
+                NotProven, "NATIVE_JVM_AUTHORITY_ATTRIBUTION_MISSING"):
+            verify(FakeDatabase(fail="FROM baobab_native.finance_authority_attribution"),
+                   TENANT, EVENT_ID, LEGAL, 11, 11)
 
     def test_missing_real_native_order_denied(self):
         with self.assertRaisesRegex(NotProven, "IDEMPIERE_ORDER_MISSING"):
