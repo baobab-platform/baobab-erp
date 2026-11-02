@@ -400,6 +400,10 @@ def main():
             demand(no_order==0,"DEV11_REVOKED_REAL_NATIVE_ORDER_COMMITTED")
             report={
                 "schema":"erp.dev11.real-hydra-cp-rabbit-jvm-engine-local.v1",
+                "source_pins":{
+                    "baobab-cp":os.environ["CP_COMMIT"],
+                    "baobab-iam":os.environ["IAM_COMMIT"],
+                    "baobab-erp":os.environ["ERP_COMMIT"]},
                 "real_hydra_workload_token_observed":True,
                 "real_cp_runtime_context_and_mandate_observed":True,
                 "real_rabbitmq_durable_signed_event_to_erp_inbox":True,
