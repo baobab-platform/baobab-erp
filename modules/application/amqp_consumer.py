@@ -14,12 +14,13 @@ from __future__ import annotations
 
 import logging
 import os
+import signal
 from urllib.parse import urlsplit
 
 import pika
 import psycopg
 
-from application.observability import configure, consumer_span, diagnostic_outcome
+from application.observability import configure, consumer_span, diagnostic_outcome, shutdown
 from inbox.postgres_store import PostgresInboxStore
 from inbox.service import InvalidSignatureError, receive
 
@@ -138,10 +139,15 @@ def main():
             auto_ack=False,
         )
         logger.info("ERP_AMQP_NATIVE_CONSUMER_STARTED")
+        def stop(_signal, _frame):
+            if channel.is_open and channel.is_consuming:
+                channel.stop_consuming()
+        signal.signal(signal.SIGTERM, stop)
         channel.start_consuming()
     finally:
         if connection.is_open:
             connection.close()
+        shutdown()
 
 
 if __name__ == "__main__":
