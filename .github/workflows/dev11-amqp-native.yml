@@ -14,6 +14,8 @@ on:
       - modules/pyproject.toml
       - tests/unit/test_dev11_amqp_consumer.py
       - tests/unit/test_dev11_operator_inbox_authority.py
+      - scripts/dev11_verify_native_idempiere_order.py
+      - tests/unit/test_dev11_native_order_verifier.py
   workflow_dispatch:
 
 permissions:
@@ -42,5 +44,9 @@ jobs:
         env:
           PYTHONPATH: modules
         run: python -m unittest discover -s tests/unit -p test_dev11_operator_inbox_authority.py -v
+      - name: Independent real-native PostgreSQL order verifier missing-effect and foreign-company negatives
+        env:
+          PYTHONPATH: modules
+        run: python -m unittest discover -s tests/unit -p test_dev11_native_order_verifier.py -v
       - name: Compile native ERP receiver and worker
         run: python -m compileall -q modules/application modules/inbox
