@@ -32,7 +32,9 @@ class FakeDatabase:
 
     def execute(self, query, params):
         if self.fail and self.fail in query:
-            return FakeResult([])
+            # COUNT probes return an actual zero row; SELECT * probes return
+            # no rows. Test the verifier, not an IndexError in this fixture.
+            return FakeResult([(0,)] if "SELECT count(*)" in query else [])
         if "FROM baobab.event_inbox" in query:
             return FakeResult([(
                 "processed", "EXECUTED",
