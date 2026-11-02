@@ -74,3 +74,13 @@ def diagnostic_outcome(span, code: str, *, failed: bool = False):
     span.set_attribute("baobab.erp.event_outcome", code)
     if failed:
         span.set_status(Status(StatusCode.ERROR))
+
+
+def shutdown() -> None:
+    """Flush native spans before the disposable consumer process exits."""
+    global _provider
+    provider = _provider
+    if provider is not None:
+        provider.force_flush(timeout_millis=20000)
+        provider.shutdown()
+        _provider = None
