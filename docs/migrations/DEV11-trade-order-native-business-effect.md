@@ -71,6 +71,13 @@ source registry capability binding and independent native provider check.
 For a real run, obtain the exact role/activity/capability and source reference
 from accepted provider/Shared decisions. Do not invent or copy these values.
 The protected command denies any missing or mismatched element.
+For an actual native-engine acceptance, the **iDempiere JVM** must separately
+run with `-Dbaobab.erp.native.environment=acceptance` and its
+`native-finance-veto-active` sentinel must be independently read back; the
+Python worker's `BAOBAB_ENVIRONMENT=integration` alone does **not** activate
+the JVM veto, whose explicit integration mode is unprotected for isolated
+fixtures. A missing JVM sentinel blocks L4 acceptance even if a matching
+database C_Order and attribution row are present.
 
 When the operator securely provisions the exact immutable source binding,
 the worker requires:
