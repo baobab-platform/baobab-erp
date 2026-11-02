@@ -317,7 +317,7 @@ def from_operator_configuration(connection: psycopg.Connection, engine_for: Call
     if (not target.netloc or target.username or target.password
             or target.fragment or target.query
             or (target.scheme != "https" and not (
-                target.scheme == "http" and target.hostname == "localhost"))):
+                target.scheme == "http" and target.hostname in ("localhost", "127.0.0.1", "::1")))):
         raise RuntimeError("DEV11_OPERATOR_OAUTH_TOKEN_URL_NOT_SECURE")
     token_provider = ClientCredentialsTokenProvider(
         os.environ[names[1]], os.environ[names[2]], client_secret,
