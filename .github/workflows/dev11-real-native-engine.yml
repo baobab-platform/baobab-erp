@@ -70,7 +70,7 @@ jobs:
         with:
           python-version: "3.14"
       - name: Set up CP's exact Go major and minor from pinned go.mod
-        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v6.0.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: cp-source/go.mod
           cache: false
