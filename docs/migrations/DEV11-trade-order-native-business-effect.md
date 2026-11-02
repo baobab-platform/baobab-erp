@@ -116,7 +116,10 @@ Expected checks: event processed once; native `C_Order` by exact
 client/org and real `C_OrderLine`; `baobab.order_execution` joins
 original event and native ID, `baobab.order_consequence` is present,
 registered ERP consequence event exists once, and native placement is
-in force. The checker never reports customer invoice posting or
+in force. The checker also requires iDempiere JVM-written
+`baobab_native.finance_authority_attribution` for the same native C_Order,
+linked to its native source document and CP decision/mandate; a bare row
+inserted outside the JVM is insufficient. The checker never reports customer invoice posting or
 `Fact_Acct` merely because an order draft exists.
 
 The real protected iDempiere 13 / PostgreSQL17 / CP / Hydra / Kratos
