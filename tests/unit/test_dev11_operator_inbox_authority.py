@@ -186,6 +186,28 @@ class OperatorAuthorityTests(unittest.TestCase):
         with self.assertRaises(LegalActorNotAuthorised):
             provider.ensure_legal_actor_usable(operation(), "mandate-dev11-test")
 
+    def test_broken_native_postgres_migration_denies_and_rolls_back(self):
+        import psycopg
+
+        class MissingNativePlacement:
+            rolled_back = False
+
+            def cursor(self):
+                raise psycopg.OperationalError("native migration absent")
+
+            def rollback(self):
+                self.rolled_back = True
+
+        database = MissingNativePlacement()
+        engine = Engine()
+        provider = NativeOrderProviderReadiness(
+            database, lambda *_: engine, AuthorityEntry.parse(ENTRY))
+        with self.assertRaisesRegex(
+                LegalActorNotAuthorised, "ERP native placement or Finance baseline unavailable"):
+            provider.ensure_legal_actor_usable(operation(), "mandate-synthetic")
+        self.assertTrue(database.rolled_back)
+        self.assertFalse(engine.reads)
+
     def test_empty_mandate_cannot_create_native_permit(self):
         provider = NativeOrderProviderReadiness(
             Connection(), lambda *_: Engine(), AuthorityEntry.parse(ENTRY))
