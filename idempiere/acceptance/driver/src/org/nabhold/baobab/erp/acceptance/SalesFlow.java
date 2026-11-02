@@ -212,8 +212,19 @@ final class SalesFlow {
         // order reference. This is a disposable driver, not a production API.
         String reference = in.getProperty("reference", "");
         if (!reference.isEmpty()) {
+            if (!"acceptance".equals(System.getProperty("baobab.erp.native.environment"))
+                    || !"signed-event-erp".equals(in.getProperty("dev11_profile"))) {
+                throw new IllegalArgumentException("DEV11_NATIVE_PROTECTED_DRIVER_REQUIRED");
+            }
             if (reference.length() > 127 || !reference.matches("[A-Za-z0-9][A-Za-z0-9._:-]{2,126}")) {
                 throw new IllegalArgumentException("DEV11_ORDER_REFERENCE_INVALID");
+            }
+            // Only the exact native fixture GardenWorld identities are usable:
+            // no file caller may widen AD_Client/Org, change partner or product
+            // on the JVM; CP still authorises every native mutation.
+            if (!Integer.toString(customer()).equals(in.getProperty("expected_customer"))
+                    || !Integer.toString(product).equals(in.getProperty("expected_product"))) {
+                throw new IllegalArgumentException("DEV11_NATIVE_FIXTURE_MAPPING_MISMATCH");
             }
             o.setPOReference(reference);
         }
@@ -222,6 +233,14 @@ final class SalesFlow {
         l.setM_Product_ID(product, true);
         l.setQty(new BigDecimal(in.getProperty("qty", "1")));
         l.setPrice();
+        if (!reference.isEmpty()) {
+            BigDecimal price = new BigDecimal(in.getProperty("unit_price", "-1"));
+            if (price.signum() < 0 || price.scale() > 4 || price.precision() > 20) {
+                throw new IllegalArgumentException("DEV11_NATIVE_PRICE_INVALID");
+            }
+            l.setPriceEntered(price);
+            l.setPriceActual(price);
+        }
         l.saveEx();
         return o;
     }
