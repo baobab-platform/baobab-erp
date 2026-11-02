@@ -208,6 +208,15 @@ final class SalesFlow {
         o.setM_Warehouse_ID(warehouse);
         o.setM_PriceList_ID(priceList);
         o.setDescription("Baobab Gate D synthetic sales order (CI only)");
+        // DEV-11: bind the real JVM-created draft to the exact signed Trade
+        // order reference. This is a disposable driver, not a production API.
+        String reference = in.getProperty("reference", "");
+        if (!reference.isEmpty()) {
+            if (reference.length() > 127 || !reference.matches("[A-Za-z0-9][A-Za-z0-9._:-]{2,126}")) {
+                throw new IllegalArgumentException("DEV11_ORDER_REFERENCE_INVALID");
+            }
+            o.setPOReference(reference);
+        }
         o.saveEx();
         MOrderLine l = new MOrderLine(o);
         l.setM_Product_ID(product, true);
