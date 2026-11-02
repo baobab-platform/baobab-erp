@@ -240,7 +240,17 @@ class RealJvmGateDOrderAdapter:
                         or data.get("committed") != "true"):
                     raise IdempiereClientError("DEV11_NATIVE_JVM_VETO_OR_COMMIT_DENIED")
                 native_id = _positive(data.get("id"), "CREATED_ORDER")
-                return self._readback(native_id, fields)
+                observed = self._readback(native_id, fields)
+                # DISPOSABLE REAL-ENGINE fault: the JVM actually committed
+                # and the independent native query already verified it, but
+                # the Python ERP worker loses its *application-level* result
+                # before writing its own execution/outbox receipt. This tests
+                # cross-transaction unknown-outcome adoption, not a mock.
+                if (os.environ.get("BAOBAB_DEV11_NATIVE_UNKNOWN_AFTER_COMMIT") == "true"
+                        and os.environ.get("BAOBAB_ENVIRONMENT") == "integration"
+                        and os.environ.get("BAOBAB_DEV11_REAL_JVM_GATE_ENABLED") == "true"):
+                    raise IdempiereClientError("DEV11_NATIVE_JVM_RESULT_UNKNOWN")
+                return observed
             time.sleep(.25)
         # UNKNOWN OUTCOME: the JVM may commit after this process loses the
         # reply; never retry a *different* order. The ERP executor must find
