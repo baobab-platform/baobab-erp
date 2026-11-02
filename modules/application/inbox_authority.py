@@ -18,6 +18,8 @@ import os
 import re
 import stat
 import uuid
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -32,10 +34,13 @@ from order_to_cash.legal_actor_gate import LegalActorNotAuthorised, LegalActorOp
 from order_to_cash.legal_actor_http_client import HttpControlPlaneLegalActorAssessor
 from order_to_cash.native_action_gate import NativeActionPolicy
 from provisioning.control_plane_client import ClientCredentialsTokenProvider
+from shared_contracts.http import RejectRedirect
 
 _EXPECTED_SOURCE = "urn:baobab-platform:service:baobab-trade"
 _TYPE = "com.baobab-platform.trade.order.placed.v1"
 _CAPABILITY = re.compile(r"^[a-z][a-z0-9._-]{2,199}$")
+_ACTIVITY = re.compile(r"^[A-Z][A-Z0-9_]{2,100}$")
+_AUTH_REFERENCE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/#-]{2,255}$")
 _REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$")
 _LEGAL = re.compile(r"^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*$")
 _ALLOWED = frozenset({
@@ -110,10 +115,10 @@ class AuthorityEntry:
                 or not isinstance(raw["legal_entity_id"], str)
                 or not _LEGAL.fullmatch(raw["legal_entity_id"])
                 or raw["market"] not in {"UG", "ZA"}
-                or not isinstance(raw["activity"], str) or not _CAPABILITY.fullmatch(raw["activity"])
+                or not isinstance(raw["activity"], str) or not _ACTIVITY.fullmatch(raw["activity"])
                 or not isinstance(raw["capability"], str) or not _CAPABILITY.fullmatch(raw["capability"])
                 or not isinstance(raw["authority_reference"], str)
-                or not _REF.fullmatch(raw["authority_reference"])
+                or not _AUTH_REFERENCE.fullmatch(raw["authority_reference"])
                 or not isinstance(raw["engine_instance_id"], str)
                 or not re.fullmatch(r"ei_[a-z0-9]{3,60}", raw["engine_instance_id"])
                 or any(type(raw[field]) is not int or raw[field] < 1
@@ -291,9 +296,16 @@ def from_operator_configuration(connection: psycopg.Connection, engine_for: Call
     client_secret = _secure_text(os.environ[names[3]], limit=4096).strip()
     if len(client_secret) < 24:
         raise RuntimeError("DEV11_OPERATOR_CP_WORKLOAD_SECRET_INVALID")
+    target = urllib.parse.urlsplit(os.environ[names[1]])
+    if (not target.netloc or target.username or target.password
+            or target.fragment or target.query
+            or (target.scheme != "https" and not (
+                target.scheme == "http" and target.hostname == "localhost"))):
+        raise RuntimeError("DEV11_OPERATOR_OAUTH_TOKEN_URL_NOT_SECURE")
     token_provider = ClientCredentialsTokenProvider(
         os.environ[names[1]], os.environ[names[2]], client_secret,
-        "legal-actor:assess documentary:restriction-assess")
+        "legal-actor:assess documentary:restriction-assess",
+        opener=urllib.request.build_opener(RejectRedirect()))
     return InboxAuthorityComposition(
         OperatorAuthorityRegistry(path), connection, engine_for,
         os.environ[names[0]], token_provider)
