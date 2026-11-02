@@ -33,6 +33,7 @@ class Claim:
     received_at: datetime
     correlation_id: str | None
     worker_id: str
+    traceparent: str | None = None
 
 
 class PostgresInboxQueue:
@@ -53,7 +54,7 @@ class PostgresInboxQueue:
                             OR (status = 'processing' AND lease_expires_at <= now()))
                         ORDER BY next_attempt_at, id
                         FOR UPDATE SKIP LOCKED LIMIT 1)
-             RETURNING id, event_id::text, event_type, tenant_id, payload_json, attempts, received_at, ce_correlation_id::text
+             RETURNING id, event_id::text, event_type, tenant_id, payload_json, attempts, received_at, ce_correlation_id::text, ce_traceparent
                 """,
                 {"worker": worker_id, "lease": lease_seconds, "type": event_type})
             row = cursor.fetchone()
@@ -61,7 +62,8 @@ class PostgresInboxQueue:
         if row is None:
             return None
         return Claim(row_id=row[0], event_id=row[1], event_type=row[2], tenant_id=row[3], data=row[4], attempts=row[5],
-                     received_at=row[6], correlation_id=row[7], worker_id=worker_id)
+                     received_at=row[6], correlation_id=row[7], worker_id=worker_id,
+                     traceparent=row[8] if len(row) > 8 else None)
 
     def processed(self, claim: Claim, outcome_code: str) -> None:
         self._settle(claim, "processed", outcome_code, None, None, refund_attempt=False)
