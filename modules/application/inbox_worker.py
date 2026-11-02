@@ -53,13 +53,18 @@ def _engine_factory(credentials: dict):
 
 
 def run_once(connection: psycopg.Connection, engine_for, *, worker_id: str, limit: int = 50, lease_seconds: int = 300,
-             authority_for: Callable[[Claim], InboxNativeAuthority | None] | None = None) -> dict:
+             authority_for: Callable[[Claim], InboxNativeAuthority | None] | None = None,
+             event_types: tuple[str, ...] = (CUSTOMER_PROJECTED, ORDER_PLACED)) -> dict:
     """One pass: up to ``limit`` rows per event type, customers first. ``pass`` and ``codes`` count outcomes across both types; the
     backlog is reported per type so an alert can watch each."""
+    # The DEV-11 order-only worker must not process customer projections or
+    # any unqualified event type merely because it shares the same inbox.
+    if event_types not in ((CUSTOMER_PROJECTED, ORDER_PLACED), (ORDER_PLACED,)):
+        raise ValueError("ERP_DEV11_INBOX_EVENT_PROFILE_NOT_APPROVED")
     queue = PostgresInboxQueue(connection)
     done: dict[str, int] = {}
     codes: dict[str, int] = {}
-    for event_type in (CUSTOMER_PROJECTED, ORDER_PLACED):
+    for event_type in event_types:
         for _ in range(limit):
             claim = queue.claim(event_type=event_type, worker_id=worker_id, lease_seconds=lease_seconds)
             if claim is None:
@@ -116,8 +121,16 @@ def main() -> None:
         # name a Context, role, mandate, provider policy or authority source.
         from application.inbox_authority import from_operator_configuration
         composition = from_operator_configuration(connection, engine_for)
+        profile = os.environ.get("BAOBAB_ERP_INBOX_PROFILE", "normal")
+        if composition is not None and profile != "dev11-order-placed":
+            raise RuntimeError("ERP_DEV11_OPERATOR_AUTHORITY_REQUIRES_ORDER_ONLY_WORKER")
+        if profile not in ("normal", "dev11-order-placed"):
+            raise RuntimeError("ERP_INBOX_EVENT_PROFILE_NOT_APPROVED")
+        enabled_events = ((ORDER_PLACED,) if profile == "dev11-order-placed"
+                          else (CUSTOMER_PROJECTED, ORDER_PLACED))
         report = run_once(connection, engine_for, worker_id=f"{socket.gethostname()}-{os.getpid()}", limit=limit,
-                          lease_seconds=lease, authority_for=composition.for_claim if composition else None)
+                          lease_seconds=lease, authority_for=composition.for_claim if composition else None,
+                          event_types=enabled_events)
     print(json.dumps(report, sort_keys=True), file=sys.stdout, flush=True)
 
 
