@@ -176,9 +176,13 @@ import sys
 root = Path(sys.argv[1])
 engine = json.loads((root/"dev11-engine-local.json").read_text())
 native = json.loads((root/"dev11-native-effect.json").read_text())
+adopted = json.loads((root/"dev11-native-unknown-adopted.json").read_text())
 lineage = json.loads((root/"dev11-cp-jvm-lineage.json").read_text())
 assert engine.get("real_cp_authorized_idempiere_jvm_sales_order") is True
 assert native.get("native_order_effect_qualified") is True
+assert adopted.get("native_order_effect_qualified") is True
+assert adopted.get("adopted_after_recovery") is True
+assert engine.get("real_jvm_committed_then_worker_outcome_lost_and_adopted") is True
 assert lineage.get("native_cp_lineage_qualified") is True
 # A synthetic engine-local candidate can NEVER be marked fully qualified.
 assert all(record.get("l4_ops_01") == "BLOCKED" for record in
