@@ -150,6 +150,56 @@ ERP's real native database read-only receipt, negative tests and
 teardown. Join that to the three estate-owned Playwright/axe/visual/
 Lighthouse/current static budget receipts.
 
+## Engine-local real execution implementation (added 2026-11-02)
+
+The existing protected ERP-A acceptance runner, not an invented REST server,
+now supports the explicit flag `DEV11_REAL_NATIVE_ACCEPTANCE=true`. The
+new owner workflow is
+`.github/workflows/dev11-real-native-engine.yml`; it checks out exact
+CP and IAM source SHAs, builds the real iDempiere 13 image and real
+test-only OSGi driver, provisions actual Hydra client credentials and
+CP context/mandate, and uses RabbitMQ to deliver a signed synthetic Trade
+order into ERP's canonical PostgreSQL inbox. ERP's separate worker then
+performs fresh CP legal-actor/documentary checks and calls into the
+**real iDempiere JVM**. This is an opt-in test-only file transport because
+the separate REST OSGi plugin is not installed in the pinned engine image.
+
+`modules/integration/idempiere_gate_d_real.py` is guarded to
+`integration`, `BAOBAB_ERP_INBOX_PROFILE=dev11-order-placed`,
+`BAOBAB_REQUIRE_LEGAL_ACTOR_GATE=true`, a verified test-only JVM root,
+and GardenWorld's exact company/org 11. All other companies, runtime
+environments, generic native tables, arbitrary SQL and additional order
+lines are refused. Native `C_Order` and `C_OrderLine` are read back
+directly from PostgreSQL, and an uncertain response can only be adopted
+if every native fact matches the same canonical order. It is **not a
+production business API**.
+
+The two standalone, independent observers are:
+
+- `scripts/dev11_verify_native_idempiere_order.py` reads native
+  `adempiere.c_order` and `c_orderline`, ERP's canonical inbox,
+  `order_execution`, consequence, outbox and immutable JVM CP attribution.
+- `scripts/dev11_verify_cp_native_lineage.py` opens separate *read-only*
+  CP and native PostgreSQL transactions and joins every native CP decision
+  to CP's own immutable `registry.erp_posting_authority_decision` row,
+  RUNTIME context and independently reviewed legal-actor mandate.
+
+The connected runner also sends an unchanged broker redelivery and
+revokes the real CP sales mandate before a second order; it requires
+zero second native orders. Its output stays explicitly
+`full_medusa_buyer_commitment_proven=false`,
+`independent_exported_trace_graph_proven=false`,
+`l4_ops_01=BLOCKED`. Even a successful real engine-local workflow
+**does not certify the complete Trade vertical**. Infrastructure #72
+must independently fetch and verify it as an eighth source-pinned owner
+before any source convergence can be considered.
+
+**Current status:** connected source changes committed; workflow execution
+and independent GitHub artifact verification still pending. A queued
+GitHub Actions run, a mocked unit test or a hand-authored report is not
+provider/runtime acceptance. Do not merge or activate protected
+staging/production gates.
+
 **Until each distinct observation is present and independently
 verified, `l4_ops_01=BLOCKED`. Never merge for this milestone based
 on unit-mock positives, synthetic native results or a passing inbox
