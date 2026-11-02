@@ -50,13 +50,18 @@ def consumer_span(traceparent: str | None, name: str):
     inferred merely by copying an untrusted incoming traceparent as authority.
     """
     links = []
+    remote_context = None
     if traceparent:
-        remote = propagation.extract({"traceparent": traceparent})
-        context_span = trace.get_current_span(remote).get_span_context()
+        candidate = propagation.extract({"traceparent": traceparent})
+        context_span = trace.get_current_span(candidate).get_span_context()
         if context_span.is_valid:
+            remote_context = candidate
             links.append(Link(context_span))
+    # A *signed and schema-validated* CloudEvent may carry causal parent
+    # context. Event authentication happens BEFORE the caller opens this
+    # span; neither it nor this trace context supplies an ERP grant.
     return trace.get_tracer("baobab.erp.native", "dev11").start_as_current_span(
-        name, kind=SpanKind.CONSUMER, links=links)
+        name, context=remote_context, kind=SpanKind.CONSUMER, links=links)
 
 
 def diagnostic_outcome(span, code: str, *, failed: bool = False):
