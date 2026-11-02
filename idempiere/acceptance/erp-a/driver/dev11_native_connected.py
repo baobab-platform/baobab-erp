@@ -305,7 +305,7 @@ def main():
         "BAOBAB_DEV11_GARDENWORLD_US_FIXTURE":"true",
         "BAOBAB_DEV11_ENGINE_DRIVER_DIR":str(run/"gate-d"),
         "BAOBAB_DEV11_ENGINE_NATIVE_DATABASE_URL":erp_url,
-        "BAOBAB_ERP_CP_URL":"http://127.0.0.1:18092",
+        "BAOBAB_ERP_CP_URL":"http://localhost:18092",
         "BAOBAB_ERP_CP_OAUTH_TOKEN_URL":"http://127.0.0.1:18015/oauth2/token",
         "BAOBAB_ERP_CP_WORKLOAD_CLIENT_ID":HYDRA_CLIENT,
         "BAOBAB_ERP_CP_WORKLOAD_SECRET_FILE":str(run/"erp-secret"/"workload-secret"),
