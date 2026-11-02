@@ -33,7 +33,19 @@ def receive(body: bytes, signature: str, secret: str, store: InboxStore) -> Clou
         raise ValueError("the event body is not valid JSON") from exc
     event = check_consumable(CloudEvent.from_wire(parsed))
     if store.exists(event.source, event.id):
+        # A repeated event with the same identity but changed business data
+        # is not a harmless replay. The PostgreSQL implementation performs
+        # this against the original durable canonical fields, excluding only
+        # W3C diagnostic transport context.
+        check = getattr(store, "assert_semantic_duplicate", None)
+        if check is not None:
+            check(event)
         return event
 
     store.record_received(event, json.dumps(event.data, separators=(",", ":"), sort_keys=True))
+    # Resolve races where two consumers saw 'absent' and one INSERT hit
+    # ON CONFLICT DO NOTHING. Do not silently accept a different payload.
+    check = getattr(store, "assert_semantic_duplicate", None)
+    if check is not None:
+        check(event)
     return event
