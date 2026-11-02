@@ -161,6 +161,17 @@ class RealJvmGateDOrderAdapter:
             raise IdempiereClientError("DEV11_NATIVE_BUSINESS_FACTS_MISMATCH")
         return native_id
 
+    def assert_existing_order_matches(self, native_id, order, customer, lines):
+        # The native order is durable from an earlier uncertain attempt.
+        # Prove company, client, legal reference and every line BEFORE
+        # adopting it. Never turn a matching POReference into authority.
+        from order_to_cash.service import sales_order_fields
+        if not hasattr(order, "commerce_order_id") or len(lines) != 1:
+            raise IdempiereClientError("DEV11_NATIVE_ADOPTION_SCOPE_INVALID")
+        fields = sales_order_fields(
+            customer, order.currency, lines, reference=order.commerce_order_id)
+        return self._readback(native_id, fields)
+
     def create_record(self, table, fields):
         if table != "C_Order" or not isinstance(fields, dict):
             raise IdempiereClientError("DEV11_NATIVE_CREATE_NOT_ALLOWED")
