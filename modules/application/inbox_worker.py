@@ -39,6 +39,19 @@ from order_to_cash.inbox_execution import EngineOrgMismatch, InboxNativeAuthorit
 
 
 def _engine_factory(credentials: dict):
+    # Only the isolated ERP-A/DEV-11 acceptance harness may use the real JVM
+    # fixture bridge. Normal ERP deployments continue using the native REST
+    # adapter and MUST NOT install/accept a fixture transport.
+    private_driver = os.environ.get("BAOBAB_DEV11_ENGINE_DRIVER_DIR")
+    if private_driver is not None:
+        from integration.idempiere_gate_d_real import RealJvmGateDOrderAdapter
+        def real_jvm_for(ad_client_id: int, ad_org_id: int):
+            return RealJvmGateDOrderAdapter(
+                ad_client_id, ad_org_id,
+                db_url=os.environ.get("BAOBAB_DEV11_ENGINE_NATIVE_DATABASE_URL", ""),
+                driver_dir=private_driver)
+        return real_jvm_for
+
     def engine_for(ad_client_id: int, ad_org_id: int):
         found = credentials.get(ad_client_id)
         if found is None:
