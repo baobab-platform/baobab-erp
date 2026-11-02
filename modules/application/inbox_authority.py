@@ -322,7 +322,8 @@ def from_operator_configuration(connection: psycopg.Connection, engine_for: Call
     token_provider = ClientCredentialsTokenProvider(
         os.environ[names[1]], os.environ[names[2]], client_secret,
         "legal-actor:assess documentary:restriction-assess",
-        opener=urllib.request.build_opener(RejectRedirect()))
+        opener=urllib.request.build_opener(RejectRedirect()),
+        audience="baobab-control-plane")
     return InboxAuthorityComposition(
         OperatorAuthorityRegistry(path), connection, engine_for,
         os.environ[names[0]], token_provider)
