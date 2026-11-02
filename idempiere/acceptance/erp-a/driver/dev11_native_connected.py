@@ -319,10 +319,13 @@ def main():
         positive=event_for(state,order="order_dev11_"+uuid.uuid4().hex,
                            product_id=product,sku=sku,unit=unit,
                            customer_key=customer_key)
+        ambiguous=event_for(state,order="order_dev11_unknown_"+uuid.uuid4().hex,
+                            product_id=product,sku=sku,unit=unit,
+                            customer_key=customer_key)
         denied=event_for(state,order="order_dev11_revoked_"+uuid.uuid4().hex,
                          product_id=product,sku=sku,unit=unit,
                          customer_key=customer_key)
-        registry=operator_file(run,state,context_id,(positive,denied))
+        registry=operator_file(run,state,context_id,(positive,ambiguous,denied))
         native_env["BAOBAB_ERP_INBOX_AUTHORITY_REGISTRY_FILE"]=str(registry)
 
         password=secrets.token_hex(20)
@@ -387,6 +390,45 @@ def main():
                 (positive["data"]["commerce_order_id"],)).fetchone()[0]
             demand(count==1,"DEV11_REAL_BROKER_REDELIVERY_CREATED_EXTRA_NATIVE_ORDER")
 
+            # Native unknown-outcome recovery: the REAL protected JVM
+            # commits a separate exact C_Order, but the ERP worker injects a
+            # loss of its own application result AFTER independent readback.
+            # Retry may ONLY adopt the same native order and immutable facts.
+            send(channel,ambiguous,native_env["BAOBAB_EVENT_SIGNING_SECRET"])
+            await_inbox(db,ambiguous["id"])
+            worker_once({**native_env,
+                         "BAOBAB_DEV11_NATIVE_UNKNOWN_AFTER_COMMIT":"true"})
+            inspect_outcome(db,ambiguous["id"],allowed=False)
+            before_replay=db.execute(
+                "SELECT count(*) FROM adempiere.c_order WHERE poreference=%s",
+                (ambiguous["data"]["commerce_order_id"],)).fetchone()[0]
+            demand(before_replay==1,"DEV11_REAL_JVM_UNKNOWN_COMMIT_NOT_OBSERVED")
+            ready=False
+            for _ in range(160):
+                row=db.execute(
+                    """SELECT status,next_attempt_at <= now()
+                       FROM baobab.event_inbox WHERE event_id=%s::uuid""",
+                    (ambiguous["id"],)).fetchone()
+                ready=bool(row and row[0]=="retry" and row[1])
+                if ready: break
+                time.sleep(.25)
+            demand(ready,"DEV11_NATIVE_UNKNOWN_OUTCOME_NOT_RETRYABLE")
+            worker_once(native_env)
+            recovered=inspect_outcome(db,ambiguous["id"],allowed=True)
+            demand(recovered=="ADOPTED_NATIVE_ORDER",
+                   "DEV11_REAL_JVM_UNKNOWN_OUTCOME_NOT_ADOPTED")
+            after_replay=db.execute(
+                "SELECT count(*) FROM adempiere.c_order WHERE poreference=%s",
+                (ambiguous["data"]["commerce_order_id"],)).fetchone()[0]
+            demand(after_replay==1,"DEV11_NATIVE_UNKNOWN_RETRY_DUPLICATED_ORDER")
+            native_receipt=Path(__file__).resolve().parents[4] / (
+                "scripts/dev11_verify_native_idempiere_order.py")
+            subprocess.run([
+                sys.executable,"-B",str(native_receipt),
+                *common,"--event-id",ambiguous["id"],
+                "--output",str(out/"dev11-native-unknown-adopted.json")],
+                env=native_env,check=True,timeout=45)
+
             # LIVE CP revocation, not a Python boolean. Re-use the now-invalid
             # CP-minted context to demonstrate it is not a permanent mandate.
             cp.revoke(sales_mandate)
@@ -411,6 +453,7 @@ def main():
                 "independent_native_order_and_cp_lineage_readback":True,
                 "real_live_cp_mandate_revocation_denied_next_order":True,
                 "real_broker_redelivery_one_native_order":True,
+                "real_jvm_committed_then_worker_outcome_lost_and_adopted":True,
                 "synthetic_trade_origin_not_authorized_commitment":True,
                 "full_medusa_buyer_commitment_proven":False,
                 "independent_exported_trace_graph_proven":False,
