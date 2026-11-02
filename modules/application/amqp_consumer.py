@@ -70,13 +70,19 @@ def admit(body: bytes, signature: object, content_type: object, store, secret: s
     return event
 
 
-def delivery_callback(channel, method, properties, body, *, store_factory, secret):
+def delivery_callback(channel, method, properties, body, *, store_factory, secret,
+                      after_commit_hook=None):
     """ACK after committed admission, reject poison, preserve transient failures."""
     tag = method.delivery_tag
     try:
         signature = (properties.headers or {}).get(EVENT_SIGNATURE_HEADER)
         with store_factory() as store:
             admit(body, signature, properties.content_type, store, secret)
+        # Test-only injection lives in the disposable caller, not in the
+        # shipped consumer. A process crash here proves broker redelivery
+        # after the ERP PostgreSQL receipt committed but before ACK.
+        if after_commit_hook is not None:
+            after_commit_hook()
     except RejectedEvent:
         # The queue MUST have a pre-provisioned DLX; never requeue poison
         # endlessly or fabricate an ACCEPTED/PROCESSED receipt.
