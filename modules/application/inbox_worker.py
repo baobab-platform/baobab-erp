@@ -104,10 +104,20 @@ def main() -> None:
     if limit < 1 or lease < 30:
         raise RuntimeError("BAOBAB_INBOX_BATCH_LIMIT must be >= 1 and BAOBAB_INBOX_LEASE_SECONDS >= 30")
     configure()
+    # DEV-11: even disposable workers MUST never interpret an accepted
+    # Trade event as native ERP posting/creation authority. This CLI is
+    # stricter than the legacy directly invoked synthetic unit-test seam.
+    if os.environ.get("BAOBAB_REQUIRE_LEGAL_ACTOR_GATE", "").lower() == "false":
+        raise RuntimeError("ERP_INBOX_NATIVE_ACTION_GATE_CANNOT_BE_DISABLED")
+    os.environ["BAOBAB_REQUIRE_LEGAL_ACTOR_GATE"] = "true"
     engine_for = _engine_factory(_load_idempiere_credentials())
     with psycopg.connect(database_url) as connection:
+        # The registry is operator-owned and event-specific; the event cannot
+        # name a Context, role, mandate, provider policy or authority source.
+        from application.inbox_authority import from_operator_configuration
+        composition = from_operator_configuration(connection, engine_for)
         report = run_once(connection, engine_for, worker_id=f"{socket.gethostname()}-{os.getpid()}", limit=limit,
-                          lease_seconds=lease)
+                          lease_seconds=lease, authority_for=composition.for_claim if composition else None)
     print(json.dumps(report, sort_keys=True), file=sys.stdout, flush=True)
 
 
