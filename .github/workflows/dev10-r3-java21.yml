@@ -1,0 +1,39 @@
+# DEV10-R3 owner-side Java 21 candidate; not an iDempiere runtime certificate.
+name: DEV10 R3 Java21 ERP OSGi compatibility
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/dev10-r3-java21.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  java21-osgi:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: idempiere/extensions/**/pom.xml
+      - name: Assert actual Java 21 compiler and Maven 3.9 family
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -version
+          javac -version
+          mvn -version
+          java -version 2>&1 | grep -E 'version "21\.|openjdk 21\.'
+          javac -version 2>&1 | grep -E '^javac 21\.'
+          mvn -version | grep -E 'Apache Maven 3\.9\.'
+      - name: Build and execute OSGi module tests with Java 21
+        run: mvn --batch-mode --no-transfer-progress -f idempiere/extensions verify
+      - name: Verify actual packaged integration JAR contracts
+        run: >-
+          python3 scripts/verify_contract_artifacts.py
+          --jar idempiere/extensions/org.nabhold.baobab.erp.integration/target/org.nabhold.baobab.erp.integration-0.1.0.jar
