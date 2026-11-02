@@ -191,41 +191,49 @@ class NativeOrderProviderReadiness:
 
         # Trusted per-organisation placement, never a tenant DEFAULT or market
         # inferred from seller locale. Require exactly one CURRENT matching row.
-        with self.db.cursor() as cur:
-            cur.execute(
-                """SELECT count(*) FROM baobab_native.native_placement
-                   WHERE tenant_id=%s AND engine_instance_id=%s
-                     AND operating_organisation_id=%s::uuid
-                     AND legal_entity_id=%s AND market=%s
-                     AND ad_client_id=%s AND ad_org_id=%s
-                     AND effective_from <= now()
-                     AND (effective_to IS NULL OR effective_to > now())""",
-                (e.tenant_id, e.engine_instance_id, e.operating_organisation_id,
-                 e.legal_entity_id, e.market, e.ad_client_id, e.ad_org_id))
-            placement = cur.fetchone()[0]
-            cur.execute(
-                """SELECT count(*) FROM baobab.tenant_mapping
-                   WHERE tenant_id=%s AND entity_id=%s AND
-                         engine_instance_id=%s AND ad_client_id=%s
-                     AND ad_org_id=%s AND status='active'""",
-                (e.tenant_id, e.legal_entity_id, e.engine_instance_id,
-                 e.ad_client_id, e.ad_org_id))
-            target = cur.fetchone()[0]
-            cur.execute(
-                """SELECT count(*) FROM baobab.financial_configuration_baseline b
-                   WHERE b.legal_entity_id=%s AND b.version=%s
-                     AND b.effective_from <= current_date
-                     AND NOT EXISTS (
-                       SELECT 1 FROM baobab.financial_configuration_baseline_withdrawal w
-                        WHERE w.legal_entity_id=b.legal_entity_id AND w.version=b.version)
-                     AND NOT EXISTS (
-                       SELECT 1 FROM baobab.financial_configuration_baseline newer
-                        WHERE newer.legal_entity_id=b.legal_entity_id
-                          AND newer.effective_from <= current_date
-                          AND (newer.effective_from, newer.version)
-                              > (b.effective_from, b.version))""",
-                (e.legal_entity_id, e.finance_baseline_version))
-            baseline = cur.fetchone()[0]
+        try:
+            with self.db.cursor() as cur:
+                cur.execute(
+                    """SELECT count(*) FROM baobab_native.native_placement
+                       WHERE tenant_id=%s AND engine_instance_id=%s
+                         AND operating_organisation_id=%s::uuid
+                         AND legal_entity_id=%s AND market=%s
+                         AND ad_client_id=%s AND ad_org_id=%s
+                         AND effective_from <= now()
+                         AND (effective_to IS NULL OR effective_to > now())""",
+                    (e.tenant_id, e.engine_instance_id, e.operating_organisation_id,
+                     e.legal_entity_id, e.market, e.ad_client_id, e.ad_org_id))
+                placement = cur.fetchone()[0]
+                cur.execute(
+                    """SELECT count(*) FROM baobab.tenant_mapping
+                       WHERE tenant_id=%s AND entity_id=%s AND
+                             engine_instance_id=%s AND ad_client_id=%s
+                         AND ad_org_id=%s AND status='active'""",
+                    (e.tenant_id, e.legal_entity_id, e.engine_instance_id,
+                     e.ad_client_id, e.ad_org_id))
+                target = cur.fetchone()[0]
+                cur.execute(
+                    """SELECT count(*) FROM baobab.financial_configuration_baseline b
+                       WHERE b.legal_entity_id=%s AND b.version=%s
+                         AND b.effective_from <= current_date
+                         AND NOT EXISTS (
+                           SELECT 1 FROM baobab.financial_configuration_baseline_withdrawal w
+                            WHERE w.legal_entity_id=b.legal_entity_id AND w.version=b.version)
+                         AND NOT EXISTS (
+                           SELECT 1 FROM baobab.financial_configuration_baseline newer
+                            WHERE newer.legal_entity_id=b.legal_entity_id
+                              AND newer.effective_from <= current_date
+                              AND (newer.effective_from, newer.version)
+                                  > (b.effective_from, b.version))""",
+                    (e.legal_entity_id, e.finance_baseline_version))
+                baseline = cur.fetchone()[0]
+        except psycopg.Error:
+            # Missing native migration, unavailable PG or withdrawn finance
+            # evidence must never become optimistic native permission.
+            self.db.rollback()
+            raise LegalActorNotAuthorised(
+                "ERP native placement or Finance baseline unavailable"
+            ) from None
         if (placement, target, baseline) != (1, 1, 1):
             raise LegalActorNotAuthorised("ERP placement, target or current baseline invalid")
 
