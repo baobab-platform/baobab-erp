@@ -287,6 +287,11 @@ def from_operator_configuration(connection: psycopg.Connection, engine_for: Call
     path = os.environ.get("BAOBAB_ERP_INBOX_AUTHORITY_REGISTRY_FILE")
     if not path:
         return None
+    # A local operator file is the DEVELOPMENT composition route only.
+    # Production requires independent provider certification and deployment
+    # approval, not a copied development registry file.
+    if os.environ.get("BAOBAB_ENVIRONMENT", "") not in ("development", "test", "integration"):
+        raise RuntimeError("DEV11_OPERATOR_REGISTRY_NOT_PRODUCTION_AUTHORITY")
     names = (
         "BAOBAB_ERP_CP_URL", "BAOBAB_ERP_CP_OAUTH_TOKEN_URL",
         "BAOBAB_ERP_CP_WORKLOAD_CLIENT_ID", "BAOBAB_ERP_CP_WORKLOAD_SECRET_FILE",
