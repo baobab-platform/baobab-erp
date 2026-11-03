@@ -57,7 +57,7 @@ jobs:
         run: >-
           python3 scripts/verify_contract_artifacts.py
           --jar idempiere/extensions/org.nabhold.baobab.erp.integration/target/org.nabhold.baobab.erp.integration-0.1.0.jar
-  
+
   java21-native-finance:
     # The OSGi reactor's 39 JDBC Gate B tests intentionally skip without
     # BAOBAB_NATIVE_TEST_JDBC_URL. Do not call the Java21 compatibility
@@ -99,8 +99,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          java -version 2>&1 | grep -E 'version "21\\.|openjdk 21\\.'
-          javac -version 2>&1 | grep -E '^javac 21\\.'
+          java -version 2>&1 | grep -E 'version "21\.|openjdk 21\.'
+          javac -version 2>&1 | grep -E '^javac 21\.'
       - name: Create the native iDempiere table fixture
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/native/adempiere_fixture.sql
       - name: Apply application and native migrations
