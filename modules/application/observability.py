@@ -9,7 +9,8 @@ from __future__ import annotations
 import os
 from urllib.parse import urlsplit
 
-from opentelemetry import context, propagation, trace
+from opentelemetry import trace
+from opentelemetry.propagate import extract
 from opentelemetry.trace import Link, SpanKind, Status, StatusCode
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
@@ -52,7 +53,7 @@ def consumer_span(traceparent: str | None, name: str):
     links = []
     remote_context = None
     if traceparent:
-        candidate = propagation.extract({"traceparent": traceparent})
+        candidate = extract({"traceparent": traceparent})
         context_span = trace.get_current_span(candidate).get_span_context()
         if context_span.is_valid:
             remote_context = candidate
