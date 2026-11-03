@@ -156,42 +156,7 @@ python3 "$HERE/driver/ory_bootstrap.py" consume --run "$RUN" --out "$OUT"
 log "scenarios"
 export CP_COMMIT ERP_COMMIT=$(git -C "$REPO" rev-parse HEAD)
 python3 "$HERE/driver/gate_d_erp_a.py" scenarios --run "$RUN" --out "$OUT" --compose "$HERE/compose.yaml"
-grep -q '^ERP-A failures: 0
-
-# Explicit opt-in independent, real-component DEV-11 evidence using the
-# already-running protected iDempiere JVM. The core ERP-A suite above remains
-# unchanged. This is SYNTHETIC Trade origin, not L4-OPS-01 acceptance.
-if [ "${DEV11_REAL_NATIVE_ACCEPTANCE:-false}" = "true" ]; then
-  log "DEV-11 real Hydra/CP -> quorum RabbitMQ -> ERP -> protected JVM"
-  python3 -m venv "$RUN/dev11-venv"
-  "$RUN/dev11-venv/bin/python" -m pip install -q --disable-pip-version-check \
-    -e "$REPO/modules" "pika==1.3.2"
-  "$RUN/dev11-venv/bin/python" -B "$HERE/driver/dev11_native_connected.py" \
-    --run "$RUN" --out "$OUT" --compose "$HERE/compose.yaml"
-  python3 - "$OUT" <<'PYDEV11'
-import json
-from pathlib import Path
-import sys
-root = Path(sys.argv[1])
-engine = json.loads((root/"dev11-engine-local.json").read_text())
-native = json.loads((root/"dev11-native-effect.json").read_text())
-adopted = json.loads((root/"dev11-native-unknown-adopted.json").read_text())
-lineage = json.loads((root/"dev11-cp-jvm-lineage.json").read_text())
-assert engine.get("real_cp_authorized_idempiere_jvm_sales_order") is True
-assert native.get("native_order_effect_qualified") is True
-assert adopted.get("native_order_effect_qualified") is True
-assert adopted.get("adopted_after_recovery") is True
-assert engine.get("real_jvm_committed_then_worker_outcome_lost_and_adopted") is True
-assert lineage.get("native_cp_lineage_qualified") is True
-# A synthetic engine-local candidate can NEVER be marked fully qualified.
-assert all(record.get("l4_ops_01") == "BLOCKED" for record in
-           (engine, native, lineage))
-assert engine["full_medusa_buyer_commitment_proven"] is False
-assert engine["independent_exported_trace_graph_proven"] is False
-print("DEV11_NATIVE_ENGINE_LOCAL_CANDIDATE_PASS; FULL_L4_BLOCKED")
-PYDEV11
-fi
- "$OUT/erp-a-report.txt"
+grep -q '^ERP-A failures: 0$' "$OUT/erp-a-report.txt"
 
 # Explicit opt-in independent, real-component DEV-11 evidence using the
 # already-running protected iDempiere JVM. The core ERP-A suite above remains
