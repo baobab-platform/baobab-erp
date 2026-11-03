@@ -61,7 +61,7 @@ cleanup() {
   exit "$status"
 }
 # Old receipts never survive an aborted rerun. Only these owned evidence files are removed.
-rm -f "$OUT"/{erp-a-receipt,dev09-cleanup,dev09-report,dev09-report.sha256,dev09-ory-provision,dev09-ory-consumption,dev09-native-company,dev09-connected-report,dev09-connected-report.sha256}.json
+rm -f "$OUT"/{erp-a-receipt,dev09-cleanup,dev09-report,dev09-report.sha256,dev09-ory-provision,dev09-ory-consumption,dev09-native-company,dev09-connected-report,dev09-connected-report.sha256,dev12-native-restore,dev12-native-restore.sha256}.json
 trap cleanup EXIT
 : > "$OUT/run.log"
 : > "$OUT/erp-a-report.txt"
@@ -157,3 +157,6 @@ log "scenarios"
 export CP_COMMIT ERP_COMMIT=$(git -C "$REPO" rev-parse HEAD)
 python3 "$HERE/driver/gate_d_erp_a.py" scenarios --run "$RUN" --out "$OUT" --compose "$HERE/compose.yaml"
 grep -q '^ERP-A failures: 0$' "$OUT/erp-a-report.txt"
+
+log "DEV-12 native PG17 logical restore, preserved COMMIT veto and sibling cleanup"
+python3 "$HERE/driver/restore_drill.py" --compose "$HERE/compose.yaml" --out "$OUT"
