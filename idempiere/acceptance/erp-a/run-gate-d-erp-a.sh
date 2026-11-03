@@ -158,6 +158,9 @@ export CP_COMMIT ERP_COMMIT=$(git -C "$REPO" rev-parse HEAD)
 python3 "$HERE/driver/gate_d_erp_a.py" scenarios --run "$RUN" --out "$OUT" --compose "$HERE/compose.yaml"
 grep -q '^ERP-A failures: 0$' "$OUT/erp-a-report.txt"
 
+log "DEV-12 native PG17 logical restore, preserved COMMIT veto and sibling cleanup"
+python3 "$HERE/driver/restore_drill.py" --compose "$HERE/compose.yaml" --out "$OUT"
+
 # Explicit opt-in independent, real-component DEV-11 evidence using the
 # already-running protected iDempiere JVM. The core ERP-A suite above remains
 # unchanged. This is SYNTHETIC Trade origin, not L4-OPS-01 acceptance.
