@@ -4,6 +4,26 @@ on:
   pull_request:
     paths:
       - ".github/workflows/dev10-r3-java21.yml"
+      - "idempiere/extensions/**"
+      - "scripts/verify_contract_artifacts.py"
+      - "modules/shared_contracts/data/**"
+      - "tests/fixtures/authority-contract-cases.json"
+      - "tests/native/adempiere_fixture.sql"
+      - "db/migrations/**"
+      - "db/migrate.sh"
+      - "db/migrate-native.sh"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/dev10-r3-java21.yml"
+      - "idempiere/extensions/**"
+      - "scripts/verify_contract_artifacts.py"
+      - "modules/shared_contracts/data/**"
+      - "tests/fixtures/authority-contract-cases.json"
+      - "tests/native/adempiere_fixture.sql"
+      - "db/migrations/**"
+      - "db/migrate.sh"
+      - "db/migrate-native.sh"
   workflow_dispatch:
 permissions:
   contents: read
@@ -37,3 +57,62 @@ jobs:
         run: >-
           python3 scripts/verify_contract_artifacts.py
           --jar idempiere/extensions/org.nabhold.baobab.erp.integration/target/org.nabhold.baobab.erp.integration-0.1.0.jar
+  
+  java21-native-finance:
+    # The OSGi reactor's 39 JDBC Gate B tests intentionally skip without
+    # BAOBAB_NATIVE_TEST_JDBC_URL. Do not call the Java21 compatibility
+    # proof complete based solely on the non-database build job above.
+    # This is the REAL PostgreSQL 17 provider/COMMIT-fence fixture, not
+    # the full iDempiere release-13 runtime or a protected posting approval.
+    runs-on: ubuntu-26.04
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: baobab_native_test
+          POSTGRES_USER: baobab
+          POSTGRES_PASSWORD: baobab
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U baobab -d baobab_native_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://baobab:baobab@localhost:5432/baobab_native_test
+      BAOBAB_NATIVE_TEST_JDBC_URL: jdbc:postgresql://localhost:5432/baobab_native_test?user=baobab&password=baobab
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Temurin Java 21
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: idempiere/extensions/**/pom.xml
+      - name: Assert actual Java 21 execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -version 2>&1 | grep -E 'version "21\\.|openjdk 21\\.'
+          javac -version 2>&1 | grep -E '^javac 21\\.'
+      - name: Create the native iDempiere table fixture
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/native/adempiere_fixture.sql
+      - name: Apply application and native migrations
+        run: ./db/migrate.sh && ./db/migrate-native.sh
+      - name: Assert native migrations are idempotent
+        run: ./db/migrate-native.sh
+      - name: Execute JVM finance posting fences on PostgreSQL 17
+        run: >-
+          mvn --batch-mode --no-transfer-progress -f idempiere/extensions
+          -pl org.nabhold.baobab.erp.finance -am test
+          -Dtest=NativeFinancePostgresGateBTest -Dsurefire.failIfNoSpecifiedTests=false
+      - name: Require all 39 native JDBC tests to execute, none skipped
+        run: >-
+          grep -q 'tests="39"[^>]*skipped="0"'
+          idempiere/extensions/org.nabhold.baobab.erp.finance/target/surefire-reports/TEST-org.nabhold.baobab.erp.finance.NativeFinancePostgresGateBTest.xml
