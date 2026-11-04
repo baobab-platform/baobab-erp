@@ -44,6 +44,7 @@ _DIAGNOSTIC_FAILURES = {
     "DEV11_NATIVE_JVM_RESULT_UNKNOWN": "NATIVE_JVM_RESULT_UNKNOWN",
     "DEV11_NATIVE_DRIVER_PROPERTY_INVALID": "NATIVE_ENGINE_PROPERTY_REFUSED",
     "DEV11_NATIVE_CREATE_CONTRACT_INVALID": "NATIVE_ENGINE_CONTRACT_REFUSED",
+    "DEV11_NATIVE_REFERENCE_TOO_LONG": "NATIVE_ENGINE_REFERENCE_REFUSED",
 }
 _DRIVER_REFUSALS = {
     "BAOBAB_NATIVE_FINANCE_DENIED": "NATIVE_JVM_FINANCE_VETO",
@@ -52,10 +53,16 @@ _DRIVER_REFUSALS = {
     "DEV11_NATIVE_PRICE_INVALID": "NATIVE_JVM_PRICE_REFUSED",
     "DEV11_ORDER_REFERENCE_INVALID": "NATIVE_JVM_REFERENCE_REFUSED",
 }
+_FACT_STAGES = frozenset({
+    "NATIVE_FACT_CLIENT", "NATIVE_FACT_ORGANISATION", "NATIVE_FACT_CUSTOMER",
+    "NATIVE_FACT_REFERENCE", "NATIVE_FACT_DIRECTION", "NATIVE_FACT_CURRENCY",
+    "NATIVE_FACT_LINE_COUNT", "NATIVE_FACT_PRODUCT", "NATIVE_FACT_QUANTITY",
+    "NATIVE_FACT_PRICE",
+})
 NATIVE_DIAGNOSTIC_STAGES = frozenset({
     "NATIVE_ENGINE_READ", "NATIVE_ENGINE_QUERY", "NATIVE_ENGINE_CREATE",
     "NATIVE_ENGINE_ADOPT", "NATIVE_ENGINE_CLIENT_FAILURE",
-    *_DIAGNOSTIC_FAILURES.values(), *_DRIVER_REFUSALS.values(),
+    *_DIAGNOSTIC_FAILURES.values(), *_DRIVER_REFUSALS.values(), *_FACT_STAGES,
 })
 
 
@@ -220,14 +227,27 @@ class RealJvmGateDOrderAdapter:
                  FROM adempiere.c_orderline WHERE c_order_id=%s
                  ORDER BY c_orderline_id""", (native_id,))
         expected = expected_lines[0]
-        if (o["ad_client_id"] != self.client_id or o["ad_org_id"] != self.org_id
-                or o["c_bpartner_id"] != fields["C_BPartner_ID"]
-                or o["poreference"] != fields["POReference"]
-                or o["issotrx"] != "Y" or o["iso_code"] != fields["CurrencyISO"]
-                or len(lines) != 1 or
-                lines[0]["m_product_id"] != _positive(expected["M_Product_ID"], "SKU_ID")
-                or Decimal(str(lines[0]["qtyordered"])) != Decimal(expected["QtyOrdered"])
-                or Decimal(str(lines[0]["priceentered"])) != Decimal(expected["PriceEntered"])):
+        # Keep every exact business comparison. Only closed field categories
+        # may identify a mismatch; actual native/expected values stay private.
+        checks = {
+            "NATIVE_FACT_CLIENT": o["ad_client_id"] == self.client_id,
+            "NATIVE_FACT_ORGANISATION": o["ad_org_id"] == self.org_id,
+            "NATIVE_FACT_CUSTOMER": o["c_bpartner_id"] == fields["C_BPartner_ID"],
+            "NATIVE_FACT_REFERENCE": o["poreference"] == fields["POReference"],
+            "NATIVE_FACT_DIRECTION": o["issotrx"] == "Y",
+            "NATIVE_FACT_CURRENCY": o["iso_code"] == fields["CurrencyISO"],
+            "NATIVE_FACT_LINE_COUNT": len(lines) == 1,
+        }
+        if len(lines) == 1:
+            checks.update({
+                "NATIVE_FACT_PRODUCT": lines[0]["m_product_id"] == _positive(expected["M_Product_ID"], "SKU_ID"),
+                "NATIVE_FACT_QUANTITY": Decimal(str(lines[0]["qtyordered"])) == Decimal(expected["QtyOrdered"]),
+                "NATIVE_FACT_PRICE": Decimal(str(lines[0]["priceentered"])) == Decimal(expected["PriceEntered"]),
+            })
+        if not all(checks.values()):
+            for stage, matched in checks.items():
+                if not matched:
+                    _native_phase(stage)
             raise IdempiereClientError("DEV11_NATIVE_BUSINESS_FACTS_MISMATCH")
         return native_id
 
@@ -268,6 +288,26 @@ class RealJvmGateDOrderAdapter:
                 or len(str(quantity)) > 20 or len(str(price)) > 20
                 or not _PRICE.fullmatch(str(price))):
             raise IdempiereClientError("DEV11_NATIVE_AMOUNT_INVALID")
+        # POReference is an upstream native field, not a general canonical-ID
+        # store. Bind BOTH the live application dictionary and physical width
+        # before any JVM mutation; truncation would destroy retry identity.
+        widths = self._sql(
+            """SELECT c.fieldlength AS dictionary_width,
+                      n.character_maximum_length AS database_width
+               FROM adempiere.ad_column c
+               JOIN adempiere.ad_table t ON t.ad_table_id=c.ad_table_id
+               JOIN information_schema.columns n
+                 ON n.table_schema='adempiere' AND n.table_name='c_order'
+                AND n.column_name='poreference'
+               WHERE lower(t.tablename)='c_order'
+                 AND lower(c.columnname)='poreference'
+                 AND c.isactive='Y' AND t.isactive='Y'""", ())
+        if len(widths) != 1:
+            raise IdempiereClientError("DEV11_NATIVE_REFERENCE_METADATA_UNAVAILABLE")
+        maximum = min(_positive(widths[0][key], "REFERENCE_WIDTH")
+                      for key in ("dictionary_width", "database_width"))
+        if len(fields["POReference"]) > maximum:
+            raise IdempiereClientError("DEV11_NATIVE_REFERENCE_TOO_LONG")
         # No caller-selected product/partner is honoured by the Java fixture.
         # The Java driver asserts both IDs match its native GardenWorld seed.
         params = {
@@ -291,6 +331,12 @@ class RealJvmGateDOrderAdapter:
                         raise IdempiereClientError("DEV11_NATIVE_DRIVER_PROPERTY_INVALID")
                     output.write(key + "=" + value + "\n")
                 output.flush()
+                # The host worker and container JVM need not share a UID.
+                # Match Gate D's existing readable request protocol only after
+                # the complete synthetic-fixture request has been written.
+                # No bearer, secret or production payload enters this bridge;
+                # keep writes owner-only and publish by atomic rename below.
+                os.fchmod(output.fileno(), 0o644)
                 os.fsync(output.fileno())
             os.replace(temp, pending)
         except BaseException:

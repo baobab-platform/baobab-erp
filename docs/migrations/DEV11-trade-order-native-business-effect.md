@@ -331,3 +331,49 @@ no arbitrary exception text is admitted. The adapter rethrows the original
 error and the worker retains its retry/veto behavior. Protected environments
 stay silent. Negative protocol tests exercise a real local result file with
 mocked submission; they are not a successful JVM business-effect proof.
+
+The host/JVM request-file bridge also preserves Gate D's existing readable
+request protocol across different host/container UIDs. A temporary request
+starts at `0600`; after its complete bounded synthetic-fixture contents have
+been written it becomes `0644`, is synced, and is atomically renamed to the
+driver's watched suffix. Writes remain owner-only. Leaving the queued request
+at `0600` prevents a different-UID JVM from consuming it. This bridge contains
+no token, credential or production payload and is enabled only by the existing
+disposable GardenWorld restrictions. The negative file-protocol regression
+checks readability before publication and retains the unchanged JVM veto.
+Actual native execution/recovery remains required; a readable request is not
+an order or an authority grant.
+
+Run `41853915735` at `55a8ac536dde74a970f7a5fffd0ca45daff1c008`
+subsequently observed native query/create and
+`NATIVE_ENGINE_FACTS_MISMATCH`. The actual driver returned a committed native
+ID and the separate native database read found its header, but the exact
+business comparison refused it. That result does not qualify the intended
+order. It also establishes that queued-file readability was not this run's
+failure; the permission correction is a separate cross-UID compatibility fix.
+
+Readback diagnosis now names only closed client/Organisation/customer/reference,
+direction/currency, line-count/product/quantity/price mismatch categories.
+Every original comparison and the original mismatch exception are retained.
+Unit negatives mutate each independently, and assert that neither foreign
+identity nor a matching reference can override another mismatch. The next
+real run must identify the actual field and then prove the corrected native
+effect, recovery and revocation. No field is coerced, ignored or accepted from
+a producer-supplied success report.
+
+The input audit also found that the harness generated 44–52 character
+synthetic order references, while the upstream
+[C_Order.POReference dictionary](https://wiki.idempiere.org/en/Purchase_Order_%28Window_ID-181%29)
+documents 20 characters. The bridge now independently reads both the live
+AD_Column width and PostgreSQL physical width before any native creation, and
+refuses an overlong reference or unavailable metadata. It never truncates a
+canonical input. This protects retry/adoption identity even if an upstream
+setter would shorten a value before saving.
+
+The disposable harness creates fresh `order_` fixture IDs within 20 characters
+from the outset; all event, registry, CP and native observers retain the same
+unchanged fixture ID. This is not a mapping solution for longer real Medusa
+IDs. A production native-reference mapping or native extension remains a
+separate reviewed integration requirement, and the complete buyer-authorised
+Medusa vertical remains unqualified. Field diagnostics and the next actual
+runtime must establish which mismatch caused the previous failure.

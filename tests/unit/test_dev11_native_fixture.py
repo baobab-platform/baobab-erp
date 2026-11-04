@@ -10,6 +10,7 @@ import sys
 import unittest
 from contextlib import redirect_stdout
 from io import StringIO
+from unittest.mock import patch
 from types import SimpleNamespace
 
 DRIVER = Path(__file__).resolve().parents[2] / "idempiere/acceptance/erp-a/driver"
@@ -17,12 +18,19 @@ sys.path.insert(0, str(DRIVER))
 try:
     from dev11_native_connected import (inspect_outcome, inspect_cp_sales_decision,
                                        inspect_cp_documentary_decision, native_customer,
-                                       native_id)
+                                       native_id, fixture_order_reference)
 finally:
     sys.path.remove(str(DRIVER))
 
 
 class NativeCustomerSelectorTests(unittest.TestCase):
+    def test_synthetic_order_identity_is_created_within_native_reference_width(self):
+        with patch("dev11_native_connected.secrets.token_hex", return_value="ab" * 7):
+            reference = fixture_order_reference()
+        self.assertEqual(len(reference), 20)
+        self.assertTrue(reference.startswith("order_"))
+        self.assertRegex(reference, r"^order_[0-9a-f]{14}$")
+
     def test_native_outcome_diagnostic_never_emits_provider_text(self):
         class Row:
             def execute(self, *_):

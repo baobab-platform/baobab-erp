@@ -52,6 +52,12 @@ def demand(ok, code):
         raise RuntimeError(code)
 
 
+def fixture_order_reference():
+    # Create a fresh synthetic ID that fits native POReference from the start.
+    # Never truncate/hash an externally supplied canonical business ID to fit.
+    return "order_" + secrets.token_hex(7)
+
+
 def db_rows(db, sql, params=()):
     return db.execute(sql, params).fetchall()
 
@@ -531,13 +537,13 @@ def main():
         sku="sku_dev11_synthetic"
         bind_native(db,state,customer_id=customer,product_id=product,
                     sku=sku,customer_key=customer_key)
-        positive=event_for(state,order="order_dev11_"+uuid.uuid4().hex,
+        positive=event_for(state,order=fixture_order_reference(),
                            product_id=product,sku=sku,unit=unit,
                            customer_key=customer_key)
-        ambiguous=event_for(state,order="order_dev11_unknown_"+uuid.uuid4().hex,
+        ambiguous=event_for(state,order=fixture_order_reference(),
                             product_id=product,sku=sku,unit=unit,
                             customer_key=customer_key)
-        denied=event_for(state,order="order_dev11_revoked_"+uuid.uuid4().hex,
+        denied=event_for(state,order=fixture_order_reference(),
                          product_id=product,sku=sku,unit=unit,
                          customer_key=customer_key)
         # Bind CP's live sales responsibility to the exact first positive

@@ -7,6 +7,7 @@ positive proofs require the independently queried real engine and CP.
 from __future__ import annotations
 
 import os
+import stat
 from decimal import Decimal
 from pathlib import Path
 import tempfile
@@ -54,6 +55,7 @@ class AdapterUnitTests(unittest.TestCase):
         private = "private-native-record-and-bearer"
 
         def submit(source, target):
+            self.assertEqual(stat.S_IMODE(Path(source).stat().st_mode), 0o644)
             real_replace(source, target)
             (a.driver / "results" / Path(target).name).write_text(
                 "error=BAOBAB_NATIVE_FINANCE_DENIED: " + private + "\ncommitted=false\n")
@@ -63,6 +65,8 @@ class AdapterUnitTests(unittest.TestCase):
                 patch("integration.idempiere_gate_d_real.uuid.uuid4", return_value=
                       SimpleNamespace(hex="a" * 32)), \
                 patch("integration.idempiere_gate_d_real.os.replace", side_effect=submit), \
+                patch.object(a, "_sql", return_value=[{
+                    "dictionary_width": Decimal("20"), "database_width": 20}]), \
                 redirect_stdout(output), self.assertRaisesRegex(
                     IdempiereClientError, "^DEV11_NATIVE_JVM_VETO_OR_COMMIT_DENIED$"):
             a.create_record("C_Order", {
@@ -75,6 +79,21 @@ class AdapterUnitTests(unittest.TestCase):
         self.assertIn("NATIVE_JVM_FINANCE_VETO", output.getvalue())
         self.assertIn("NATIVE_JVM_COMMIT_DENIED", output.getvalue())
         self.assertNotIn(private, output.getvalue())
+
+    def test_long_reference_or_unknown_native_width_denies_before_any_driver_request(self):
+        a = self.adapter()
+        fields = {
+            "C_BPartner_ID": 11, "CurrencyISO": "USD",
+            "POReference": "order_dev11_" + "a" * 32,
+            "OrderLines": [{"M_Product_ID": "13", "QtyOrdered": "2", "PriceEntered": "10.00"}],
+        }
+        for rows in ([], [{"dictionary_width": 20, "database_width": 60}],
+                     [{"dictionary_width": 60, "database_width": 20}]):
+            with self.subTest(rows=rows), patch.object(a, "_sql", return_value=rows), \
+                    self.assertRaises(IdempiereClientError):
+                a.create_record("C_Order", fields)
+        self.assertEqual(list((a.driver / "requests").iterdir()), [])
+        self.assertEqual(fields["POReference"], "order_dev11_" + "a" * 32)
 
     def test_numeric_identifiers_are_exact_and_bounded(self):
         for value in (11, "11", Decimal("11"), Decimal("11.000")):
@@ -188,6 +207,45 @@ class AdapterUnitTests(unittest.TestCase):
                     "OrderLines": [{"M_Product_ID": "13", "QtyOrdered": "2",
                                     "PriceEntered": "10.00"}],
                 })
+
+    def test_readback_mismatch_categories_retain_all_exact_business_checks(self):
+        a = self.adapter()
+        header = {
+            "c_order_id": 500, "ad_client_id": 11, "ad_org_id": 11,
+            "c_bpartner_id": 17, "poreference": "order_dev11_fixture",
+            "issotrx": "Y", "iso_code": "USD",
+        }
+        line = {"m_product_id": 13, "qtyordered": Decimal("2"),
+                "priceentered": Decimal("10.00")}
+        fields = {
+            "C_BPartner_ID": 17, "CurrencyISO": "USD", "POReference": "order_dev11_fixture",
+            "OrderLines": [{"M_Product_ID": "13", "QtyOrdered": "2", "PriceEntered": "10.00"}],
+        }
+        changes = [
+            ("NATIVE_FACT_CLIENT", {"ad_client_id": 12}, {}),
+            ("NATIVE_FACT_ORGANISATION", {"ad_org_id": 12}, {}),
+            ("NATIVE_FACT_CUSTOMER", {"c_bpartner_id": 18}, {}),
+            ("NATIVE_FACT_REFERENCE", {"poreference": "private-other-reference"}, {}),
+            ("NATIVE_FACT_DIRECTION", {"issotrx": "N"}, {}),
+            ("NATIVE_FACT_CURRENCY", {"iso_code": "ZAR"}, {}),
+            ("NATIVE_FACT_PRODUCT", {}, {"m_product_id": 14}),
+            ("NATIVE_FACT_QUANTITY", {}, {"qtyordered": Decimal("3")}),
+            ("NATIVE_FACT_PRICE", {}, {"priceentered": Decimal("11.00")}),
+            ("NATIVE_FACT_LINE_COUNT", {}, None),
+        ]
+        for stage, header_change, line_change in changes:
+            output = StringIO()
+            rows = [] if line_change is None else [{**line, **line_change}]
+            with self.subTest(stage=stage), patch.dict(os.environ, {
+                    "DEV11_REAL_NATIVE_ACCEPTANCE": "true",
+            }), patch.object(a, "_sql", side_effect=[[{**header, **header_change}], rows]), \
+                    redirect_stdout(output), self.assertRaisesRegex(
+                        IdempiereClientError, "^DEV11_NATIVE_BUSINESS_FACTS_MISMATCH$"):
+                a._readback(500, fields)
+            self.assertIn("DEV11_NATIVE_AUTHORITY_STAGE " + stage, output.getvalue())
+            self.assertNotIn("private-other-reference", output.getvalue())
+        with patch.object(a, "_sql", side_effect=[[header], [line]]):
+            self.assertEqual(a._readback(500, fields), 500)
 
 
 if __name__ == "__main__":
