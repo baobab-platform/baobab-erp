@@ -234,3 +234,38 @@ unbound responses from becoming a positive. This isolates the source of the
 
 **This still does not qualify a buyer-authorized native Medusa commitment or a
 single current cross-engine trace**, and cannot authorize staging or production.
+
+## 4 November 2026 — independent documentary and native-readiness stage diagnosis
+
+The new preflight's original real CP observation recorded
+`AUTHORIZED` on the exact operation (workflow `41837185899`), but the
+separately running ERP receiver still returned `LEGAL_ACTOR_DENIED`.
+It would be **incorrect** to bypass that later veto or to infer an ERP
+order from the CP preflight.
+
+The harness now also asks the existing CP PEO-02T negative-only endpoint for
+the same CP-minted runtime context/Organisation, `erp.erp-a`, market and
+order. It stores a privacy-safe `dev11-cp-documentary-preflight.json`
+record without private identifiers or signatures. Only the exact, bounded,
+`blocked=false`, `authority_granted=false` result counts as an observed
+restriction clearance. It never grants permission. The ERP native worker
+requests an independent fresh 2-second documentary decision at point of use.
+
+If CP documentary preflight is clear yet the worker still refuses, the
+integration-only operator composition emits **static stage names only**:
+`CP_REQUEST`, `CP_RESPONSE_RECEIVED`, `DOCUMENTARY_REQUEST`,
+`DOCUMENTARY_RESPONSE_RECEIVED`, `NATIVE_PROVIDER_START`,
+`NATIVE_PROVIDER_READY`. Pass-through adapters do not interpret or change
+the CP result, token, documentary response or provider readiness; a denial
+remains a denial. The disposable driver captures the worker's full output
+privately and prints only these allowlisted stage names, never provider
+text, event contents, exception strings, URLs or bearer tokens.
+Staging/production cannot enable these logs. Unit negatives verify
+denied responses remain denied and protected logs remain silent.
+
+Successful stage observations do not qualify the native JVM.
+Owner-native company/organisation, actual C_Order/C_OrderLine, POReference,
+outbox/inbox consequences, revocation and atomic/replay negatives
+are still separately mandatory. The future real Trade event must originate
+from CAA-06b's **ENFORCED** B2B buyer/seller/spend commit, not the existing
+synthetic ERP fixture or Trade #188's synthetic outbox.
