@@ -13,7 +13,8 @@ from pathlib import Path
 import tempfile
 import unittest
 from contextlib import redirect_stdout
-from io import StringIO
+from io import BytesIO, StringIO
+from urllib.parse import parse_qs
 from unittest.mock import patch
 
 from application.inbox_authority import (
@@ -301,6 +302,40 @@ class OperatorAuthorityTests(unittest.TestCase):
         with patch.dict(os.environ, settings):
             with self.assertRaisesRegex(RuntimeError, "DEV11_OPERATOR_OAUTH_TOKEN_URL_NOT_SECURE"):
                 from_operator_configuration(None, None)
+
+    def test_composed_worker_requests_context_redemption_scope_without_posting_scope(self):
+        # Exercise the actual composition and OAuth form serialization. CP's
+        # shared redeemContext guard requires context:resolve even when an
+        # operator supplies an existing context handle. The worker must not
+        # borrow the harness/JVM's erp-posting-authority:resolve scope.
+        secret = Path(self.tempdir.name) / "workload-secret"
+        secret.write_text("dev11-synthetic-issuer-secret-long", encoding="utf-8")
+        secret.chmod(0o600)
+        captured = []
+
+        class TokenTransport:
+            def open(self, request, *, timeout):
+                captured.append(request)
+                return BytesIO(b'{"access_token":"synthetic-unit-token","expires_in":60}')
+
+        with patch.dict(os.environ, {
+                "BAOBAB_ERP_INBOX_AUTHORITY_REGISTRY_FILE": str(self.path),
+                "BAOBAB_ENVIRONMENT": "integration",
+                "BAOBAB_ERP_CP_URL": "https://cp.example.invalid",
+                "BAOBAB_ERP_CP_OAUTH_TOKEN_URL": "https://iam.example.invalid/oauth2/token",
+                "BAOBAB_ERP_CP_WORKLOAD_CLIENT_ID": "erp-dev11-worker",
+                "BAOBAB_ERP_CP_WORKLOAD_SECRET_FILE": str(secret),
+        }), patch("application.inbox_authority.urllib.request.build_opener",
+                  return_value=TokenTransport()):
+            composition = from_operator_configuration(None, None)
+            self.assertEqual(composition.token_provider(), "synthetic-unit-token")
+        self.assertEqual(len(captured), 1)
+        form = parse_qs(captured[0].data.decode())
+        self.assertEqual(set(form["scope"][0].split()), {
+            "context:resolve", "legal-actor:assess", "documentary:restriction-assess",
+        })
+        self.assertEqual(form["audience"], ["baobab-control-plane"])
+        self.assertEqual(form["grant_type"], ["client_credentials"])
 
 
 if __name__ == "__main__":

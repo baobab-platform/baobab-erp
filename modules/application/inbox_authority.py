@@ -386,7 +386,11 @@ def from_operator_configuration(connection: psycopg.Connection, engine_for: Call
         raise RuntimeError("DEV11_OPERATOR_OAUTH_TOKEN_URL_NOT_SECURE")
     token_provider = ClientCredentialsTokenProvider(
         os.environ[names[1]], os.environ[names[2]], client_secret,
-        "legal-actor:assess documentary:restriction-assess",
+        # Both assessment handlers redeem the principal-owned RUNTIME context
+        # through CP's shared guard, which independently requires this scope.
+        # Request only these already registered worker scopes; do not borrow
+        # the harness's separate JVM posting-authority permission.
+        "context:resolve legal-actor:assess documentary:restriction-assess",
         opener=urllib.request.build_opener(RejectRedirect()),
         audience="baobab-control-plane")
     return InboxAuthorityComposition(

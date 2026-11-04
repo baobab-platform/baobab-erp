@@ -290,3 +290,24 @@ provider errors and bearers remain private. No response or grant is changed.
 This permits the next native run to identify where its first CP call refuses
 without interpreting the independent preflight as an ERP permit. Actual
 current-head JVM/CP/replay/teardown qualification is still required.
+
+### CP context-redemption scope correction
+
+Real run `41849461938` at `9d043c848f6641944ceb0eda6003b1795f672398`
+observed successful independent sales/documentary preflights, followed by
+worker stages `CP_REQUEST`, `CP_HTTP_REQUEST` and `LEGAL_ACTOR_DENIED`.
+The worker requested only the two assessment scopes, whereas the preflight
+used the harness's complete registered scope set. At the exact accepted CP
+source `6fee9fe9537409df428a2e3dd7b8f78ff8d1d456`, both assessment handlers
+call the shared `redeemContext` guard, which also requires `context:resolve`.
+Possessing an operator-configured context handle never waives that guard.
+
+The development composition now requests that already registered context
+scope alongside its two assessment scopes. It does not change issuer grants,
+CP policy, ownership checks, mandates or native posting authority, and it
+does not request the harness/JVM's `erp-posting-authority:resolve` scope.
+A transport regression exercises the actual factory and serialized OAuth
+request, including the exact CP audience and absence of extra scopes.
+Actual current-head execution must still pass fresh CP/documentary/native
+checks, JVM business effects, revocation, ambiguous recovery and teardown;
+the source correction alone is not native acceptance.
