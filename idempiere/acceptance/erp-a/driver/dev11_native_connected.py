@@ -716,7 +716,11 @@ def main():
                 "synthetic_trade_origin_not_authorized_commitment":True,
                 "full_medusa_buyer_commitment_proven":False,
                 "lossless_native_uuid_reference_mapping":True,
-                "independent_exported_trace_graph_proven":bool(trade),
+                # Preserve the original engine-local schema's full-lineage limit.
+                # The new three-service component graph has its own receipt;
+                # authenticated buyer/BFF/IAM/CP lineage remains unqualified.
+                "independent_exported_trace_graph_proven":False,
+                "exported_trade_publisher_erp_component_graph_proven":bool(trade),
                 "same_persisted_trade_event_to_native_jvm":bool(trade),
                 "l4_ops_01":"BLOCKED",
                 "protected_acceptance":False,
