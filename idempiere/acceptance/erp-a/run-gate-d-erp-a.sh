@@ -53,7 +53,9 @@ cleanup() {
   trap - EXIT
   collect || status=1
   if [ "${GATE_D_KEEP:-0}" != "1" ]; then
-    "${COMPOSE[@]}" down -v --remove-orphans > "$OUT/cleanup.log" 2>&1 || status=1
+    # Include the optional broker even after a failed DEV-11 run. An inactive
+    # Compose profile must not leave its containers/network/volumes behind.
+    "${COMPOSE[@]}" --profile dev11 down -v --remove-orphans > "$OUT/cleanup.log" 2>&1 || status=1
     rm -rf "$RUN" || status=1
     python3 "$REPO/scripts/dev09_evidence.py" cleanup --project "$ERP_A_PROJECT" --run "$RUN" \
       --output "$OUT/dev09-cleanup.json" || status=1

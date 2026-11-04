@@ -8,16 +8,34 @@ from decimal import Decimal
 import sqlite3
 import sys
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 
 DRIVER = Path(__file__).resolve().parents[2] / "idempiere/acceptance/erp-a/driver"
 sys.path.insert(0, str(DRIVER))
 try:
-    from dev11_native_connected import native_customer, native_id
+    from dev11_native_connected import inspect_outcome, native_customer, native_id
 finally:
     sys.path.remove(str(DRIVER))
 
 
 class NativeCustomerSelectorTests(unittest.TestCase):
+    def test_native_outcome_diagnostic_never_emits_provider_text(self):
+        class Row:
+            def execute(self, *_):
+                return self
+
+            def fetchone(self):
+                return ("retry", "private-provider-text/token=not-public")
+
+        out = StringIO()
+        with redirect_stdout(out), self.assertRaisesRegex(
+                RuntimeError, "^DEV11_REAL_NATIVE_ORDER_NOT_EXECUTED$"):
+            inspect_outcome(Row(), "synthetic-event-only", allowed=True)
+        self.assertIn('"code": "UNCLASSIFIED"', out.getvalue())
+        self.assertNotIn("private-provider-text", out.getvalue())
+        self.assertNotIn("synthetic-event-only", out.getvalue())
+
     def test_exact_native_numeric_ids_without_coercion(self):
         for value in (101, Decimal("101"), Decimal("101.000")):
             self.assertEqual(native_id(value, "NOT_READY"), 101)

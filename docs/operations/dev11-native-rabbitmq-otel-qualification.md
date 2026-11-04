@@ -109,6 +109,15 @@ range. It still rejects missing, fractional, boolean, string and overflowing
 values. This correction applies consistently to partner, warehouse, price
 list and product IDs. It does not synthesize native records or evidence.
 
+Run `41808472573` passes fixture selection but still refuses the actual native
+order. The runner now exposes only bounded inbox status/outcome categories,
+never provider error text, event IDs or credentials. The full native success
+remains unqualified. Its failed cleanup also exposed the optional broker's
+profile: teardown now includes `--profile dev11`, while the independent
+read-only observer still requires zero run-owned resources. No failure may
+produce a successful native or cleanup receipt. The workflow also explicitly
+checks out the executing PR head, avoiding GitHub's temporary merge tree.
+
 The real native run `41601781964` reached the ERP-A scenarios, then failed
 because the DEV-12 restore drill had stopped ERP before DEV-11's JVM probe.
 The orchestrator now executes every live DEV-11 scenario first and performs

@@ -38,6 +38,12 @@ class RestoreFailureTests(unittest.TestCase):
         self.assertGreater(source.index('python3 "$HERE/driver/restore_drill.py"'),
                            source.index('"$RUN/dev11-venv/bin/python" -B'))
 
+    def test_cleanup_includes_optional_broker_profile_without_starting_it(self):
+        source = (DRIVER.parent / 'run-gate-d-erp-a.sh').read_text()
+        cleanup = source[source.index('cleanup() {'):source.index('trap cleanup EXIT')]
+        self.assertIn('"${COMPOSE[@]}" --profile dev11 down -v --remove-orphans', cleanup)
+        self.assertNotIn(' up ', cleanup)
+
     def test_protected_and_unknown_environments_never_touch_database(self):
         for environment in ('production', 'staging', '', None):
             with self.subTest(environment=environment), self.assertRaises(ValueError):

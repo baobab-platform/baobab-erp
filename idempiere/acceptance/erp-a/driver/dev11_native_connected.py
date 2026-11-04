@@ -20,6 +20,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import re
 import subprocess
 import sys
 import time
@@ -302,6 +303,14 @@ def inspect_outcome(db, event_id, *, allowed):
         (event_id,)).fetchone()
     demand(row is not None, "DEV11_NATIVE_INBOX_OUTCOME_UNOBSERVED")
     status, code = row
+    # outcome_code is an engine-owned diagnostic category, never last_error,
+    # provider text, event identity or credentials. Bound it before logging.
+    observed_status = status if status in (
+        "received", "processing", "processed", "blocked", "retry", "dead_letter") else "OTHER"
+    observed_code = code if isinstance(code, str) and re.fullmatch(
+        r"[A-Z][A-Z0-9_]{0,95}", code) else "UNCLASSIFIED"
+    print("DEV11_NATIVE_OUTCOME " + json.dumps({
+        "status": observed_status, "code": observed_code}), flush=True)
     if allowed:
         demand(status == "processed" and code in ("EXECUTED", "ADOPTED_NATIVE_ORDER"),
                "DEV11_REAL_NATIVE_ORDER_NOT_EXECUTED")
