@@ -260,6 +260,49 @@ class NativeOrderProviderReadiness:
             raise LegalActorNotAuthorised("iDempiere native provider not ready") from None
 
 
+# Diagnostic-only pass-through adapters. The real PEP still validates every
+# response and runs every check again. Never print an HTTP body, token, CP
+# decision, source event or exception; stages are a closed static vocabulary.
+# This instrumentation has no staging/production switch.
+def _dev11_phase(label: str) -> None:
+    if (os.environ.get("BAOBAB_ENVIRONMENT") == "integration"
+            and os.environ.get("DEV11_REAL_NATIVE_ACCEPTANCE") == "true"
+            and os.environ.get("BAOBAB_DEV11_REAL_JVM_GATE_ENABLED") == "true"):
+        print("DEV11_NATIVE_AUTHORITY_STAGE " + label, flush=True)
+
+
+class _ObservedCP:
+    def __init__(self, delegate):
+        self.delegate = delegate
+
+    def assess(self, request):
+        _dev11_phase("CP_REQUEST")
+        answer = self.delegate.assess(request)
+        _dev11_phase("CP_RESPONSE_RECEIVED")
+        return answer
+
+
+class _ObservedDocumentary:
+    def __init__(self, delegate):
+        self.delegate = delegate
+
+    def assess(self, request):
+        _dev11_phase("DOCUMENTARY_REQUEST")
+        answer = self.delegate.assess(request)
+        _dev11_phase("DOCUMENTARY_RESPONSE_RECEIVED")
+        return answer
+
+
+class _ObservedNativeProvider:
+    def __init__(self, delegate):
+        self.delegate = delegate
+
+    def ensure_legal_actor_usable(self, operation, mandate_id):
+        _dev11_phase("NATIVE_PROVIDER_START")
+        self.delegate.ensure_legal_actor_usable(operation, mandate_id)
+        _dev11_phase("NATIVE_PROVIDER_READY")
+
+
 class InboxAuthorityComposition:
     """Current IAM/CP checks, bound to one operator provisioned event context."""
 
@@ -285,13 +328,22 @@ class InboxAuthorityComposition:
             action="create_sales_order", activity=entry.activity,
             capability=entry.capability,
             authority_reference=entry.authority_reference)
+        assessor = HttpControlPlaneLegalActorAssessor(
+            self.cp_base, self.token_provider, correlation)
+        documentary = HttpControlPlaneDocumentaryRestrictionAssessor(
+            self.cp_base, self.token_provider, correlation)
+        provider = NativeOrderProviderReadiness(self.db, self.engine_for, entry)
+        # A private integration test may OBSERVE only stage transitions. All
+        # calls and returns are delegated unchanged to the real owner adapters.
+        if (os.environ.get("BAOBAB_ENVIRONMENT") == "integration"
+                and os.environ.get("DEV11_REAL_NATIVE_ACCEPTANCE") == "true"
+                and os.environ.get("BAOBAB_DEV11_REAL_JVM_GATE_ENABLED") == "true"):
+            assessor = _ObservedCP(assessor)
+            documentary = _ObservedDocumentary(documentary)
+            provider = _ObservedNativeProvider(provider)
         return InboxNativeAuthority(
-            operation=operation, policy=policy,
-            assessor=HttpControlPlaneLegalActorAssessor(
-                self.cp_base, self.token_provider, correlation),
-            documentary=HttpControlPlaneDocumentaryRestrictionAssessor(
-                self.cp_base, self.token_provider, correlation),
-            provider=NativeOrderProviderReadiness(self.db, self.engine_for, entry))
+            operation=operation, policy=policy, assessor=assessor,
+            documentary=documentary, provider=provider)
 
 
 def from_operator_configuration(connection: psycopg.Connection, engine_for: Callable):
