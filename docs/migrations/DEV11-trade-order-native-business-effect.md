@@ -204,3 +204,33 @@ staging/production gates.
 verified, `l4_ops_01=BLOCKED`. Never merge for this milestone based
 on unit-mock positives, synthetic native results or a passing inbox
 admission alone.**
+
+## 4 November 2026 — current CP sales-mandate preflight (diagnostic, not a grant)
+
+The original protected JVM integration run `41810583667` reached a **real
+RabbitMQ→PostgreSQL ERP inbox and a real worker**, but its first sales order
+remained `blocked/LEGAL_ACTOR_DENIED`. The preceding Gate D purchasing cases
+passed; this does not prove that the *new* sales mandate or documentary/native
+provider scope is currently usable. Retain the refusal, never alter the
+mandate/role or disable the native gate to obtain a positive.
+
+The disposable driver now requests an independent, live CP legal-actor
+assessment for `CONTRACTING_PARTY / SALES_ORDER_COMMITMENT / erp.erp-a`
+with the **same CP-minted RUNTIME context and actual commerce-order reference**
+as its next event. The signed workload token is obtained from real Hydra.
+The bounded `dev11-cp-sales-preflight.json` original carries only whether CP
+returned HTTP 200, one closed CP outcome, reference/context match and the
+required `provider_permissions_granted=false` marker; it never exports the
+bearer, mandate ID, Organisation ID, legal actor or event payload.
+
+A CP `AUTHORIZED` diagnostic is not an ERP permission. The worker separately
+rechecks CP twice at point of use, checks current documentary restrictions,
+ERP native placement and Finance baseline, verifies the real iDempiere
+AD_Client/AD_Org, then invokes the JVM authorization veto. Missing/invalid
+preflight blocks *before* broker emission; later revocation or native failure
+still blocks at the native PEP. Unit tests prevent unknown outcomes and
+unbound responses from becoming a positive. This isolates the source of the
+`LEGAL_ACTOR_DENIED` failure while preserving the real end-to-end gate.
+
+**This still does not qualify a buyer-authorized native Medusa commitment or a
+single current cross-engine trace**, and cannot authorize staging or production.
