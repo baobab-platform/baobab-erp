@@ -311,3 +311,23 @@ request, including the exact CP audience and absence of extra scopes.
 Actual current-head execution must still pass fresh CP/documentary/native
 checks, JVM business effects, revocation, ambiguous recovery and teardown;
 the source correction alone is not native acceptance.
+
+### Native transport diagnosis after context redemption passed
+
+Real run `41851433377` at `b7cecfb7f5b5018fafe24b4415cf0b061f2725ef`
+passed the worker's live CP responses, documentary responses and native
+provider readiness, including the actual JVM adapter's native company reads.
+It then returned `retry/ENGINE_UNAVAILABLE`, before a qualified native order
+effect was observed. The scope correction is therefore confirmed at its
+runtime boundary; the later engine failure remains separate.
+
+The disposable JVM adapter now emits closed read/query/create/adoption stages
+and static refusal classifications in the explicitly enabled private integration
+profile. Known driver refusal literals may identify a native finance veto,
+fixture/profile mismatch, price/reference refusal, unknown result or failed
+business-fact readback. Original driver messages, IDs, SQL, payloads and bearer
+values are never printed. The harness imports the same bounded vocabulary;
+no arbitrary exception text is admitted. The adapter rethrows the original
+error and the worker retains its retry/veto behavior. Protected environments
+stay silent. Negative protocol tests exercise a real local result file with
+mocked submission; they are not a successful JVM business-effect proof.

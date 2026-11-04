@@ -11,6 +11,9 @@ from decimal import Decimal
 from pathlib import Path
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from integration.idempiere_client import Eq, IdempiereClientError
@@ -26,6 +29,53 @@ ENV = {
 
 
 class AdapterUnitTests(unittest.TestCase):
+    def test_private_native_failure_diagnostics_rethrow_same_veto_without_provider_text(self):
+        a = self.adapter()
+        failure = IdempiereClientError("private-bearer-and-native-id-must-not-be-printed")
+        for deployment in ("integration", "staging", "production"):
+            output = StringIO()
+            with patch.dict(os.environ, {
+                    "DEV11_REAL_NATIVE_ACCEPTANCE": "true",
+                    "BAOBAB_DEPLOYMENT_ENV": deployment,
+            }), patch.object(a, "_sql", side_effect=failure), redirect_stdout(output):
+                with self.assertRaises(IdempiereClientError) as raised:
+                    a.get_record("M_Product", 11)
+            self.assertIs(raised.exception, failure)
+            self.assertNotIn(str(failure), output.getvalue())
+            if deployment == "integration":
+                self.assertIn("NATIVE_ENGINE_READ", output.getvalue())
+                self.assertIn("NATIVE_ENGINE_CLIENT_FAILURE", output.getvalue())
+            else:
+                self.assertEqual(output.getvalue(), "")
+
+    def test_negative_driver_result_is_classified_without_overriding_jvm_veto(self):
+        a = self.adapter()
+        real_replace = os.replace
+        private = "private-native-record-and-bearer"
+
+        def submit(source, target):
+            real_replace(source, target)
+            (a.driver / "results" / Path(target).name).write_text(
+                "error=BAOBAB_NATIVE_FINANCE_DENIED: " + private + "\ncommitted=false\n")
+
+        output = StringIO()
+        with patch.dict(os.environ, {"DEV11_REAL_NATIVE_ACCEPTANCE": "true"}), \
+                patch("integration.idempiere_gate_d_real.uuid.uuid4", return_value=
+                      SimpleNamespace(hex="a" * 32)), \
+                patch("integration.idempiere_gate_d_real.os.replace", side_effect=submit), \
+                redirect_stdout(output), self.assertRaisesRegex(
+                    IdempiereClientError, "^DEV11_NATIVE_JVM_VETO_OR_COMMIT_DENIED$"):
+            a.create_record("C_Order", {
+                "C_BPartner_ID": 11, "CurrencyISO": "USD",
+                "POReference": "order_dev11_fixture", "OrderLines": [{
+                    "M_Product_ID": "13", "QtyOrdered": "2", "PriceEntered": "10.00",
+                }],
+            })
+        self.assertIn("NATIVE_ENGINE_CREATE", output.getvalue())
+        self.assertIn("NATIVE_JVM_FINANCE_VETO", output.getvalue())
+        self.assertIn("NATIVE_JVM_COMMIT_DENIED", output.getvalue())
+        self.assertNotIn(private, output.getvalue())
+
     def test_numeric_identifiers_are_exact_and_bounded(self):
         for value in (11, "11", Decimal("11"), Decimal("11.000")):
             self.assertEqual(_positive(value, "TEST_ID"), 11)

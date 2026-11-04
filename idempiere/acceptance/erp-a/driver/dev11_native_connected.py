@@ -32,6 +32,7 @@ from urllib.parse import quote
 import pika
 import psycopg
 from psycopg.rows import dict_row
+from integration.idempiere_gate_d_real import NATIVE_DIAGNOSTIC_STAGES
 
 from erpalib import CP, Compose, Evidence, call
 from gate_d_erp_a import restore
@@ -424,7 +425,7 @@ _SAFE_AUTHORITY_STAGES = frozenset({
     "CP_REQUEST_CONTRACT", "CP_TOKEN_REQUEST", "CP_HTTP_REQUEST",
     "CP_RESPONSE_DECODE", "CP_RESPONSE_CONTRACT", "CP_RESPONSE_BINDING",
     "CP_ASSESSMENT_UNAVAILABLE",
-})
+}) | NATIVE_DIAGNOSTIC_STAGES
 
 
 def worker_once(env):

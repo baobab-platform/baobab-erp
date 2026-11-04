@@ -14,6 +14,7 @@ production, application-server HTTP endpoint or general Baobab engine transport.
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
+from functools import wraps
 from pathlib import Path
 import os
 import re
@@ -35,6 +36,53 @@ _NATIVE_ID_COLUMNS = frozenset({
     "id", "ad_client_id", "ad_org_id", "c_uom_id", "c_bpartner_id",
     "c_order_id", "c_orderline_id", "m_product_id",
 })
+_DIAGNOSTIC_FAILURES = {
+    "DEV11_NATIVE_READ_UNAVAILABLE": "NATIVE_ENGINE_READ_UNAVAILABLE",
+    "DEV11_NATIVE_RECORD_MISSING": "NATIVE_ENGINE_RECORD_MISSING",
+    "DEV11_NATIVE_BUSINESS_FACTS_MISMATCH": "NATIVE_ENGINE_FACTS_MISMATCH",
+    "DEV11_NATIVE_JVM_VETO_OR_COMMIT_DENIED": "NATIVE_JVM_COMMIT_DENIED",
+    "DEV11_NATIVE_JVM_RESULT_UNKNOWN": "NATIVE_JVM_RESULT_UNKNOWN",
+    "DEV11_NATIVE_DRIVER_PROPERTY_INVALID": "NATIVE_ENGINE_PROPERTY_REFUSED",
+    "DEV11_NATIVE_CREATE_CONTRACT_INVALID": "NATIVE_ENGINE_CONTRACT_REFUSED",
+}
+_DRIVER_REFUSALS = {
+    "BAOBAB_NATIVE_FINANCE_DENIED": "NATIVE_JVM_FINANCE_VETO",
+    "DEV11_NATIVE_PROTECTED_DRIVER_REQUIRED": "NATIVE_JVM_PROFILE_REFUSED",
+    "DEV11_NATIVE_FIXTURE_MAPPING_MISMATCH": "NATIVE_JVM_FIXTURE_MISMATCH",
+    "DEV11_NATIVE_PRICE_INVALID": "NATIVE_JVM_PRICE_REFUSED",
+    "DEV11_ORDER_REFERENCE_INVALID": "NATIVE_JVM_REFERENCE_REFUSED",
+}
+NATIVE_DIAGNOSTIC_STAGES = frozenset({
+    "NATIVE_ENGINE_READ", "NATIVE_ENGINE_QUERY", "NATIVE_ENGINE_CREATE",
+    "NATIVE_ENGINE_ADOPT", "NATIVE_ENGINE_CLIENT_FAILURE",
+    *_DIAGNOSTIC_FAILURES.values(), *_DRIVER_REFUSALS.values(),
+})
+
+
+def _native_phase(stage):
+    # Observe only a closed stage vocabulary in the explicitly private real
+    # integration profile. Never publish native result text, SQL, IDs or args.
+    if (stage in NATIVE_DIAGNOSTIC_STAGES
+            and os.environ.get("BAOBAB_ENVIRONMENT") == "integration"
+            and os.environ.get("DEV11_REAL_NATIVE_ACCEPTANCE") == "true"
+            and os.environ.get("BAOBAB_DEV11_REAL_JVM_GATE_ENABLED") == "true"
+            and os.environ.get("BAOBAB_DEPLOYMENT_ENV") not in ("staging", "production")):
+        print("DEV11_NATIVE_AUTHORITY_STAGE " + stage, flush=True)
+
+
+def _observed_native_call(stage):
+    def decorate(method):
+        @wraps(method)
+        def observed(*args, **kwargs):
+            _native_phase(stage)
+            try:
+                return method(*args, **kwargs)
+            except IdempiereClientError as failure:
+                _native_phase(_DIAGNOSTIC_FAILURES.get(
+                    str(failure), "NATIVE_ENGINE_CLIENT_FAILURE"))
+                raise  # Keep the exact native veto/unknown-outcome semantics.
+        return observed
+    return decorate
 
 
 def _positive(value, name):
@@ -102,6 +150,7 @@ class RealJvmGateDOrderAdapter:
         except psycopg.Error:
             raise IdempiereClientError("DEV11_NATIVE_READ_UNAVAILABLE") from None
 
+    @_observed_native_call("NATIVE_ENGINE_READ")
     def get_record(self, table: str, record_id: int):
         record_id = _positive(record_id, "RECORD_ID")
         selections = {
@@ -138,6 +187,7 @@ class RealJvmGateDOrderAdapter:
                 "AD_Org_ID": {"id": row["ad_org_id"]},
                 "POReference": row["poreference"], "IsSOTrx": row["issotrx"]}
 
+    @_observed_native_call("NATIVE_ENGINE_QUERY")
     def query(self, table, conditions, select):
         if (table != "C_Order" or len(conditions) != 1 or
                 not isinstance(conditions[0], Eq) or
@@ -181,6 +231,7 @@ class RealJvmGateDOrderAdapter:
             raise IdempiereClientError("DEV11_NATIVE_BUSINESS_FACTS_MISMATCH")
         return native_id
 
+    @_observed_native_call("NATIVE_ENGINE_ADOPT")
     def assert_existing_order_matches(self, native_id, order, customer, lines):
         # The native order is durable from an earlier uncertain attempt.
         # Prove company, client, legal reference and every line BEFORE
@@ -192,6 +243,7 @@ class RealJvmGateDOrderAdapter:
             customer, order.currency, lines, reference=order.commerce_order_id)
         return self._readback(native_id, fields)
 
+    @_observed_native_call("NATIVE_ENGINE_CREATE")
     def create_record(self, table, fields):
         if table != "C_Order" or not isinstance(fields, dict):
             raise IdempiereClientError("DEV11_NATIVE_CREATE_NOT_ALLOWED")
@@ -258,6 +310,12 @@ class RealJvmGateDOrderAdapter:
                 ready.unlink(missing_ok=True)
                 if ("error" in data or "driver_error" in data
                         or data.get("committed") != "true"):
+                    # The driver outcome remains private. A known literal
+                    # refusal may identify the boundary, never grant access.
+                    private_error = str(data.get("error", "")) + str(data.get("driver_error", ""))
+                    for code, stage in _DRIVER_REFUSALS.items():
+                        if code in private_error:
+                            _native_phase(stage)
                     raise IdempiereClientError("DEV11_NATIVE_JVM_VETO_OR_COMMIT_DENIED")
                 native_id = _positive(data.get("id"), "CREATED_ORDER")
                 observed = self._readback(native_id, fields)
