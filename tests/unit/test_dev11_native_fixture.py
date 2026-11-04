@@ -10,11 +10,12 @@ import sys
 import unittest
 from contextlib import redirect_stdout
 from io import StringIO
+from types import SimpleNamespace
 
 DRIVER = Path(__file__).resolve().parents[2] / "idempiere/acceptance/erp-a/driver"
 sys.path.insert(0, str(DRIVER))
 try:
-    from dev11_native_connected import inspect_outcome, native_customer, native_id
+    from dev11_native_connected import inspect_outcome, inspect_cp_sales_decision, native_customer, native_id
 finally:
     sys.path.remove(str(DRIVER))
 
@@ -35,6 +36,41 @@ class NativeCustomerSelectorTests(unittest.TestCase):
         self.assertIn('"code": "UNCLASSIFIED"', out.getvalue())
         self.assertNotIn("private-provider-text", out.getvalue())
         self.assertNotIn("synthetic-event-only", out.getvalue())
+
+    def test_cp_preflight_never_treats_malformed_or_unbound_reply_as_authority(self):
+        context, order = "context-from-cp", "order-from-trade"
+        good = {
+            "context_id": context, "operation_reference": order,
+            "provider_permissions_granted": False,
+            "legal_actor_resolution": {"outcome": "AUTHORIZED"},
+            # Untrusted extra response properties must never be emitted by
+            # the diagnostic receipt as tenant, buyer, token or mandate.
+            "secret_access_token": "must-not-be-reported",
+        }
+        read = lambda status, body: inspect_cp_sales_decision(
+            SimpleNamespace(status=status, body=body),
+            context_id=context, order_reference=order)
+        self.assertEqual(read(200, good), {
+            "http_ok": True, "decision": "AUTHORIZED",
+            "exact_operation": True, "provider_permissions": True})
+        for status, data in (
+                (403, good),
+                (200, {**good, "context_id": "other"}),
+                (200, {**good, "operation_reference": "other"}),
+                (200, {**good, "legal_actor_resolution":
+                       {"outcome": "ACTOR_NOT_VERIFIED"}}),
+                (200, {**good, "legal_actor_resolution":
+                       {"outcome": "INVENTED_ALLOW"}}),
+                (200, {**good, "provider_permissions_granted": True}),
+                (200, []),
+        ):
+            with self.subTest(status=status, body=data):
+                result = read(status, data)
+                self.assertFalse(
+                    result["http_ok"] and result["decision"] == "AUTHORIZED"
+                    and result["exact_operation"] and result["provider_permissions"])
+                self.assertNotIn("secret_access_token", str(result))
+                self.assertNotIn("must-not-be-reported", str(result))
 
     def test_exact_native_numeric_ids_without_coercion(self):
         for value in (101, Decimal("101"), Decimal("101.000")):
