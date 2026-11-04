@@ -31,11 +31,11 @@ jobs:
       BAOBAB_ENVIRONMENT: integration
       DEV11_REAL_NATIVE_ACCEPTANCE: "true"
       ERP_IMAGE: baobab-idempiere-acceptance:dev11
-      CP_PIN: ab61e35c35028bad1090232bcf2d7c67a84ef959
-      IAM_PIN: 27c4f376f33aef597ad23be7e03df7425f16c3c1
+      CP_PIN: 6fee9fe9537409df428a2e3dd7b8f78ff8d1d456
+      IAM_PIN: fae32b20187b2201e6070c382f563e170773e692
       CP_SRC: ${{ github.workspace }}/cp-source
       IAM_SRC: ${{ github.workspace }}/iam-source
-      IAM_COMMIT: 27c4f376f33aef597ad23be7e03df7425f16c3c1
+      IAM_COMMIT: fae32b20187b2201e6070c382f563e170773e692
     steps:
       - name: Check out ERP source (exact PR head)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -49,11 +49,11 @@ jobs:
           test -n "$BAOBAB_INTEGRATION_READ_TOKEN"
           # If GITHUB_TOKEN cannot read another private repo, checkout below
           # fails rather than skipping an authority dependency as successful.
-      - name: Checkout exact CP candidate, not main or an unreviewed release
+      - name: Checkout exact accepted CP source containing merged privacy logging
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: baobab-platform/baobab-cp
-          ref: ab61e35c35028bad1090232bcf2d7c67a84ef959
+          ref: 6fee9fe9537409df428a2e3dd7b8f78ff8d1d456
           path: cp-source
           token: ${{ secrets.BAOBAB_INTEGRATION_READ_TOKEN || github.token }}
           persist-credentials: false
@@ -61,7 +61,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: baobab-platform/baobab-iam
-          ref: 27c4f376f33aef597ad23be7e03df7425f16c3c1
+          ref: fae32b20187b2201e6070c382f563e170773e692
           path: iam-source
           token: ${{ secrets.BAOBAB_INTEGRATION_READ_TOKEN || github.token }}
           persist-credentials: false
@@ -133,5 +133,6 @@ jobs:
             artifacts/dev11-real-native/dev11-native-unknown-adopted.json
             artifacts/dev11-real-native/dev11-cp-jvm-lineage.json
             artifacts/dev11-real-native/dev09-cleanup.json
+            artifacts/dev11-real-native/dev11-native-fixture-readiness.json
           if-no-files-found: warn
           retention-days: 14

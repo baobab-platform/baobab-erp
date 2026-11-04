@@ -53,17 +53,52 @@ def db_rows(db, sql, params=()):
     return db.execute(sql, params).fetchall()
 
 
-def native_fixture(db):
-    # Resolve the *same native GardenWorld fixture* as SalesFlow.order; never
-    # guess a product by price/name on the business execution path.
-    customer = db.execute(
+def native_customer(db):
+    # Billing and shipping can be distinct native locations. Requiring one
+    # address to serve both roles incorrectly rejects a valid customer.
+    return db.execute(
         """SELECT min(bp.c_bpartner_id) FROM adempiere.c_bpartner bp
            WHERE bp.ad_client_id=11 AND bp.ad_org_id IN (0,11)
              AND bp.iscustomer='Y' AND bp.isactive='Y'
              AND EXISTS (SELECT 1 FROM adempiere.c_bpartner_location loc
                          WHERE loc.c_bpartner_id=bp.c_bpartner_id
-                           AND loc.isactive='Y' AND loc.isbillto='Y'
-                           AND loc.isshipto='Y')""").fetchone()[0]
+                           AND loc.isactive='Y' AND loc.isbillto='Y')
+             AND EXISTS (SELECT 1 FROM adempiere.c_bpartner_location loc
+                         WHERE loc.c_bpartner_id=bp.c_bpartner_id
+                           AND loc.isactive='Y' AND loc.isshipto='Y')""").fetchone()[0]
+
+
+def fixture_readiness(db):
+    """Closed aggregate diagnostics for this explicitly synthetic fixture.
+
+    Keep names, addresses and native IDs out of public logs/artifacts. Counts
+    help diagnose absent data without substituting it or loosening authority.
+    """
+    row = db.execute("""
+        SELECT count(*),
+               count(*) FILTER (WHERE bp.ad_org_id IN (0,11)),
+               count(*) FILTER (WHERE bp.ad_org_id IN (0,11) AND EXISTS (
+                 SELECT 1 FROM adempiere.c_bpartner_location loc
+                  WHERE loc.c_bpartner_id=bp.c_bpartner_id
+                    AND loc.isactive='Y' AND loc.isbillto='Y')),
+               count(*) FILTER (WHERE bp.ad_org_id IN (0,11) AND EXISTS (
+                 SELECT 1 FROM adempiere.c_bpartner_location loc
+                  WHERE loc.c_bpartner_id=bp.c_bpartner_id
+                    AND loc.isactive='Y' AND loc.isshipto='Y'))
+          FROM adempiere.c_bpartner bp
+         WHERE bp.ad_client_id=11 AND bp.iscustomer='Y' AND bp.isactive='Y'
+    """).fetchone()
+    keys = ("active_fixture_company_customers", "allowed_org_customers",
+            "allowed_org_bill_to_customers", "allowed_org_ship_to_customers")
+    return {"schema": "baobab.erp.dev11.fixture-readiness.v1",
+            "synthetic_fixture_only": True,
+            "counts": dict(zip(keys, row, strict=True))}
+
+
+def native_fixture(db):
+    # Resolve the *same native GardenWorld fixture* as SalesFlow.order; never
+    # guess a product by price/name on the business execution path.
+    customer = native_customer(db)
     demand(type(customer) is int and customer > 0, "DEV11_NATIVE_CUSTOMER_NOT_READY")
     warehouse = db.execute(
         """SELECT min(m_warehouse_id) FROM adempiere.m_warehouse
@@ -319,6 +354,9 @@ def main():
         "BAOBAB_ERP_CP_WORKLOAD_SECRET_FILE":str(run/"erp-secret"/"workload-secret"),
     }
     with psycopg.connect(erp_url,autocommit=True) as db:
+        readiness = fixture_readiness(db)
+        (out/"dev11-native-fixture-readiness.json").write_text(json.dumps(readiness))
+        print("DEV11_NATIVE_FIXTURE_READINESS " + json.dumps(readiness), flush=True)
         customer,product,unit=native_fixture(db)
         customer_key="customer_dev11_synthetic"
         sku="sku_dev11_synthetic"

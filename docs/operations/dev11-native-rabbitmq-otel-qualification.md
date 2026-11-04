@@ -89,6 +89,17 @@ expected-customer mapping is still rechecked by the JVM; missing customer
 data still fails closed. No partner ID, authority, stock, cost or successful
 order is invented. Actual native execution must be rerun at the corrected head.
 
+Run `41805321347` still refused the customer preflight. Billing and shipping
+are now checked as separate native location roles, matching ordinary ERP
+customers with distinct addresses. The opt-in runner retains aggregate
+readiness counts before refusal, without partner identifiers or addresses.
+These diagnostics are not a positive business-effect receipt. Its CP source
+now pins accepted main `6fee9fe9537409df428a2e3dd7b8f78ff8d1d456`, verified
+to contain merged CP #458. IAM pins current #153
+`fae32b20187b2201e6070c382f563e170773e692`; its sole change from the old
+pin closes missing/symlinked N02 evidence handling. Actual current-source
+runtime qualification remains mandatory after either source change.
+
 The real native run `41601781964` reached the ERP-A scenarios, then failed
 because the DEV-12 restore drill had stopped ERP before DEV-11's JVM probe.
 The orchestrator now executes every live DEV-11 scenario first and performs
