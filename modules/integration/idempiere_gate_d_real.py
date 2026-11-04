@@ -30,14 +30,34 @@ _REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{2,126}$")
 _INT = re.compile(r"^[1-9][0-9]{0,10}$")
 _PRICE = re.compile(r"^[0-9]+(?:\.[0-9]{1,4})?$")
 MAX_WAIT_SECONDS = 180
+_JVM_ID_MAX = 2_147_483_647
+_NATIVE_ID_COLUMNS = frozenset({
+    "id", "ad_client_id", "ad_org_id", "c_uom_id", "c_bpartner_id",
+    "c_order_id", "c_orderline_id", "m_product_id",
+})
 
 
 def _positive(value, name):
-    if type(value) is int:
-        value = str(value)
+    # PostgreSQL NUMERIC identifiers arrive as Decimal. Preserve the native
+    # REST-shaped integer interface without truncating fractions or accepting
+    # bool/float IDs, non-finite values or numbers outside Java's int range.
+    if type(value) in (int, Decimal):
+        if (type(value) is Decimal and not value.is_finite()
+                or not 0 < value <= _JVM_ID_MAX or value != int(value)):
+            raise IdempiereClientError("DEV11_NATIVE_" + name + "_INVALID")
+        value = str(int(value))
     if not isinstance(value, str) or not _INT.fullmatch(value):
         raise IdempiereClientError("DEV11_NATIVE_" + name + "_INVALID")
-    return int(value)
+    result = int(value)
+    if result > _JVM_ID_MAX:
+        raise IdempiereClientError("DEV11_NATIVE_" + name + "_INVALID")
+    return result
+
+
+def _native_row(row):
+    """Normalize only known identifier columns; business numbers stay exact."""
+    return {key: _positive(value, "READ_ID") if key in _NATIVE_ID_COLUMNS else value
+            for key, value in row.items()}
 
 
 def _private_driver_dir(raw: str):
@@ -102,7 +122,7 @@ class RealJvmGateDOrderAdapter:
         rows = self._sql(query, (record_id,))
         if len(rows) != 1:
             raise IdempiereClientError("DEV11_NATIVE_RECORD_MISSING")
-        row = rows[0]
+        row = _native_row(rows[0])
         if table == "AD_Org":
             return {"id": row["id"], "AD_Client_ID": {"id": row["ad_client_id"]},
                     "IsActive": row["isactive"]}
@@ -132,7 +152,7 @@ class RealJvmGateDOrderAdapter:
             """SELECT c_order_id AS id, ad_client_id, ad_org_id, poreference
                  FROM adempiere.c_order WHERE poreference=%s""",
             (conditions[0].value,))
-        return [dict(row) for row in rows]
+        return [_native_row(row) for row in rows]
 
     def _readback(self, native_id, fields):
         expected_lines = fields["OrderLines"]

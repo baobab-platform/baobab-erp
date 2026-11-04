@@ -269,3 +269,24 @@ outbox/inbox consequences, revocation and atomic/replay negatives
 are still separately mandatory. The future real Trade event must originate
 from CAA-06b's **ENFORCED** B2B buyer/seller/spend commit, not the existing
 synthetic ERP fixture or Trade #188's synthetic outbox.
+
+
+## Audit follow-up: native IDs and closed CP failure stages
+
+The isolated JVM bridge now converts only known native identifier columns
+from PostgreSQL NUMERIC/Decimal to exact positive Java-range integers before
+returning its REST-shaped read interface. Fractional, non-finite, boolean,
+floating, zero and overflowing IDs are refused. Foreign company values are
+retained so the independent scope check still denies them. Business decimal
+quantities and prices are not converted. This fixes the source defect found
+at the provider boundary, not a demonstrated cause of the earlier CP veto.
+
+The real legal-actor HTTP client now attaches only a closed failure stage to
+its existing ControlPlaneUnavailable exception: request contract, token
+request, HTTP request, response decode, response contract or response binding.
+The private integration observer rethrows the same exception and emits only
+that allowlisted stage. Protected environments stay silent; raw bodies, URLs,
+provider errors and bearers remain private. No response or grant is changed.
+This permits the next native run to identify where its first CP call refuses
+without interpreting the independent preflight as an ERP permit. Actual
+current-head JVM/CP/replay/teardown qualification is still required.

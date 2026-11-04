@@ -31,7 +31,10 @@ from integration.idempiere_client import IdempiereClientError
 from order_to_cash.documentary_restriction import HttpControlPlaneDocumentaryRestrictionAssessor
 from order_to_cash.inbox_execution import InboxNativeAuthority
 from order_to_cash.legal_actor_gate import LegalActorNotAuthorised, LegalActorOperation
-from order_to_cash.legal_actor_http_client import HttpControlPlaneLegalActorAssessor
+from order_to_cash.legal_actor_http_client import (
+    ASSESSMENT_FAILURE_STAGES, HttpControlPlaneLegalActorAssessor,
+    LegalActorAssessmentUnavailable,
+)
 from order_to_cash.native_action_gate import NativeActionPolicy
 from provisioning.control_plane_client import ClientCredentialsTokenProvider
 from shared_contracts.http import RejectRedirect
@@ -265,6 +268,10 @@ class NativeOrderProviderReadiness:
 # decision, source event or exception; stages are a closed static vocabulary.
 # This instrumentation has no staging/production switch.
 def _dev11_phase(label: str) -> None:
+    if label not in ASSESSMENT_FAILURE_STAGES | {
+            "CP_REQUEST", "CP_RESPONSE_RECEIVED", "DOCUMENTARY_REQUEST",
+            "DOCUMENTARY_RESPONSE_RECEIVED", "NATIVE_PROVIDER_START", "NATIVE_PROVIDER_READY"}:
+        return
     if (os.environ.get("BAOBAB_ENVIRONMENT") == "integration"
             and os.environ.get("DEV11_REAL_NATIVE_ACCEPTANCE") == "true"
             and os.environ.get("BAOBAB_DEV11_REAL_JVM_GATE_ENABLED") == "true"):
@@ -277,7 +284,13 @@ class _ObservedCP:
 
     def assess(self, request):
         _dev11_phase("CP_REQUEST")
-        answer = self.delegate.assess(request)
+        try:
+            answer = self.delegate.assess(request)
+        except LegalActorAssessmentUnavailable as refused:
+            # Preserve the exact exception/veto. No provider response, token,
+            # request property or arbitrary exception text enters this marker.
+            _dev11_phase(refused.diagnostic_stage)
+            raise
         _dev11_phase("CP_RESPONSE_RECEIVED")
         return answer
 

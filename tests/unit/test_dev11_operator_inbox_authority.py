@@ -23,6 +23,7 @@ from application.inbox_authority import (
 )
 from inbox.postgres_queue import Claim
 from order_to_cash.legal_actor_gate import LegalActorNotAuthorised, LegalActorOperation
+from order_to_cash.legal_actor_http_client import LegalActorAssessmentUnavailable
 
 
 ENTRY = {
@@ -224,6 +225,27 @@ class OperatorAuthorityTests(unittest.TestCase):
                                  "BAOBAB_ENVIRONMENT": environment}):
                 with self.assertRaisesRegex(RuntimeError, "DEV11_OPERATOR_REGISTRY_NOT_PRODUCTION_AUTHORITY"):
                     from_operator_configuration(None, None)
+
+    def test_private_cp_failure_stage_preserves_veto_without_sensitive_text(self):
+        private = "bearer-not-for-public-output"
+        original = LegalActorAssessmentUnavailable(private, stage="CP_RESPONSE_CONTRACT")
+        class CP:
+            def assess(self, _):
+                raise original
+        for environment in ("integration", "staging", "production"):
+            out = StringIO()
+            with patch.dict(os.environ, {
+                "BAOBAB_ENVIRONMENT": environment,
+                "DEV11_REAL_NATIVE_ACCEPTANCE": "true",
+                "BAOBAB_DEV11_REAL_JVM_GATE_ENABLED": "true",
+            }), redirect_stdout(out), self.assertRaises(LegalActorAssessmentUnavailable) as refused:
+                _ObservedCP(CP()).assess({})
+            self.assertIs(refused.exception, original)
+            self.assertNotIn(private, out.getvalue())
+            if environment == "integration":
+                self.assertIn("CP_RESPONSE_CONTRACT", out.getvalue())
+            else:
+                self.assertEqual(out.getvalue(), "")
 
     def test_integration_stage_observers_do_not_modify_replies_or_native_veto(self):
         private = "super-secret-bearer-must-not-be-printed"
