@@ -30,6 +30,7 @@ jobs:
     env:
       BAOBAB_ENVIRONMENT: integration
       DEV11_REAL_NATIVE_ACCEPTANCE: "true"
+      ERP_EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       ERP_IMAGE: baobab-idempiere-acceptance:dev11
       CP_PIN: 6fee9fe9537409df428a2e3dd7b8f78ff8d1d456
       IAM_PIN: fae32b20187b2201e6070c382f563e170773e692
@@ -79,6 +80,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ERP_EXPECTED_SOURCE_SHA"
           test "$(git -C cp-source rev-parse HEAD)" = "$CP_PIN"
           test "$(git -C iam-source rev-parse HEAD)" = "$IAM_PIN"
           python3 -m compileall -q \
