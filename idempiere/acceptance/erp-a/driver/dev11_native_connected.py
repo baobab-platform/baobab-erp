@@ -25,6 +25,7 @@ import sys
 import time
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 from urllib.parse import quote
 
 import pika
@@ -51,6 +52,15 @@ def demand(ok, code):
 
 def db_rows(db, sql, params=()):
     return db.execute(sql, params).fetchall()
+
+
+def native_id(value, code):
+    # iDempiere IDs are often NUMERIC(10,0), which psycopg correctly returns
+    # as Decimal. Accept only exact positive IDs representable by the JVM's
+    # int API; never truncate fractions or coerce strings/booleans to IDs.
+    valid = type(value) is int or type(value) is Decimal and value.is_finite()
+    demand(valid and 0 < value <= 2_147_483_647 and value == int(value), code)
+    return int(value)
 
 
 def native_customer(db):
@@ -98,17 +108,16 @@ def fixture_readiness(db):
 def native_fixture(db):
     # Resolve the *same native GardenWorld fixture* as SalesFlow.order; never
     # guess a product by price/name on the business execution path.
-    customer = native_customer(db)
-    demand(type(customer) is int and customer > 0, "DEV11_NATIVE_CUSTOMER_NOT_READY")
+    customer = native_id(native_customer(db), "DEV11_NATIVE_CUSTOMER_NOT_READY")
     warehouse = db.execute(
         """SELECT min(m_warehouse_id) FROM adempiere.m_warehouse
            WHERE ad_client_id=11 AND ad_org_id=11 AND isactive='Y'""").fetchone()[0]
-    demand(type(warehouse) is int and warehouse > 0, "DEV11_NATIVE_WAREHOUSE_NOT_READY")
+    warehouse = native_id(warehouse, "DEV11_NATIVE_WAREHOUSE_NOT_READY")
     price_list = db.execute(
         """SELECT min(m_pricelist_id) FROM adempiere.m_pricelist
            WHERE ad_client_id=11 AND issopricelist='Y'
              AND isdefault='Y' AND isactive='Y'""").fetchone()[0]
-    demand(type(price_list) is int and price_list > 0, "DEV11_NATIVE_SALES_PRICELIST_NOT_READY")
+    price_list = native_id(price_list, "DEV11_NATIVE_SALES_PRICELIST_NOT_READY")
     product = db.execute(
         """SELECT min(p.m_product_id)
            FROM adempiere.m_product p
@@ -134,7 +143,7 @@ def native_fixture(db):
         (price_list, warehouse)).fetchone()[0]
     # Each failure is a closed diagnostic category, never a guessed native ID
     # or a reason to loosen price/cost/stock predicates to force a positive.
-    demand(type(product) is int and product > 0, "DEV11_NATIVE_SALEABLE_STOCK_NOT_READY")
+    product = native_id(product, "DEV11_NATIVE_SALEABLE_STOCK_NOT_READY")
     unit = db.execute(
         """SELECT u.x12de355 FROM adempiere.m_product p
            JOIN adempiere.c_uom u ON u.c_uom_id=p.c_uom_id

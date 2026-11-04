@@ -100,6 +100,15 @@ to contain merged CP #458. IAM pins current #153
 pin closes missing/symlinked N02 evidence handling. Actual current-source
 runtime qualification remains mandatory after either source change.
 
+The next real run `41807024215` returned seven actual usable fixture
+customers in all readiness categories, while the selector still refused.
+The cause was numeric adaptation: native iDempiere `NUMERIC(10,0)` IDs are
+returned by psycopg as `Decimal`, not Python `int`. The preflight now accepts
+only exact positive integral `int`/finite `Decimal` values within the JVM int
+range. It still rejects missing, fractional, boolean, string and overflowing
+values. This correction applies consistently to partner, warehouse, price
+list and product IDs. It does not synthesize native records or evidence.
+
 The real native run `41601781964` reached the ERP-A scenarios, then failed
 because the DEV-12 restore drill had stopped ERP before DEV-11's JVM probe.
 The orchestrator now executes every live DEV-11 scenario first and performs
