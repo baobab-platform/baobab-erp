@@ -247,6 +247,61 @@ def require_current_cp_sales_preflight(state, secret, context_id, order, output)
     return observed
 
 
+def inspect_cp_documentary_decision(reply, *, context_id, organisation_id,
+                                    order_reference, market, capability):
+    """Bounded negative-only CP observation; not a provider/Trade grant."""
+    refused = {"http_ok": False, "exact_operation": False,
+               "unblocked": False, "negative_only": False}
+    if reply.status != 200 or not isinstance(reply.body, dict):
+        return refused
+    data = reply.body
+    exact = (data.get("context_id") == context_id and
+             data.get("organisation_id") == organisation_id and
+             data.get("operation_reference") == order_reference and
+             data.get("market") == market and
+             data.get("capability") == capability and
+             data.get("policy_reference") == "ADR-BCP-026/PEO-02T:negative-only")
+    return {"http_ok": True, "exact_operation": exact,
+            "unblocked": data.get("blocked") is False,
+            "negative_only": data.get("authority_granted") is False}
+
+
+def require_current_cp_documentary_preflight(state, secret, context_id, order, output):
+    """Classify current negative-only CP restriction independently of ERP PEP.
+
+    The real worker MUST fetch its own fresh 2-second CP lease at point of use.
+    A preflight is an observation, never a cached documentary permission.
+    """
+    status, token = http("POST", HYDRA_PUBLIC + "/oauth2/token", {
+        "grant_type": "client_credentials", "client_id": HYDRA_CLIENT,
+        "client_secret": secret, "scope": " ".join(SCOPES),
+        "audience": "baobab-control-plane",
+    }, form=True)
+    demand(status == 200 and isinstance(token.get("access_token"), str),
+           "DEV11_CP_DOCUMENTARY_HYDRA_TOKEN_UNAVAILABLE")
+    capability = "erp.erp-a"
+    reply = call("POST", CP + "/internal/documentary/v1/restrictions/assess", {
+        "context_id": context_id, "capability": capability,
+        "market": state["market"], "operation_reference": order,
+    }, {"Authorization": "Bearer " + token["access_token"]})
+    observed = inspect_cp_documentary_decision(
+        reply, context_id=context_id, organisation_id=state["organisation"],
+        order_reference=order, market=state["market"], capability=capability)
+    output.write_text(json.dumps({
+        "schema": "baobab.erp.dev11.cp-documentary-preflight.v1",
+        "synthetic_disposable_scope": True,
+        "cp_http_ok": observed["http_ok"],
+        "exact_operation": observed["exact_operation"],
+        "not_blocked_observed": observed["unblocked"],
+        "negative_only": observed["negative_only"],
+        "finance_permission_inferred": False,
+        "native_business_effect_qualified": False,
+    }, sort_keys=True) + "\n")
+    print("DEV11_CP_DOCUMENTARY_PREFLIGHT " + json.dumps(observed, sort_keys=True),
+          flush=True)
+    demand(all(observed.values()), "DEV11_CP_DOCUMENTARY_PREFLIGHT_REFUSED")
+
+
 def event_for(state, *, order, product_id, sku, unit, customer_key):
     from events.registry import dataschema_for
     event_id = str(uuid.uuid4())
@@ -467,6 +522,9 @@ def main():
         require_current_cp_sales_preflight(
             state, secret, context_id, positive["data"]["commerce_order_id"],
             out/"dev11-cp-sales-preflight.json")
+        require_current_cp_documentary_preflight(
+            state, secret, context_id, positive["data"]["commerce_order_id"],
+            out/"dev11-cp-documentary-preflight.json")
         registry=operator_file(run,state,context_id,(positive,ambiguous,denied))
         native_env["BAOBAB_ERP_INBOX_AUTHORITY_REGISTRY_FILE"]=str(registry)
 
