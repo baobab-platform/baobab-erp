@@ -76,3 +76,29 @@ The next independently necessary qualified proof is a real authorised
 post-engine/pre-ERP-commit crash, adoption by `POReference` rather than
 recreation, second-company isolation, and a single ERP consequence/outbox
 event. Until then: **L4-OPS-01 = BLOCKED**.
+
+
+## 4 November 2026 maintenance corrections
+
+The real native run `41601781964` reached the ERP-A scenarios, then failed
+because the DEV-12 restore drill had stopped ERP before DEV-11's JVM probe.
+The orchestrator now executes every live DEV-11 scenario first and performs
+the quiescing restore last. It retains the actual JVM veto marker check,
+all native authority/revocation/replay cases and the final teardown observer.
+A stale ready marker never substitutes for a running protected JVM.
+
+`scripts/validate.sh` now installs the runtime dependencies declared in
+`modules/pyproject.toml` into a private temporary target. The former partial
+list omitted psycopg, Pika and the OTel SDK, causing five import failures in
+run `41601781934`. This uses the existing development image unchanged.
+
+Signed JSON with duplicate members, non-finite numbers or excessive nesting
+is rejected as poison before persistence; it is not retried as a PostgreSQL
+outage. Unit regressions verify DLX rejection, no ACK/persistence and unchanged
+transient DB NACK behavior. The old public unit HMAC placeholder is replaced
+with a generated per-test key; only its exact historical scanner fingerprint
+is documented, preserving full-history scanning and review history.
+
+These are implementation corrections. Native JVM and broker evidence must
+be rerun at the new head. No full Medusa commitment, same-event multi-engine
+trace, protected execution or L4-OPS-01 acceptance is claimed.

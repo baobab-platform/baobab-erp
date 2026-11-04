@@ -35,3 +35,7 @@ c4920c48af20deb860cb8b965346e74aa4c6969b:tests/integration/test_postgres_inbox_s
 226a3a2c9c27f9fbc4578f98b26ed99870925f78:tests/integration/test_provisioning_operations.py:generic-api-key:409
 226a3a2c9c27f9fbc4578f98b26ed99870925f78:tests/integration/test_provisioning_operations.py:generic-api-key:430
 226a3a2c9c27f9fbc4578f98b26ed99870925f78:tests/integration/test_provisioning_operations.py:generic-api-key:433
+# Exact historical public unit fixture, not an issued credential. The current
+# test now generates its HMAC key per instance. Preserve review history and
+# full-history scanning; no rule, directory or future finding is excluded.
+c9fe1c689c35e4a029d4765482d394f04c2306d0:tests/unit/test_dev11_amqp_consumer.py:generic-api-key:84

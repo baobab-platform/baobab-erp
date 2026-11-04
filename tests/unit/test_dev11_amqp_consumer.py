@@ -2,6 +2,7 @@
 import hashlib
 import hmac
 import json
+import secrets
 import unittest
 from types import SimpleNamespace
 
@@ -81,9 +82,9 @@ def signed(wire, secret):
 
 
 class DEV11AMQPAdmissionTests(unittest.TestCase):
-    secret = "dev11-signing-secret-this-is-synthetic"
-
     def setUp(self):
+        # Generated per-test fixture only, never a reusable credential in Git.
+        self.secret = secrets.token_urlsafe(32)
         self.store = Store()
         self.channel = Channel()
         self.delivery = SimpleNamespace(delivery_tag=7)
@@ -127,6 +128,24 @@ class DEV11AMQPAdmissionTests(unittest.TestCase):
         self.call(content_type="application/json")
         self.assertFalse(self.store.rows)
         self.assertEqual(self.channel.calls[0][0], "REJECT")
+
+    def test_signed_ambiguous_nonfinite_and_deep_json_is_poison_not_db_retry(self):
+        valid, _ = signed(event_wire(), self.secret)
+        for body in (
+            b'{"specversion":"0.3",' + valid[1:],
+            json.dumps({**event_wire(), "data": {"amount": float("nan")}}).encode(),
+            b"[" * 1500 + b"0" + b"]" * 1500,
+        ):
+            with self.subTest(size=len(body)):
+                channel = Channel()
+                signature = "sha256=" + hmac.new(self.secret.encode(), body, hashlib.sha256).hexdigest()
+                props = SimpleNamespace(content_type=EVENT_CONTENT_TYPE,
+                                        headers={EVENT_SIGNATURE_HEADER: signature})
+                delivery_callback(channel, self.delivery, props, body,
+                                  store_factory=lambda: Scope(self.store), secret=self.secret)
+                self.assertEqual(channel.calls, [("REJECT", {"delivery_tag": 7, "requeue": False})])
+                self.assertFalse(channel.stopped)
+                self.assertFalse(self.store.rows)
 
     def test_post_commit_crash_boundary_leaves_delivery_unacked(self):
         wire = event_wire()

@@ -158,9 +158,6 @@ export CP_COMMIT ERP_COMMIT=$(git -C "$REPO" rev-parse HEAD)
 python3 "$HERE/driver/gate_d_erp_a.py" scenarios --run "$RUN" --out "$OUT" --compose "$HERE/compose.yaml"
 grep -q '^ERP-A failures: 0$' "$OUT/erp-a-report.txt"
 
-log "DEV-12 native PG17 logical restore, preserved COMMIT veto and sibling cleanup"
-python3 "$HERE/driver/restore_drill.py" --compose "$HERE/compose.yaml" --out "$OUT"
-
 # Explicit opt-in independent, real-component DEV-11 evidence using the
 # already-running protected iDempiere JVM. The core ERP-A suite above remains
 # unchanged. This is SYNTHETIC Trade origin, not L4-OPS-01 acceptance.
@@ -194,3 +191,9 @@ assert engine["independent_exported_trace_graph_proven"] is False
 print("DEV11_NATIVE_ENGINE_LOCAL_CANDIDATE_PASS; FULL_L4_BLOCKED")
 PYDEV11
 fi
+
+# The restore drill deliberately quiesces the JVM and leaves it stopped.
+# Run it after every live native consumer scenario; a stale ready marker
+# cannot make a stopped ERP executable or qualify DEV-11.
+log "DEV-12 native PG17 logical restore, preserved COMMIT veto and sibling cleanup"
+python3 "$HERE/driver/restore_drill.py" --compose "$HERE/compose.yaml" --out "$OUT"

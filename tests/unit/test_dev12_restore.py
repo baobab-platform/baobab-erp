@@ -31,6 +31,13 @@ class FailingRestore:
 
 
 class RestoreFailureTests(unittest.TestCase):
+    def test_quiescing_restore_is_after_all_live_native_scenarios(self):
+        # The actual CI harness is the integration regression: DEV-12 leaves
+        # ERP stopped, so placing DEV-11 after it cannot exercise a live JVM.
+        source = (DRIVER.parent / 'run-gate-d-erp-a.sh').read_text()
+        self.assertGreater(source.index('python3 "$HERE/driver/restore_drill.py"'),
+                           source.index('"$RUN/dev11-venv/bin/python" -B'))
+
     def test_protected_and_unknown_environments_never_touch_database(self):
         for environment in ('production', 'staging', '', None):
             with self.subTest(environment=environment), self.assertRaises(ValueError):

@@ -17,6 +17,20 @@ class InvalidSignatureError(Exception):
     pass
 
 
+def _unique_members(pairs):
+    """One signed JSON body must have one interpretation at every consumer."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("ERP_EVENT_DUPLICATE_JSON_MEMBER")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite(_value):
+    raise ValueError("ERP_EVENT_NONFINITE_JSON_VALUE")
+
+
 def receive(body: bytes, signature: str, secret: str, store: InboxStore) -> CloudEvent:
     """Verify, parse, deduplicate, and record an inbound canonical event. Returns the event either way.
 
@@ -28,8 +42,12 @@ def receive(body: bytes, signature: str, secret: str, store: InboxStore) -> Clou
         raise InvalidSignatureError("Invalid event signature")
 
     try:
-        parsed = json.loads(body)
-    except json.JSONDecodeError as exc:
+        parsed = json.loads(body, object_pairs_hook=_unique_members,
+                            parse_constant=_reject_nonfinite)
+    except (json.JSONDecodeError, RecursionError) as exc:
+        # Excessive JSON nesting is poison input, not a transient database
+        # failure. The AMQP owner rejects it to DLX instead of requeueing
+        # forever and starving valid events behind it.
         raise ValueError("the event body is not valid JSON") from exc
     event = check_consumable(CloudEvent.from_wire(parsed))
     if store.exists(event.source, event.id):
