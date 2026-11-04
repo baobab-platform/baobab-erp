@@ -95,6 +95,19 @@ class AdapterUnitTests(unittest.TestCase):
         self.assertEqual(list((a.driver / "requests").iterdir()), [])
         self.assertEqual(fields["POReference"], "order_dev11_" + "a" * 32)
 
+    def test_native_uuid_mode_does_not_accept_a_canonical_id_or_alias_poreference(self):
+        a=self.adapter()
+        fields={"C_BPartner_ID":11,"CurrencyISO":"USD","C_Order_UU":"order_"+"a"*32,
+                "OrderLines":[{"M_Product_ID":"13","QtyOrdered":"2","PriceEntered":"10.00"}]}
+        with self.assertRaises(IdempiereClientError): a.create_record("C_Order",fields)
+        fields["C_Order_UU"]="15be9a37-3545-4cdf-8f20-842b4c84f771"
+        with self.assertRaises(IdempiereClientError):
+            a.create_record("C_Order",{**fields,"POReference":"an-alias"})
+        with patch.object(a,"_sql",return_value=[]), self.assertRaisesRegex(
+                IdempiereClientError,"REFERENCE_METADATA_UNAVAILABLE"):
+            a.create_record("C_Order",fields)
+        self.assertEqual(list((a.driver/"requests").iterdir()),[])
+
     def test_numeric_identifiers_are_exact_and_bounded(self):
         for value in (11, "11", Decimal("11"), Decimal("11.000")):
             self.assertEqual(_positive(value, "TEST_ID"), 11)

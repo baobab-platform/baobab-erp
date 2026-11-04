@@ -9,6 +9,7 @@ This separate native effect proof cannot alone qualify the entire L4-OPS-01.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -41,7 +42,7 @@ def unique(connection, sql, params, code):
     return rows[0]
 
 
-def verify(connection, tenant, event_id, legal_entity, ad_client, ad_org):
+def verify(connection, tenant, event_id, legal_entity, ad_client, ad_org, *, mapped_reference=False):
     require(TENANT.fullmatch(tenant) and LEGAL.fullmatch(legal_entity),
             "UNTRUSTED_OBSERVER_SCOPE")
     try:
@@ -85,15 +86,32 @@ def verify(connection, tenant, event_id, legal_entity, ad_client, ad_org):
             and adopted == (outcome == "ADOPTED_NATIVE_ORDER"),
             "NATIVE_EXECUTION_IDENTITY_MISMATCH")
 
+    native_reference = order
+    native_column = "poreference"
+    if mapped_reference:
+        binding = unique(connection,
+            """SELECT native_uuid::text,native_id,desired_digest,first_source_event_id::text
+               FROM baobab.order_native_reference
+               WHERE tenant_id=%s AND legal_entity_id=%s AND commerce_order_id=%s
+                 AND ad_client_id=%s AND ad_org_id=%s
+                 AND order_version=%s AND creation_attempted_at IS NOT NULL""",
+            (tenant,legal_entity,order,ad_client,ad_org,version), "NATIVE_REFERENCE_MAPPING_MISSING")
+        expected_digest = "sha256:" + hashlib.sha256(json.dumps(payload,
+            sort_keys=True,separators=(",",":"),allow_nan=False,
+            ensure_ascii=False).encode("utf-8")).hexdigest()
+        require(binding[1:] == (native_id,expected_digest,event_id),
+                "NATIVE_REFERENCE_MAPPING_CHANGED")
+        native_reference, native_column = binding[0], "c_order_uu"
+
     # The actual native JDBC-backed iDempiere C_Order must exist exactly once
     # across ALL companies, so a foreign client cannot satisfy the readback.
     actual_id, actual_client, actual_org, reference, docstatus = unique(
         connection,
-        """SELECT c_order_id, ad_client_id, ad_org_id, poreference, docstatus
-           FROM adempiere.c_order WHERE poreference=%s""", (order,),
+        "SELECT c_order_id, ad_client_id, ad_org_id, " + native_column + ", docstatus "
+        "FROM adempiere.c_order WHERE " + native_column + "=%s", (native_reference,),
         "IDEMPIERE_ORDER_MISSING_OR_DUPLICATED")
     require((actual_id, actual_client, actual_org, reference) ==
-            (native_id, ad_client, ad_org, order) and docstatus not in ("VO", "RE"),
+            (native_id, ad_client, ad_org, native_reference) and docstatus not in ("VO", "RE"),
             "IDEMPIERE_ORDER_FOREIGN_OR_VOID")
 
     line_count, distinct_lines, invalid_lines = connection.execute(
@@ -160,6 +178,8 @@ def verify(connection, tenant, event_id, legal_entity, ad_client, ad_org):
     return {
         "schema": "erp.dev11.independent-real-native-order.v1",
         "real_idempiere_order_readback": True,
+        "native_reference_profile": "native-uuid-v1" if mapped_reference else "legacy-poreference",
+        "lossless_native_reference_mapping_verified": bool(mapped_reference),
         "erp_inbox_proven_executed": True,
         "native_company_isolation": True,
         "native_order_line_count_verified": True,
@@ -183,13 +203,15 @@ def main():
     parser.add_argument("--legal-entity", required=True)
     parser.add_argument("--ad-client", type=int, required=True)
     parser.add_argument("--ad-org", type=int, required=True)
+    parser.add_argument("--mapped-native-reference", action="store_true")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     try:
         with psycopg.connect(os.environ["ERP_DATABASE_URL"], autocommit=True) as db:
             db.execute("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
             receipt = verify(db, args.tenant, args.event_id,
-                             args.legal_entity, args.ad_client, args.ad_org)
+                             args.legal_entity, args.ad_client, args.ad_org,
+                             mapped_reference=args.mapped_native_reference)
             db.execute("COMMIT")
         success = True
     except (NotProven, psycopg.Error, OSError, KeyError, ValueError):

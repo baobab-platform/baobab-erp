@@ -45,18 +45,28 @@ def uuid_text(value):
     return parsed
 
 
-def query_native(db, tenant, order, client, org):
+def query_native(db, tenant, order, client, org, *, entity=None, mapped_reference=False):
+    column, reference = "poreference", order
+    if mapped_reference:
+        bindings = db.execute("""SELECT native_uuid::text AS native_uuid,native_id
+            FROM baobab.order_native_reference
+            WHERE tenant_id=%s AND legal_entity_id=%s AND commerce_order_id=%s
+              AND ad_client_id=%s AND ad_org_id=%s
+              AND creation_attempted_at IS NOT NULL AND native_id IS NOT NULL""",
+            (tenant,entity,order,client,org)).fetchall()
+        require(len(bindings) == 1, "NATIVE_REFERENCE_MAPPING_MISSING")
+        column, reference = "c_order_uu", bindings[0]["native_uuid"]
     record = db.execute(
-        """SELECT c_order_id, ad_client_id, ad_org_id, poreference, issotrx,
-                  docstatus
-             FROM adempiere.c_order
-            WHERE poreference=%s""", (order,)).fetchall()
+        "SELECT c_order_id, ad_client_id, ad_org_id, " + column + ", issotrx, docstatus "
+        "FROM adempiere.c_order WHERE " + column + "=%s", (reference,)).fetchall()
     require(len(record) == 1, "NATIVE_SALES_ORDER_NOT_UNIQUE")
     native = record[0]
     require(native["ad_client_id"] == client and native["ad_org_id"] == org
             and native["issotrx"] == "Y" and native["docstatus"] not in ("VO", "RE"),
             "NATIVE_SALES_ORDER_COMPANY_INVALID")
     native_id = native["c_order_id"]
+    if mapped_reference:
+        require(native_id == bindings[0]["native_id"], "NATIVE_REFERENCE_ID_CHANGED")
 
     audits = db.execute(
         """SELECT decision_id::text, context_id::text, cp_mandate_id::text,
@@ -154,12 +164,13 @@ def cp_decision(cp, audit, *, tenant, entity, market, native_id):
     return d
 
 
-def verify(erp, cp, *, tenant, order, entity, market, client, org):
+def verify(erp, cp, *, tenant, order, entity, market, client, org, mapped_reference=False):
     require(market in ("ZA", "UG", "US") and client > 0 and org > 0
             and tenant.startswith("tn_") and entity.startswith("LE-")
             and order.startswith("order_"),
             "OBSERVER_SCOPE_INVALID")
-    native_id, audits = query_native(erp, tenant, order, client, org)
+    native_id, audits = query_native(erp, tenant, order, client, org, entity=entity,
+                                     mapped_reference=mapped_reference)
     decisions = []
     for a in audits:
         require(a["responsible_legal_entity_id"] == entity and
@@ -198,6 +209,7 @@ def main():
     args.add_argument("--market", required=True)
     args.add_argument("--ad-client", required=True, type=int)
     args.add_argument("--ad-org", required=True, type=int)
+    args.add_argument("--mapped-native-reference", action="store_true")
     args.add_argument("--output", required=True)
     v = args.parse_args()
     try:
@@ -208,7 +220,7 @@ def main():
                 report = verify(
                     erp, cp, tenant=v.tenant, order=v.commerce_order,
                     entity=v.legal_entity, market=v.market,
-                    client=v.ad_client, org=v.ad_org)
+                    client=v.ad_client, org=v.ad_org, mapped_reference=v.mapped_native_reference)
         passed = True
     except (EvidenceMissing, psycopg.Error, KeyError, ValueError, TypeError):
         passed = False

@@ -5,9 +5,9 @@ What is guaranteed, and how:
 
 * **One sales order per (tenant, Trade order).** A replayed event, a second event for the same order and a second worker are
   all collapsed by three things: the consequence record / ``baobab.order_execution`` row (primary key tenant + order), a
-  session advisory lock per order held while the engine is touched, and the engine's own POReference.
+  session advisory lock per order held while the engine is touched, and its immutable native recovery coordinate.
 * **An uncertain outcome is not repeated.** Creating the engine order and committing ERP's rows cannot be one transaction. If a
-  worker dies in between, the next attempt finds the engine order by its POReference and adopts it instead of creating another.
+  worker dies in between, the next attempt finds the engine order by its reserved native UUID (or explicit legacy POReference) and adopts it instead of creating another.
   More than one match is not resolved by picking one; it is a dead letter for an operator.
 * **ERP's rows commit together or not at all**: the consequence record, the order link, the outbox event and the inbox
   outcome are one transaction, fenced on the inbox lease. A worker that lost its lease rolls all of it back.
@@ -15,7 +15,7 @@ What is guaranteed, and how:
   slowly (a mapping can appear later) until a horizon, then dead-lettered.
 
 Outcome codes are fixed strings and never carry payload content. Like the rest of ``integration/idempiere_client`` this has run
-against a fake engine, not a live iDempiere; ``POReference`` as the lookup key is among the things a live run must confirm.
+against fake engines in fixtures; the separate DEV-11 JVM drill must qualify each reference profile against actual iDempiere.
 """
 from __future__ import annotations
 
@@ -42,6 +42,7 @@ from order_to_cash.model import OrderToCashError, TenantScope, OrderLine
 from order_to_cash.placed_order import PayloadError, PlacedOrder, parse_placed_order
 from order_to_cash.service import _deny_legacy_native_action, _protected_finance_runtime, sales_order_fields
 from outbox.postgres_store import PostgresOutboxStore
+from order_to_cash import native_reference as references
 
 
 _Stop = Stop
@@ -95,6 +96,13 @@ def _execute(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQ
         known = consequences.get(claim.tenant_id, order.commerce_order_id)
         connection.commit()
         if known is not None:
+            if known.legal_entity_id != order.legal_entity_id:
+                raise _dead("ORDER_SCOPE_CHANGED", "an executed order belongs to another legal entity")
+            if references.configured():
+                try:
+                    references.reserve(connection, claim, order, target, require_existing=True)
+                except IdempiereClientError:
+                    raise _dead("NATIVE_REFERENCE_CHANGED", "native reference requires immutable scope and business facts") from None
             if order.order_version == known.order_version:
                 return Outcome("processed", "ALREADY_EXECUTED")
             if order.order_version < known.order_version:
@@ -116,6 +124,10 @@ def _execute(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQ
             tenant_id=claim.tenant_id, legal_entity_id=order.legal_entity_id,
             ad_client_id=target.ad_client_id, ad_org_id=target.ad_org_id,
         )
+        try:
+            reference = references.reserve(connection, claim, order, target) if references.configured() else None
+        except IdempiereClientError:
+            raise _dead("NATIVE_REFERENCE_CHANGED", "native reference requires immutable scope and business facts") from None
         if _protected_finance_runtime():
             if authority is None:
                 raise _blocked("LEGAL_ACTOR_PENDING", "current CP legal actor and ERP provider checks required")
@@ -130,6 +142,7 @@ def _execute(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQ
                     documentary=authority.documentary,
                     execute=lambda: _find_or_create(
                         engine, order, customer, lines, scope=scope,
+                        reference=reference, connection=connection,
                     ),
                     now=now,
                 )
@@ -139,10 +152,13 @@ def _execute(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQ
                     "current CP legal actor, documentary or native provider authority denied",
                 ) from None
         else:
-            native_id, adopted = _find_or_create(engine, order, customer, lines, scope=scope)
+            native_id, adopted = _find_or_create(engine, order, customer, lines, scope=scope,
+                reference=reference, connection=connection)
 
         # one transaction: consequence record, order link, announcing event, inbox outcome
         try:
+            if reference is not None:
+                references.bind_native(connection, reference, native_id)
             record = consequences.open_order(
                 tenant_id=claim.tenant_id, legal_entity_id=order.legal_entity_id,
                 commerce_order_id=order.commerce_order_id, order_version=order.order_version,
@@ -201,17 +217,23 @@ def _verify_units(engine: IdempiereOrders, order: PlacedOrder, lines: tuple[Orde
 
 
 def _find_or_create(engine: IdempiereOrders, order: PlacedOrder, customer: int, lines: tuple[OrderLine, ...],
-                    *, scope: TenantScope | None = None) -> tuple[int, bool]:
+                    *, scope: TenantScope | None = None,
+                    reference: references.NativeOrderReference | None = None,
+                    connection=None) -> tuple[int, bool]:
     """The engine order for this Trade order: the one an earlier attempt already created, or a new one."""
     if _protected_finance_runtime():
         if scope is None:
             raise OrderToCashError("native order lookup/creation requires a governed operation")
         _deny_legacy_native_action(scope, "create_sales_order", order.commerce_order_id)
     try:
-        existing = engine.query("C_Order", [Eq("POReference", order.commerce_order_id)], ["C_Order_ID"])
+        existing = engine.query("C_Order", [Eq(
+            "C_Order_UU" if reference else "POReference",
+            reference.native_uuid if reference else order.commerce_order_id)], ["C_Order_ID"])
         if len(existing) > 1:
             raise _dead("DUPLICATE_NATIVE_ORDERS", f"{len(existing)} engine orders carry the order's reference")
         if existing:
+            if reference is not None and not reference.attempted:
+                raise _dead("NATIVE_REFERENCE_COLLISION", "native UUID exists before a recorded creation attempt")
             native_id = int(existing[0]["id"] if "id" in existing[0] else existing[0]["C_Order_ID"])
             # A retry after an ambiguous remote JVM commit must adopt only
             # the SAME business order in the SAME native company/organisation.
@@ -220,14 +242,19 @@ def _find_or_create(engine: IdempiereOrders, order: PlacedOrder, customer: int, 
             # foreign company never becomes 'adopted' by POReference alone.
             verify_existing = getattr(engine, "assert_existing_order_matches", None)
             if verify_existing is not None:
-                verify_existing(native_id, order, customer, lines)
+                verify_existing(native_id, order, customer, lines, **(
+                    {"native_uuid": reference.native_uuid} if reference else {}))
             return native_id, True
         _verify_units(engine, order, lines)
         # The inbox is a native iDempiere writer in its own right; it must
         # not bypass the exact-operation REST egress PEP used by direct O2C.
         from integration.native_finance_guard import authorised_native_financial_request
         fields = sales_order_fields(customer, order.currency, lines, reference=order.commerce_order_id)
-        with authorised_native_financial_request("POST", "/models/C_Order", fields):
+        if reference is not None:
+            fields.pop("POReference")
+            fields["C_Order_UU"] = reference.native_uuid
+            references.mark_creation_attempt(connection, reference)
+        with references.using_reference(reference), authorised_native_financial_request("POST", "/models/C_Order", fields):
             native_id = engine.create_record("C_Order", fields)
         return native_id, False
     except IdempiereApiError as exc:

@@ -377,3 +377,15 @@ IDs. A production native-reference mapping or native extension remains a
 separate reviewed integration requirement, and the complete buyer-authorised
 Medusa vertical remains unqualified. Field diagnostics and the next actual
 runtime must establish which mismatch caused the previous failure.
+
+
+### Native reference mapping follow-through
+
+The next source implements an explicit `native-uuid-v1` recovery profile; see
+[the native reference mapping design](DEV11-native-order-reference-mapping.md).
+The full Trade ID, payload digest, native scope and source event remain in an
+immutable ERP intent; real iDempiere uses its standard C_Order_UU rather than
+shortening POReference. The real-engine drill now exercises long order IDs,
+recovery/adoption, independently joined mapping readback and live revocation.
+403 local unit tests pass. Final-source PostgreSQL 17/JVM evidence must still
+confirm this profile; earlier short-ID evidence is not relabelled.

@@ -240,7 +240,18 @@ final class SalesFlow {
                     || !Integer.toString(product).equals(in.getProperty("expected_product"))) {
                 throw new IllegalArgumentException("DEV11_NATIVE_FIXTURE_MAPPING_MISMATCH");
             }
-            o.setPOReference(reference);
+            if ("native-uuid".equals(in.getProperty("reference_kind"))) {
+                java.util.UUID nativeUuid = java.util.UUID.fromString(reference);
+                if (nativeUuid.version() != 4 || !nativeUuid.toString().equals(reference)) {
+                    throw new IllegalArgumentException("DEV11_ORDER_REFERENCE_INVALID");
+                }
+                o.setC_Order_UU(reference);
+            } else if ("poreference".equals(in.getProperty("reference_kind", "poreference"))
+                    && reference.length() <= 20) {
+                o.setPOReference(reference);
+            } else {
+                throw new IllegalArgumentException("DEV11_ORDER_REFERENCE_INVALID");
+            }
         }
         o.saveEx();
         MOrderLine l = new MOrderLine(o);

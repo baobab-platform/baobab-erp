@@ -53,9 +53,9 @@ def demand(ok, code):
 
 
 def fixture_order_reference():
-    # Create a fresh synthetic ID that fits native POReference from the start.
-    # Never truncate/hash an externally supplied canonical business ID to fit.
-    return "order_" + secrets.token_hex(7)
+    # Exercise an unshortened Medusa-shaped ID that exceeds POReference.
+    # The ERP recovery mapping retains the complete input; native UUID is separate.
+    return "order_" + secrets.token_hex(16)
 
 
 def db_rows(db, sql, params=()):
@@ -518,6 +518,7 @@ def main():
         "BAOBAB_ENVIRONMENT":"integration",
         "BAOBAB_DEPLOYMENT_ENV":"integration",
         "BAOBAB_ERP_INBOX_PROFILE":"dev11-order-placed",
+        "BAOBAB_ERP_ORDER_REFERENCE_PROFILE":"native-uuid-v1",
         "BAOBAB_REQUIRE_LEGAL_ACTOR_GATE":"true",
         "BAOBAB_DEV11_REAL_JVM_GATE_ENABLED":"true",
         "BAOBAB_DEV11_GARDENWORLD_US_FIXTURE":"true",
@@ -590,7 +591,7 @@ def main():
             common=[
                 "--tenant",state["tenant"],
                 "--legal-entity",state["legal_entity"],
-                "--ad-client","11","--ad-org","11"]
+                "--ad-client","11","--ad-org","11","--mapped-native-reference"]
             verify_native=[
                 sys.executable,"-B",
                 str(Path(__file__).resolve().parents[4] /
@@ -615,8 +616,9 @@ def main():
                     break
                 time.sleep(.2)
             count=db.execute(
-                "SELECT count(*) FROM adempiere.c_order WHERE poreference=%s",
-                (positive["data"]["commerce_order_id"],)).fetchone()[0]
+                "SELECT count(*) FROM adempiere.c_order o JOIN baobab.order_native_reference r "
+                "ON o.c_order_uu=r.native_uuid::text WHERE r.tenant_id=%s AND r.commerce_order_id=%s",
+                (state["tenant"],positive["data"]["commerce_order_id"])).fetchone()[0]
             demand(count==1,"DEV11_REAL_BROKER_REDELIVERY_CREATED_EXTRA_NATIVE_ORDER")
 
             # Native unknown-outcome recovery: the REAL protected JVM
@@ -629,8 +631,9 @@ def main():
                          "BAOBAB_DEV11_NATIVE_UNKNOWN_AFTER_COMMIT":"true"})
             inspect_outcome(db,ambiguous["id"],allowed=False)
             before_replay=db.execute(
-                "SELECT count(*) FROM adempiere.c_order WHERE poreference=%s",
-                (ambiguous["data"]["commerce_order_id"],)).fetchone()[0]
+                "SELECT count(*) FROM adempiere.c_order o JOIN baobab.order_native_reference r "
+                "ON o.c_order_uu=r.native_uuid::text WHERE r.tenant_id=%s AND r.commerce_order_id=%s",
+                (state["tenant"],ambiguous["data"]["commerce_order_id"])).fetchone()[0]
             demand(before_replay==1,"DEV11_REAL_JVM_UNKNOWN_COMMIT_NOT_OBSERVED")
             ready=False
             for _ in range(160):
@@ -647,8 +650,9 @@ def main():
             demand(recovered=="ADOPTED_NATIVE_ORDER",
                    "DEV11_REAL_JVM_UNKNOWN_OUTCOME_NOT_ADOPTED")
             after_replay=db.execute(
-                "SELECT count(*) FROM adempiere.c_order WHERE poreference=%s",
-                (ambiguous["data"]["commerce_order_id"],)).fetchone()[0]
+                "SELECT count(*) FROM adempiere.c_order o JOIN baobab.order_native_reference r "
+                "ON o.c_order_uu=r.native_uuid::text WHERE r.tenant_id=%s AND r.commerce_order_id=%s",
+                (state["tenant"],ambiguous["data"]["commerce_order_id"])).fetchone()[0]
             demand(after_replay==1,"DEV11_NATIVE_UNKNOWN_RETRY_DUPLICATED_ORDER")
             native_receipt=Path(__file__).resolve().parents[4] / (
                 "scripts/dev11_verify_native_idempiere_order.py")
@@ -666,8 +670,9 @@ def main():
             worker_once(native_env)
             inspect_outcome(db,denied["id"],allowed=False)
             no_order=db.execute(
-                "SELECT count(*) FROM adempiere.c_order WHERE poreference=%s",
-                (denied["data"]["commerce_order_id"],)).fetchone()[0]
+                "SELECT count(*) FROM adempiere.c_order o JOIN baobab.order_native_reference r "
+                "ON o.c_order_uu=r.native_uuid::text WHERE r.tenant_id=%s AND r.commerce_order_id=%s",
+                (state["tenant"],denied["data"]["commerce_order_id"])).fetchone()[0]
             demand(no_order==0,"DEV11_REVOKED_REAL_NATIVE_ORDER_COMMITTED")
             report={
                 "schema":"erp.dev11.real-hydra-cp-rabbit-jvm-engine-local.v1",
@@ -685,6 +690,7 @@ def main():
                 "real_jvm_committed_then_worker_outcome_lost_and_adopted":True,
                 "synthetic_trade_origin_not_authorized_commitment":True,
                 "full_medusa_buyer_commitment_proven":False,
+                "lossless_native_uuid_reference_mapping":True,
                 "independent_exported_trace_graph_proven":False,
                 "l4_ops_01":"BLOCKED",
                 "protected_acceptance":False,

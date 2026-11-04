@@ -63,7 +63,32 @@ class FakeDatabase:
         raise AssertionError("Unrecognised SQL in test fixture")
 
 
+class MappedDatabase(FakeDatabase):
+    def __init__(self, *, wrong_digest=False):
+        super().__init__()
+        self.wrong_digest=wrong_digest
+
+    def execute(self, query, params):
+        if "FROM baobab.order_native_reference" in query:
+            import hashlib, json
+            payload=super().execute("FROM baobab.event_inbox",()).fetchone()[4]
+            digest="sha256:"+hashlib.sha256(json.dumps(payload,sort_keys=True,
+                separators=(",",":"),ensure_ascii=False).encode()).hexdigest()
+            return FakeResult([("15be9a37-3545-4cdf-8f20-842b4c84f771",120,
+                "sha256:"+"0"*64 if self.wrong_digest else digest, EVENT_ID)])
+        if "FROM adempiere.c_order WHERE c_order_uu" in query:
+            return FakeResult([(120,11,11,"15be9a37-3545-4cdf-8f20-842b4c84f771","DR")])
+        return super().execute(query,params)
+
+
 class NativeReadbackSafetyTests(unittest.TestCase):
+    def test_mapped_readback_requires_full_payload_digest_and_source_event(self):
+        observed=verify(MappedDatabase(),TENANT,EVENT_ID,LEGAL,11,11,mapped_reference=True)
+        self.assertTrue(observed["lossless_native_reference_mapping_verified"])
+        self.assertEqual(observed["l4_ops_01"],"BLOCKED")
+        with self.assertRaisesRegex(NotProven,"NATIVE_REFERENCE_MAPPING_CHANGED"):
+            verify(MappedDatabase(wrong_digest=True),TENANT,EVENT_ID,LEGAL,11,11,mapped_reference=True)
+
     def test_structurally_complete_observations_still_cannot_certify_l4(self):
         observed = verify(FakeDatabase(), TENANT, EVENT_ID, LEGAL, 11, 11)
         self.assertTrue(observed["native_order_effect_qualified"])

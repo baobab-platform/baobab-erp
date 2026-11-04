@@ -10,6 +10,8 @@ on:
       - idempiere/acceptance/erp-a/**
       - idempiere/acceptance/driver/**
       - idempiere/extensions/**
+      - modules/order_to_cash/**
+      - modules/integration/native_finance_guard.py
       - modules/application/inbox_worker.py
       - modules/application/inbox_authority.py
       - modules/integration/idempiere_gate_d_real.py

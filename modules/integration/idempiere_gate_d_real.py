@@ -66,6 +66,13 @@ NATIVE_DIAGNOSTIC_STAGES = frozenset({
 })
 
 
+def _native_uuid(value):
+    try:
+        return str(uuid.UUID(value)) == value and uuid.UUID(value).version == 4
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
 def _native_phase(stage):
     # Observe only a closed stage vocabulary in the explicitly private real
     # integration profile. Never publish native result text, SQL, IDs or args.
@@ -169,7 +176,7 @@ class RealJvmGateDOrderAdapter:
                            "FROM adempiere.m_product WHERE m_product_id=%s"),
             "C_UOM": ("SELECT c_uom_id AS id, x12de355 "
                       "FROM adempiere.c_uom WHERE c_uom_id=%s"),
-            "C_Order": ("SELECT c_order_id AS id, ad_client_id, ad_org_id, poreference, issotrx "
+            "C_Order": ("SELECT c_order_id AS id, ad_client_id, ad_org_id, poreference, c_order_uu, issotrx "
                        "FROM adempiere.c_order WHERE c_order_id=%s"),
         }
         query = selections.get(table)
@@ -192,22 +199,25 @@ class RealJvmGateDOrderAdapter:
             return {"id": row["id"], "X12DE355": row["x12de355"]}
         return {"id": row["id"], "AD_Client_ID": {"id": row["ad_client_id"]},
                 "AD_Org_ID": {"id": row["ad_org_id"]},
-                "POReference": row["poreference"], "IsSOTrx": row["issotrx"]}
+                "POReference": row["poreference"], "C_Order_UU": row.get("c_order_uu"), "IsSOTrx": row["issotrx"]}
 
     @_observed_native_call("NATIVE_ENGINE_QUERY")
     def query(self, table, conditions, select):
         if (table != "C_Order" or len(conditions) != 1 or
                 not isinstance(conditions[0], Eq) or
-                conditions[0].column != "POReference" or
+                conditions[0].column not in ("POReference", "C_Order_UU") or
                 not isinstance(conditions[0].value, str) or
                 not _REF.fullmatch(conditions[0].value) or
                 list(select) != ["C_Order_ID"]):
             raise IdempiereClientError("DEV11_NATIVE_QUERY_NOT_ALLOWED")
         # Deliberately DO NOT filter to the expected AD_Client: a duplicate
         # across a foreign company must be seen and rejected, not hidden.
+        column = "c_order_uu" if conditions[0].column == "C_Order_UU" else "poreference"
+        if column == "c_order_uu" and not _native_uuid(conditions[0].value):
+            raise IdempiereClientError("DEV11_NATIVE_UUID_INVALID")
         rows = self._sql(
-            """SELECT c_order_id AS id, ad_client_id, ad_org_id, poreference
-                 FROM adempiere.c_order WHERE poreference=%s""",
+            "SELECT c_order_id AS id, ad_client_id, ad_org_id, poreference, c_order_uu "
+            "FROM adempiere.c_order WHERE " + column + "=%s",
             (conditions[0].value,))
         return [_native_row(row) for row in rows]
 
@@ -215,7 +225,7 @@ class RealJvmGateDOrderAdapter:
         expected_lines = fields["OrderLines"]
         order = self._sql(
             """SELECT o.c_order_id, o.ad_client_id, o.ad_org_id, o.c_bpartner_id,
-                      o.poreference, o.issotrx, c.iso_code
+                      o.poreference, o.c_order_uu, o.issotrx, c.iso_code
                  FROM adempiere.c_order o
                  JOIN adempiere.c_currency c ON c.c_currency_id=o.c_currency_id
                 WHERE o.c_order_id=%s""", (native_id,))
@@ -233,7 +243,8 @@ class RealJvmGateDOrderAdapter:
             "NATIVE_FACT_CLIENT": o["ad_client_id"] == self.client_id,
             "NATIVE_FACT_ORGANISATION": o["ad_org_id"] == self.org_id,
             "NATIVE_FACT_CUSTOMER": o["c_bpartner_id"] == fields["C_BPartner_ID"],
-            "NATIVE_FACT_REFERENCE": o["poreference"] == fields["POReference"],
+            "NATIVE_FACT_REFERENCE": (o.get("c_order_uu") == fields["C_Order_UU"]
+                if "C_Order_UU" in fields else o["poreference"] == fields["POReference"]),
             "NATIVE_FACT_DIRECTION": o["issotrx"] == "Y",
             "NATIVE_FACT_CURRENCY": o["iso_code"] == fields["CurrencyISO"],
             "NATIVE_FACT_LINE_COUNT": len(lines) == 1,
@@ -252,7 +263,7 @@ class RealJvmGateDOrderAdapter:
         return native_id
 
     @_observed_native_call("NATIVE_ENGINE_ADOPT")
-    def assert_existing_order_matches(self, native_id, order, customer, lines):
+    def assert_existing_order_matches(self, native_id, order, customer, lines, *, native_uuid=None):
         # The native order is durable from an earlier uncertain attempt.
         # Prove company, client, legal reference and every line BEFORE
         # adopting it. Never turn a matching POReference into authority.
@@ -261,16 +272,21 @@ class RealJvmGateDOrderAdapter:
             raise IdempiereClientError("DEV11_NATIVE_ADOPTION_SCOPE_INVALID")
         fields = sales_order_fields(
             customer, order.currency, lines, reference=order.commerce_order_id)
+        if native_uuid is not None:
+            fields.pop("POReference")
+            fields["C_Order_UU"] = native_uuid
         return self._readback(native_id, fields)
 
     @_observed_native_call("NATIVE_ENGINE_CREATE")
     def create_record(self, table, fields):
         if table != "C_Order" or not isinstance(fields, dict):
             raise IdempiereClientError("DEV11_NATIVE_CREATE_NOT_ALLOWED")
-        allowed = {"C_BPartner_ID", "CurrencyISO", "OrderLines", "POReference"}
+        reference_field = "C_Order_UU" if "C_Order_UU" in fields else "POReference"
+        allowed = {"C_BPartner_ID", "CurrencyISO", "OrderLines", reference_field}
         if set(fields) != allowed or fields["CurrencyISO"] != "USD" or (
-                not isinstance(fields["POReference"], str)
-                or not _REF.fullmatch(fields["POReference"])):
+                not isinstance(fields.get(reference_field), str)
+                or not _REF.fullmatch(fields[reference_field])
+                or reference_field == "C_Order_UU" and not _native_uuid(fields[reference_field])):
             raise IdempiereClientError("DEV11_NATIVE_CREATE_CONTRACT_INVALID")
         lines = fields["OrderLines"]
         if not isinstance(lines, list) or len(lines) != 1 or set(lines[0]) != {
@@ -298,21 +314,24 @@ class RealJvmGateDOrderAdapter:
                JOIN adempiere.ad_table t ON t.ad_table_id=c.ad_table_id
                JOIN information_schema.columns n
                  ON n.table_schema='adempiere' AND n.table_name='c_order'
-                AND n.column_name='poreference'
+                AND n.column_name=%s
                WHERE lower(t.tablename)='c_order'
-                 AND lower(c.columnname)='poreference'
-                 AND c.isactive='Y' AND t.isactive='Y'""", ())
+                 AND lower(c.columnname)=%s
+                 AND c.isactive='Y' AND t.isactive='Y'""",
+            (reference_field.lower(), reference_field.lower()))
         if len(widths) != 1:
             raise IdempiereClientError("DEV11_NATIVE_REFERENCE_METADATA_UNAVAILABLE")
         maximum = min(_positive(widths[0][key], "REFERENCE_WIDTH")
                       for key in ("dictionary_width", "database_width"))
-        if len(fields["POReference"]) > maximum:
+        if len(fields[reference_field]) > maximum:
             raise IdempiereClientError("DEV11_NATIVE_REFERENCE_TOO_LONG")
         # No caller-selected product/partner is honoured by the Java fixture.
         # The Java driver asserts both IDs match its native GardenWorld seed.
         params = {
             "action": "doc", "kind": "order", "dev11_profile": "signed-event-erp",
-            "org": "11", "reference": fields["POReference"], "complete": "false",
+            "org": "11", "reference": fields[reference_field],
+            "reference_kind": "native-uuid" if reference_field == "C_Order_UU" else "poreference",
+            "complete": "false",
             "post": "false", "qty": str(quantity), "unit_price": str(price),
             "expected_customer": str(customer), "expected_product": str(product),
         }
