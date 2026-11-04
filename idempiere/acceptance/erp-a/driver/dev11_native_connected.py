@@ -60,13 +60,16 @@ def native_fixture(db):
         """SELECT min(c_bpartner_id) FROM adempiere.c_bpartner
            WHERE ad_client_id=11 AND name='Joe Block'
              AND iscustomer='Y' AND isactive='Y'""").fetchone()[0]
+    demand(type(customer) is int and customer > 0, "DEV11_NATIVE_CUSTOMER_NOT_READY")
     warehouse = db.execute(
         """SELECT min(m_warehouse_id) FROM adempiere.m_warehouse
            WHERE ad_client_id=11 AND ad_org_id=11 AND isactive='Y'""").fetchone()[0]
+    demand(type(warehouse) is int and warehouse > 0, "DEV11_NATIVE_WAREHOUSE_NOT_READY")
     price_list = db.execute(
         """SELECT min(m_pricelist_id) FROM adempiere.m_pricelist
            WHERE ad_client_id=11 AND issopricelist='Y'
              AND isdefault='Y' AND isactive='Y'""").fetchone()[0]
+    demand(type(price_list) is int and price_list > 0, "DEV11_NATIVE_SALES_PRICELIST_NOT_READY")
     product = db.execute(
         """SELECT min(p.m_product_id)
            FROM adempiere.m_product p
@@ -90,8 +93,9 @@ def native_fixture(db):
                  WHERE s.m_product_id=p.m_product_id AND
                        l.m_warehouse_id=%s)>=10""",
         (price_list, warehouse)).fetchone()[0]
-    demand(all(type(v) is int and v > 0 for v in (customer, warehouse, price_list, product)),
-           "DEV11_REAL_GARDENWORLD_FIXTURE_MISSING")
+    # Each failure is a closed diagnostic category, never a guessed native ID
+    # or a reason to loosen price/cost/stock predicates to force a positive.
+    demand(type(product) is int and product > 0, "DEV11_NATIVE_SALEABLE_STOCK_NOT_READY")
     unit = db.execute(
         """SELECT u.x12de355 FROM adempiere.m_product p
            JOIN adempiere.c_uom u ON u.c_uom_id=p.c_uom_id
