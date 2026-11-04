@@ -417,11 +417,30 @@ def await_inbox(db, event_id):
     raise RuntimeError("DEV11_REAL_RABBIT_ERP_INBOX_NOT_ADMITTED")
 
 
+_SAFE_AUTHORITY_STAGES = frozenset({
+    "CP_REQUEST", "CP_RESPONSE_RECEIVED",
+    "DOCUMENTARY_REQUEST", "DOCUMENTARY_RESPONSE_RECEIVED",
+    "NATIVE_PROVIDER_START", "NATIVE_PROVIDER_READY",
+})
+
+
 def worker_once(env):
+    # Capture the private worker output in memory, but publish ONLY a bounded
+    # static marker vocabulary. Raw provider/HTTP data and bearer material may
+    # NEVER enter the job log, uploaded artifacts or a diagnostic exception.
     completed = subprocess.run(
         [sys.executable, "-B", "-m", "application.inbox_worker"],
-        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        env=env, capture_output=True,
         timeout=240, check=False)
+    observed = []
+    for label in re.findall(
+            rb"DEV11_NATIVE_AUTHORITY_STAGE ([A-Z_]{3,40})",
+            completed.stdout[-65536:]):
+        stage = label.decode("ascii")
+        if stage in _SAFE_AUTHORITY_STAGES and stage not in observed:
+            observed.append(stage)
+    print("DEV11_NATIVE_AUTHORITY_PATH " +
+          json.dumps({"stages": observed}, sort_keys=True), flush=True)
     demand(completed.returncode == 0, "DEV11_REAL_NATIVE_ERP_WORKER_FAILED")
 
 
