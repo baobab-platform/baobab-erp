@@ -538,15 +538,29 @@ def main():
         sku="sku_dev11_synthetic"
         bind_native(db,state,customer_id=customer,product_id=product,
                     sku=sku,customer_key=customer_key)
-        positive=event_for(state,order=fixture_order_reference(),
-                           product_id=product,sku=sku,unit=unit,
-                           customer_key=customer_key)
-        ambiguous=event_for(state,order=fixture_order_reference(),
-                            product_id=product,sku=sku,unit=unit,
-                            customer_key=customer_key)
-        denied=event_for(state,order=fixture_order_reference(),
-                         product_id=product,sku=sku,unit=unit,
-                         customer_key=customer_key)
+        trade=None
+        if os.environ.get("DEV11_TRADE_PERSISTED_REQUIRED")=="true":
+            sys.path.insert(0,str(Path(__file__).resolve().parents[4]/"scripts"))
+            from dev11_trade_persisted_jvm import PersistedTrade
+            os.environ["DEV11_TRADE_DB_PASSWORD"]=secrets.token_hex(24)
+            trade=PersistedTrade(run,state,compose,sku=sku,unit=unit,customer=customer_key)
+            positive=trade.events["positive"]
+            ambiguous=trade.events["ambiguous"]
+            denied=trade.events["denied"]
+            native_env["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"]="http://127.0.0.1:4318/v1/traces"
+            # Source migration/export can outlive an earlier context lease.
+            # Ask the real CP for a fresh context, never extend a local one.
+            context_id=hydrate_context(state,secret)
+        else:
+            positive=event_for(state,order=fixture_order_reference(),
+                               product_id=product,sku=sku,unit=unit,
+                               customer_key=customer_key)
+            ambiguous=event_for(state,order=fixture_order_reference(),
+                                product_id=product,sku=sku,unit=unit,
+                                customer_key=customer_key)
+            denied=event_for(state,order=fixture_order_reference(),
+                             product_id=product,sku=sku,unit=unit,
+                             customer_key=customer_key)
         # Bind CP's live sales responsibility to the exact first positive
         # order, without asserting that a Medusa buyer placed it.
         require_current_cp_sales_preflight(
@@ -581,7 +595,8 @@ def main():
             time.sleep(1)
             demand(receiver.poll() is None,"DEV11_REAL_ERP_RABBIT_CONSUMER_STARTUP_FAILED")
 
-            send(channel,positive,native_env["BAOBAB_EVENT_SIGNING_SECRET"])
+            if trade: trade.publish(positive,native_env)
+            else: send(channel,positive,native_env["BAOBAB_EVENT_SIGNING_SECRET"])
             await_inbox(db,positive["id"])
             worker_once(native_env)
             inspect_outcome(db,positive["id"],allowed=True)
@@ -608,6 +623,9 @@ def main():
                 "--output",str(out/"dev11-cp-jvm-lineage.json")]
             subprocess.run(verify_cp,env=native_env,check=True,timeout=45)
 
+            if trade:
+                trade.verify_effect_join(db,positive,out/"dev11-trade-jvm-joined.json")
+
             # A signed broker redelivery is not a second native order.
             send(channel,positive,native_env["BAOBAB_EVENT_SIGNING_SECRET"])
             for _ in range(30):
@@ -625,7 +643,8 @@ def main():
             # commits a separate exact C_Order, but the ERP worker injects a
             # loss of its own application result AFTER independent readback.
             # Retry may ONLY adopt the same native order and immutable facts.
-            send(channel,ambiguous,native_env["BAOBAB_EVENT_SIGNING_SECRET"])
+            if trade: trade.publish(ambiguous,native_env)
+            else: send(channel,ambiguous,native_env["BAOBAB_EVENT_SIGNING_SECRET"])
             await_inbox(db,ambiguous["id"])
             worker_once({**native_env,
                          "BAOBAB_DEV11_NATIVE_UNKNOWN_AFTER_COMMIT":"true"})
@@ -662,10 +681,14 @@ def main():
                 "--output",str(out/"dev11-native-unknown-adopted.json")],
                 env=native_env,check=True,timeout=45)
 
+            if trade:
+                trade.verify_effect_join(db,ambiguous,out/"dev11-trade-jvm-unknown-joined.json")
+
             # LIVE CP revocation, not a Python boolean. Re-use the now-invalid
             # CP-minted context to demonstrate it is not a permanent mandate.
             cp.revoke(sales_mandate)
-            send(channel,denied,native_env["BAOBAB_EVENT_SIGNING_SECRET"])
+            if trade: trade.publish(denied,native_env)
+            else: send(channel,denied,native_env["BAOBAB_EVENT_SIGNING_SECRET"])
             await_inbox(db,denied["id"])
             worker_once(native_env)
             inspect_outcome(db,denied["id"],allowed=False)
@@ -674,6 +697,8 @@ def main():
                 "ON o.c_order_uu=r.native_uuid::text WHERE r.tenant_id=%s AND r.commerce_order_id=%s",
                 (state["tenant"],denied["data"]["commerce_order_id"])).fetchone()[0]
             demand(no_order==0,"DEV11_REVOKED_REAL_NATIVE_ORDER_COMMITTED")
+            if trade:
+                trade.verify_exported_trace(positive,out/"dev11-trade-jvm-exported.json")
             report={
                 "schema":"erp.dev11.real-hydra-cp-rabbit-jvm-engine-local.v1",
                 "source_pins":{
@@ -691,7 +716,8 @@ def main():
                 "synthetic_trade_origin_not_authorized_commitment":True,
                 "full_medusa_buyer_commitment_proven":False,
                 "lossless_native_uuid_reference_mapping":True,
-                "independent_exported_trace_graph_proven":False,
+                "independent_exported_trace_graph_proven":bool(trade),
+                "same_persisted_trade_event_to_native_jvm":bool(trade),
                 "l4_ops_01":"BLOCKED",
                 "protected_acceptance":False,
                 "staging_authorized":False,
