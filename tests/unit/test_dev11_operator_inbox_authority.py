@@ -12,11 +12,14 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from unittest.mock import patch
 
 from application.inbox_authority import (
     AuthorityEntry, NativeOrderProviderReadiness, OperatorAuthorityRegistry,
-    from_operator_configuration,
+    from_operator_configuration, _ObservedCP, _ObservedDocumentary,
+    _ObservedNativeProvider,
 )
 from inbox.postgres_queue import Claim
 from order_to_cash.legal_actor_gate import LegalActorNotAuthorised, LegalActorOperation
@@ -221,6 +224,45 @@ class OperatorAuthorityTests(unittest.TestCase):
                                  "BAOBAB_ENVIRONMENT": environment}):
                 with self.assertRaisesRegex(RuntimeError, "DEV11_OPERATOR_REGISTRY_NOT_PRODUCTION_AUTHORITY"):
                     from_operator_configuration(None, None)
+
+    def test_integration_stage_observers_do_not_modify_replies_or_native_veto(self):
+        private = "super-secret-bearer-must-not-be-printed"
+        class CP:
+            def assess(self, request):
+                return {"status": "DENIED", "private_bearer": private}
+        class Documentary:
+            def assess(self, request):
+                return {"blocked": True, "private_bearer": private}
+        class Provider:
+            def ensure_legal_actor_usable(self, operation, mandate_id):
+                raise LegalActorNotAuthorised("native provider denied")
+        buf = StringIO()
+        with patch.dict(os.environ, {
+            "BAOBAB_ENVIRONMENT": "integration",
+            "DEV11_REAL_NATIVE_ACCEPTANCE": "true",
+            "BAOBAB_DEV11_REAL_JVM_GATE_ENABLED": "true",
+        }), redirect_stdout(buf):
+            self.assertEqual(_ObservedCP(CP()).assess({}), {
+                "status": "DENIED", "private_bearer": private})
+            self.assertEqual(_ObservedDocumentary(Documentary()).assess({}), {
+                "blocked": True, "private_bearer": private})
+            with self.assertRaises(LegalActorNotAuthorised):
+                _ObservedNativeProvider(Provider()).ensure_legal_actor_usable(
+                    operation(), "synthetic-mandate")
+        text = buf.getvalue()
+        self.assertIn("DEV11_NATIVE_AUTHORITY_STAGE CP_RESPONSE_RECEIVED", text)
+        self.assertIn("DEV11_NATIVE_AUTHORITY_STAGE DOCUMENTARY_RESPONSE_RECEIVED", text)
+        self.assertIn("DEV11_NATIVE_AUTHORITY_STAGE NATIVE_PROVIDER_START", text)
+        self.assertNotIn("NATIVE_PROVIDER_READY", text)
+        self.assertNotIn(private, text)
+        self.assertNotIn("blocked", text)
+        with patch.dict(os.environ, {
+            "BAOBAB_ENVIRONMENT": "production",
+            "DEV11_REAL_NATIVE_ACCEPTANCE": "true",
+            "BAOBAB_DEV11_REAL_JVM_GATE_ENABLED": "true",
+        }), redirect_stdout(buf := StringIO()):
+            _ObservedCP(CP()).assess({})
+        self.assertEqual(buf.getvalue(), "")
 
     def test_unsafe_oauth_origin_is_denied_before_token_request(self):
         secret = Path(self.tempdir.name) / "workload-secret"
