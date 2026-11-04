@@ -2,12 +2,13 @@
 import copy
 import json
 import os
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 
-from scripts.dev11_trade_persisted_jvm import PersistedTrade
+from scripts.dev11_trade_persisted_jvm import PersistedTrade, private_run
 
 EVENT={"id":"1d032305-669c-45df-b988-01166de4c14c",
  "source":"urn:baobab-platform:service:baobab-trade","tenantid":"tn_fixture",
@@ -39,6 +40,18 @@ class Erp:
   return Rows([(EVENT["id"],EVENT["data"]["commerce_order_id"],11,12 if self.changed=="native-id" else 11,11)])
 
 class SameEventSafetyTests(unittest.TestCase):
+ def test_child_failure_never_prints_private_command_or_event_ids(self):
+  with tempfile.TemporaryDirectory() as root:
+   for index,failure in enumerate((subprocess.TimeoutExpired(["private-event-id","private-bearer"],1),
+                                   OSError("private-event-id private-bearer"))):
+    with self.subTest(failure=type(failure).__name__),patch(
+        "scripts.dev11_trade_persisted_jvm.subprocess.run",side_effect=failure):
+     with self.assertRaises(RuntimeError) as raised:
+      private_run(["private-event-id","private-bearer"],env={},cwd=root,
+                  log=Path(root)/(str(index)+".log"),stage="PUBLISH")
+     self.assertNotIn("private-",str(raised.exception))
+     self.assertIn("PUBLISH",str(raised.exception))
+
  def test_changed_join_cannot_leave_a_success_receipt(self):
   bridge=PersistedTrade.__new__(PersistedTrade)
   bridge.database="unreachable-fixture-only"

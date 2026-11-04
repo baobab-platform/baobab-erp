@@ -104,9 +104,41 @@ class AdapterUnitTests(unittest.TestCase):
         with self.assertRaises(IdempiereClientError):
             a.create_record("C_Order",{**fields,"POReference":"an-alias"})
         with patch.object(a,"_sql",return_value=[]), self.assertRaisesRegex(
-                IdempiereClientError,"REFERENCE_METADATA_UNAVAILABLE"):
+                IdempiereClientError,"UUID_SCHEMA_NOT_VERIFIED"):
             a.create_record("C_Order",fields)
         self.assertEqual(list((a.driver/"requests").iterdir()),[])
+
+    def test_native_uuid_schema_requires_exact_unique_key_and_full_physical_capacity(self):
+        a=self.adapter()
+        fields={"C_BPartner_ID":11,"CurrencyISO":"USD",
+                "C_Order_UU":"15be9a37-3545-4cdf-8f20-842b4c84f771",
+                "OrderLines":[{"M_Product_ID":"13","QtyOrdered":"2","PriceEntered":"10.00"}]}
+        for meta in ({"unique_coordinate":False,"data_type":"uuid"},
+                     {"unique_coordinate":True,"data_type":"character varying","character_maximum_length":20},
+                     {"unique_coordinate":True,"data_type":"text","character_maximum_length":None}):
+            with self.subTest(meta=meta),patch.object(a,"_sql",return_value=[meta]),self.assertRaisesRegex(
+                    IdempiereClientError,"UUID_SCHEMA_NOT_VERIFIED"):
+                a.create_record("C_Order",fields)
+        self.assertEqual(list((a.driver/"requests").iterdir()),[])
+
+    def test_valid_uuid_schema_cannot_override_the_real_jvm_veto_protocol(self):
+        a=self.adapter()
+        native_uuid="15be9a37-3545-4cdf-8f20-842b4c84f771"
+        replace=os.replace
+        def submit(source,target):
+            text=Path(source).read_text()
+            self.assertIn("reference_kind=native-uuid",text)
+            self.assertIn("reference="+native_uuid,text)
+            replace(source,target)
+            (a.driver/"results"/Path(target).name).write_text(
+                "error=BAOBAB_NATIVE_FINANCE_DENIED\ncommitted=false\n")
+        with patch.object(a,"_sql",return_value=[{"unique_coordinate":True,
+                "data_type":"character varying","character_maximum_length":36}]), \
+                patch("integration.idempiere_gate_d_real.os.replace",side_effect=submit), \
+                self.assertRaisesRegex(IdempiereClientError,"JVM_VETO_OR_COMMIT_DENIED"):
+            a.create_record("C_Order",{"C_BPartner_ID":11,"CurrencyISO":"USD",
+                "C_Order_UU":native_uuid,"OrderLines":[{
+                    "M_Product_ID":"13","QtyOrdered":"2","PriceEntered":"10.00"}]})
 
     def test_numeric_identifiers_are_exact_and_bounded(self):
         for value in (11, "11", Decimal("11"), Decimal("11.000")):

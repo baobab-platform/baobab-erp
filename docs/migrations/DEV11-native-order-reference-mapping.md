@@ -46,8 +46,11 @@ resolved reference, exact governed action marker, tenant/legal actor and
 native company all match; an arbitrary UUID or a mixed `POReference` payload
 denies. The existing one-use exact-request guard is unchanged.
 
-The real disposable JVM adapter reads BOTH live AD_Column and physical widths
-for `C_Order_UU` before writing. The acceptance driver calls the actual native
+The real disposable JVM adapter verifies the physical UUID/string type, full
+36-character capacity and a live exact native unique index for `C_Order_UU`
+before writing. Its system UUID coordinate is distinct from POReference: the
+legacy business-field path still requires BOTH its AD_Column and physical
+width limits, and neither limit is increased. The acceptance driver calls the actual native
 `MOrder.setC_Order_UU`; it does not mutate native tables with Python SQL. Its
 readback/adoption checks retain all native business comparisons. The production
 REST transport remains independently subject to provider qualification.
@@ -66,3 +69,31 @@ metadata, absent egress binding and changed source digest. They do not prove
 JVM execution. Keep the final-source real PostgreSQL 17/JVM artifacts and
 cleanup receipts. Full buyer-authorised Medusa origin, same-event exported
 lineage and Infrastructure's independent L4 join remain separate gates.
+
+
+## Same-event runtime diagnosis and telemetry resolution
+
+Run `41907699984` at `fb01e89` observed actual Trade source/outbox publication,
+real ERP admission and current CP/documentary/provider checks, then refused
+inside native creation with `ENGINE_UNAVAILABLE`. It did not qualify a native
+business effect. The initial adapter applied the business-reference dictionary
+width convention to the system UUID coordinate. UUID-specific physical type,
+capacity, exact unique-key checks and closed diagnostics now distinguish that
+boundary without changing any native authority or business-fact comparison.
+The next actual runtime must confirm the protected JVM effect and recovery.
+
+The same run exposed an incompatible orphan OTel exporter after installing
+latest ERP dependencies and then downgrading only the Trade SDK set. A fresh
+single resolver transaction now installs ERP plus the existing frozen Trade
+requirements together, followed by mandatory `pip check`. The fresh local
+pinned environment reports no broken requirements. Source/child failures also
+retain only closed stages, suppressing private command arguments on timeout
+or file errors. Unit negatives preserve the JVM veto even with a valid UUID
+schema. Final-source runtime and independent originals remain required.
+
+
+The native index checks use PostgreSQL 17's
+[pg_index catalogue](https://www.postgresql.org/docs/17/catalog-pg-index.html):
+unique, valid, ready and live, with one exact non-expression key and no partial
+predicate. The current local pinned environment passes 407 unit tests and
+`pip check`; the actual Actions PostgreSQL 17/JVM proof remains mandatory.

@@ -45,6 +45,8 @@ _DIAGNOSTIC_FAILURES = {
     "DEV11_NATIVE_DRIVER_PROPERTY_INVALID": "NATIVE_ENGINE_PROPERTY_REFUSED",
     "DEV11_NATIVE_CREATE_CONTRACT_INVALID": "NATIVE_ENGINE_CONTRACT_REFUSED",
     "DEV11_NATIVE_REFERENCE_TOO_LONG": "NATIVE_ENGINE_REFERENCE_REFUSED",
+    "DEV11_NATIVE_REFERENCE_METADATA_UNAVAILABLE": "NATIVE_ENGINE_REFERENCE_METADATA_REFUSED",
+    "DEV11_NATIVE_UUID_SCHEMA_NOT_VERIFIED": "NATIVE_ENGINE_UUID_SCHEMA_REFUSED",
 }
 _DRIVER_REFUSALS = {
     "BAOBAB_NATIVE_FINANCE_DENIED": "NATIVE_JVM_FINANCE_VETO",
@@ -58,6 +60,8 @@ _FACT_STAGES = frozenset({
     "NATIVE_FACT_REFERENCE", "NATIVE_FACT_DIRECTION", "NATIVE_FACT_CURRENCY",
     "NATIVE_FACT_LINE_COUNT", "NATIVE_FACT_PRODUCT", "NATIVE_FACT_QUANTITY",
     "NATIVE_FACT_PRICE",
+    "NATIVE_UUID_SCHEMA_VERIFIED", "NATIVE_UUID_COLUMN_ABSENT",
+    "NATIVE_UUID_UNIQUE_KEY_ABSENT", "NATIVE_UUID_TYPE_OR_WIDTH_REFUSED",
 })
 NATIVE_DIAGNOSTIC_STAGES = frozenset({
     "NATIVE_ENGINE_READ", "NATIVE_ENGINE_QUERY", "NATIVE_ENGINE_CREATE",
@@ -225,7 +229,7 @@ class RealJvmGateDOrderAdapter:
         expected_lines = fields["OrderLines"]
         order = self._sql(
             """SELECT o.c_order_id, o.ad_client_id, o.ad_org_id, o.c_bpartner_id,
-                      o.poreference, o.c_order_uu, o.issotrx, c.iso_code
+                      o.poreference, o.c_order_uu::text AS c_order_uu, o.issotrx, c.iso_code
                  FROM adempiere.c_order o
                  JOIN adempiere.c_currency c ON c.c_currency_id=o.c_currency_id
                 WHERE o.c_order_id=%s""", (native_id,))
@@ -304,27 +308,57 @@ class RealJvmGateDOrderAdapter:
                 or len(str(quantity)) > 20 or len(str(price)) > 20
                 or not _PRICE.fullmatch(str(price))):
             raise IdempiereClientError("DEV11_NATIVE_AMOUNT_INVALID")
-        # POReference is an upstream native field, not a general canonical-ID
-        # store. Bind BOTH the live application dictionary and physical width
-        # before any JVM mutation; truncation would destroy retry identity.
-        widths = self._sql(
-            """SELECT c.fieldlength AS dictionary_width,
-                      n.character_maximum_length AS database_width
-               FROM adempiere.ad_column c
-               JOIN adempiere.ad_table t ON t.ad_table_id=c.ad_table_id
-               JOIN information_schema.columns n
-                 ON n.table_schema='adempiere' AND n.table_name='c_order'
-                AND n.column_name=%s
-               WHERE lower(t.tablename)='c_order'
-                 AND lower(c.columnname)=%s
-                 AND c.isactive='Y' AND t.isactive='Y'""",
-            (reference_field.lower(), reference_field.lower()))
-        if len(widths) != 1:
-            raise IdempiereClientError("DEV11_NATIVE_REFERENCE_METADATA_UNAVAILABLE")
-        maximum = min(_positive(widths[0][key], "REFERENCE_WIDTH")
-                      for key in ("dictionary_width", "database_width"))
-        if len(fields[reference_field]) > maximum:
-            raise IdempiereClientError("DEV11_NATIVE_REFERENCE_TOO_LONG")
+        if reference_field == "C_Order_UU":
+            # A system UUID is a native identity coordinate, not the editable
+            # POReference business field. Prove its actual physical type and
+            # capacity AND a live, exact unique key. The native generated
+            # MOrder UUID setter and independent readback remain mandatory;
+            # no AD_Column display width can stand in for these invariants.
+            schema = self._sql("""SELECT n.data_type,n.character_maximum_length,
+                EXISTS (SELECT 1 FROM pg_catalog.pg_index i
+                    JOIN pg_catalog.pg_attribute a ON a.attrelid=i.indrelid
+                    WHERE i.indrelid='adempiere.c_order'::regclass
+                      AND a.attname='c_order_uu' AND NOT a.attisdropped
+                      AND i.indisunique AND i.indisvalid AND i.indisready AND i.indislive
+                      AND i.indnkeyatts=1 AND i.indkey[0]=a.attnum
+                      AND i.indexprs IS NULL AND i.indpred IS NULL) AS unique_coordinate
+                FROM information_schema.columns n WHERE n.table_schema='adempiere'
+                  AND n.table_name='c_order' AND n.column_name='c_order_uu'""", ())
+            if len(schema) != 1:
+                _native_phase("NATIVE_UUID_COLUMN_ABSENT")
+                raise IdempiereClientError("DEV11_NATIVE_UUID_SCHEMA_NOT_VERIFIED")
+            if schema[0].get("unique_coordinate") is not True:
+                _native_phase("NATIVE_UUID_UNIQUE_KEY_ABSENT")
+                raise IdempiereClientError("DEV11_NATIVE_UUID_SCHEMA_NOT_VERIFIED")
+            meta=schema[0]
+            if meta.get("data_type") != "uuid" and not (
+                    meta.get("data_type") in ("character varying","character")
+                    and type(meta.get("character_maximum_length")) is int
+                    and meta["character_maximum_length"] >= 36):
+                _native_phase("NATIVE_UUID_TYPE_OR_WIDTH_REFUSED")
+                raise IdempiereClientError("DEV11_NATIVE_UUID_SCHEMA_NOT_VERIFIED")
+            _native_phase("NATIVE_UUID_SCHEMA_VERIFIED")
+        else:
+            # Retain BOTH the dictionary and physical POReference limits.
+            # A UUID coordinate never waives or increases a business field cap.
+            widths = self._sql(
+                """SELECT c.fieldlength AS dictionary_width,
+                          n.character_maximum_length AS database_width
+                   FROM adempiere.ad_column c
+                   JOIN adempiere.ad_table t ON t.ad_table_id=c.ad_table_id
+                   JOIN information_schema.columns n
+                     ON n.table_schema='adempiere' AND n.table_name='c_order'
+                    AND n.column_name=%s
+                   WHERE lower(t.tablename)='c_order'
+                     AND lower(c.columnname)=%s
+                     AND c.isactive='Y' AND t.isactive='Y'""",
+                ("poreference", "poreference"))
+            if len(widths) != 1:
+                raise IdempiereClientError("DEV11_NATIVE_REFERENCE_METADATA_UNAVAILABLE")
+            maximum = min(_positive(widths[0][key], "REFERENCE_WIDTH")
+                          for key in ("dictionary_width", "database_width"))
+            if len(fields["POReference"]) > maximum:
+                raise IdempiereClientError("DEV11_NATIVE_REFERENCE_TOO_LONG")
         # No caller-selected product/partner is honoured by the Java fixture.
         # The Java driver asserts both IDs match its native GardenWorld seed.
         params = {

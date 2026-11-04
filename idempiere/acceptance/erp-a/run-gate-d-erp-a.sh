@@ -166,13 +166,17 @@ grep -q '^ERP-A failures: 0$' "$OUT/erp-a-report.txt"
 if [ "${DEV11_REAL_NATIVE_ACCEPTANCE:-false}" = "true" ]; then
   log "DEV-11 real Hydra/CP -> quorum RabbitMQ -> ERP -> protected JVM"
   python3 -m venv "$RUN/dev11-venv"
-  "$RUN/dev11-venv/bin/python" -m pip install -q --disable-pip-version-check \
-    -e "$REPO/modules" "pika==1.3.2"
   if [ "${DEV11_TRADE_PERSISTED_REQUIRED:-false}" = "true" ]; then
     : "${TRADE_SRC:?Exact composed Trade source is required}"
+    # One fresh resolution: installing latest OTel first then downgrading only
+    # its SDK leaves incompatible orphan exporter packages in the environment.
     "$RUN/dev11-venv/bin/python" -m pip install -q --disable-pip-version-check \
-      -r "$TRADE_SRC/scripts/dev11-rabbit-requirements.txt"
+      -e "$REPO/modules" -r "$TRADE_SRC/scripts/dev11-rabbit-requirements.txt"
+  else
+    "$RUN/dev11-venv/bin/python" -m pip install -q --disable-pip-version-check \
+      -e "$REPO/modules" "pika==1.3.2"
   fi
+  "$RUN/dev11-venv/bin/python" -m pip check
   "$RUN/dev11-venv/bin/python" -B "$HERE/driver/dev11_native_connected.py" \
     --run "$RUN" --out "$OUT" --compose "$HERE/compose.yaml"
   python3 - "$OUT" <<'PYDEV11'

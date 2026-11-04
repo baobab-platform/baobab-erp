@@ -79,3 +79,14 @@ commitment, full authenticated BFF/IAM/CP/Trade lineage, native financial
 posting, the independent eight-owner custody join, or L4-OPS-01. All artifacts
 retain `l4_ops_01=BLOCKED`. The genuine CAA-06b buyer event must later traverse
 this same publisher/consumer path without a second messaging framework.
+
+
+## Current image security gate
+
+The Foundation scan at `41907701145` reports two HIGH findings in the upstream
+bundled ActiveMQ client 5.16.7: CVE-2026-50734 and CVE-2026-53917. Apache's
+[50734 advisory](https://activemq.apache.org/security-advisories.data/CVE-2026-50734-announcement.txt)
+and [53917 advisory](https://activemq.apache.org/security-advisories.data/CVE-2026-53917-announcement.txt)
+identify fixed 5.19.8/6.2.7 lines. This is a separate merge blocker; no scan
+exception, severity reduction or unqualified OSGi replacement is introduced.
+The integration proof must not be described as an approved release image.

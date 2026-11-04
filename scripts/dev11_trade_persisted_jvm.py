@@ -29,14 +29,21 @@ def exact_source(path, expected):
     require(actual == expected,"DEV11_EXECUTED_SOURCE_MISMATCH")
 
 
-def private_run(command, *, env, cwd, log, timeout=240):
-    # Child output can contain native diagnostic IDs. Keep it run-private;
-    # only an allowlisted failure stage is ever exposed to CI logs.
-    with open(log,"x",encoding="utf-8") as stream:
-        os.chmod(log,0o600)
-        result=subprocess.run(command,cwd=cwd,env=env,stdout=stream,stderr=stream,
-                              timeout=timeout,check=False)
-    require(result.returncode == 0,"DEV11_TRADE_SOURCE_OR_PUBLISHER_REFUSED")
+def private_run(command, *, env, cwd, log, stage, timeout=240):
+    # Only closed stages/codes leave the private process boundary. Even a
+    # TimeoutExpired/OSError must not print event IDs or private command args.
+    require(stage in ("MIGRATE","SOURCE","PUBLISH"),"DEV11_TRADE_STAGE_INVALID")
+    print("DEV11_TRADE_NATIVE_STAGE "+stage,flush=True)
+    try:
+        with open(log,"x",encoding="utf-8") as stream:
+            os.chmod(log,0o600)
+            result=subprocess.run(command,cwd=cwd,env=env,stdout=stream,stderr=stream,
+                                  timeout=timeout,check=False)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("DEV11_TRADE_CHILD_TIMEOUT:"+stage) from None
+    except OSError:
+        raise RuntimeError("DEV11_TRADE_CHILD_IO_REFUSED:"+stage) from None
+    require(result.returncode == 0,"DEV11_TRADE_CHILD_REFUSED:"+stage)
 
 
 class PersistedTrade:
@@ -67,9 +74,9 @@ class PersistedTrade:
         self.env.update({"BAOBAB_DEV11_JVM_INPUT":str(packet),
                          "BAOBAB_DEV11_JVM_HANDOFF":str(handoff)})
         private_run(["npm","run","migrate"],env=self.env,cwd=self.source,
-                    log=run/"trade-migrate.private.log")
+                    log=run/"trade-migrate.private.log",stage="MIGRATE")
         private_run(["npm","run","qualify:dev11-jvm-prepare"],env=self.env,cwd=self.source,
-                    log=run/"trade-source.private.log")
+                    log=run/"trade-source.private.log",stage="SOURCE")
         receipt=json.loads(handoff.read_text())
         require(receipt.get("schema")=="baobab.dev11.persisted-trade-event-handoff.v1" and
                 receipt.get("source_sha")==os.environ["TRADE_COMMIT"] and
@@ -113,7 +120,7 @@ class PersistedTrade:
              "PYTHONPATH":str(self.source/"scripts")}
         private_run([sys.executable,"-B",str(self.source/"scripts/dev11_rabbit_dispatcher.py"),
                      "--max","1","--event-id",event["id"]],env=env,cwd=self.source,
-                    log=self.run/("trade-publish-"+event["id"]+".private.log"))
+                    log=self.run/("trade-publish-"+event["id"]+".private.log"),stage="PUBLISH")
         with psycopg.connect(self.database,autocommit=True) as db:
             rows=db.execute("SELECT status,envelope FROM event_outbox WHERE event_id=%s",
                             (event["id"],)).fetchall()
