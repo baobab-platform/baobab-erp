@@ -25,6 +25,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: dev11-native-jvm-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   real-native-engine-local:
     name: Actual Hydra and CP authority, RabbitMQ, ERP and JVM veto native order
@@ -116,6 +120,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$ERP_EXPECTED_SOURCE_SHA"
+          test -x idempiere/acceptance/erp-a/run-gate-d-erp-a.sh
           test "$(git -C cp-source rev-parse HEAD)" = "$CP_PIN"
           test "$(git -C iam-source rev-parse HEAD)" = "$IAM_PIN"
           test "$(git -C trade-source rev-parse HEAD)" = "$TRADE_PIN"
