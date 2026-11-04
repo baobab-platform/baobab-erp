@@ -174,6 +174,79 @@ def hydrate_context(state, secret):
     return str(uuid.UUID(resolved.body["context_id"]))
 
 
+# CP's own verdict is read on the exact native order reference BEFORE any
+# signed broker delivery. These bounded categories are diagnostic, not an
+# alternate authorization source; the ERP worker still independently performs
+# both live CP checks and its native JVM/documentary veto.
+_CP_OUTCOMES = frozenset({
+    "AUTHORIZED", "NO_APPLICABLE_MANDATE", "AMBIGUOUS",
+    "REVOKED_OR_EXPIRED", "ACTOR_NOT_VERIFIED",
+})
+
+
+def inspect_cp_sales_decision(reply, *, context_id, order_reference):
+    """Return closed, non-sensitive preflight categories; never return a permit."""
+    if reply.status != 200:
+        return {"http_ok": False, "decision": "HTTP_REFUSED",
+                "exact_operation": False, "provider_permissions": False}
+    body = reply.body
+    if not isinstance(body, dict):
+        return {"http_ok": True, "decision": "MALFORMED",
+                "exact_operation": False, "provider_permissions": False}
+    resolution = body.get("legal_actor_resolution")
+    outcome = resolution.get("outcome") if isinstance(resolution, dict) else None
+    exact = body.get("context_id") == context_id and (
+        body.get("operation_reference") == order_reference)
+    provider_permissions = body.get("provider_permissions_granted")
+    return {"http_ok": True,
+            "decision": outcome if outcome in _CP_OUTCOMES else "MALFORMED",
+            "exact_operation": exact,
+            "provider_permissions": provider_permissions is False}
+
+
+def require_current_cp_sales_preflight(state, secret, context_id, order, output):
+    """Observe real CP outcome, never mint, extend or cache sales authority.
+
+    This diagnostic may stop the disposable run earlier than the worker to
+    identify absent verification versus a documentary/native readiness veto.
+    Even an AUTHORIZED response is NOT a substitute for the worker's fresh
+    pre-effect and point-of-use assessments.
+    """
+    status, token = http("POST", HYDRA_PUBLIC + "/oauth2/token", {
+        "grant_type": "client_credentials", "client_id": HYDRA_CLIENT,
+        "client_secret": secret, "scope": " ".join(SCOPES),
+        "audience": "baobab-control-plane",
+    }, form=True)
+    demand(status == 200 and isinstance(token.get("access_token"), str),
+           "DEV11_CP_PREFLIGHT_HYDRA_TOKEN_UNAVAILABLE")
+    request = {
+        "context_id": context_id, "role": "CONTRACTING_PARTY",
+        "activity": "SALES_ORDER_COMMITMENT", "market": state["market"],
+        "capability": "erp.erp-a", "operation_reference": order,
+    }
+    result = call("POST", CP + "/internal/legal-actor/v1/assess", request, {
+        "Authorization": "Bearer " + token["access_token"],
+    })
+    observed = inspect_cp_sales_decision(
+        result, context_id=context_id, order_reference=order)
+    output.write_text(json.dumps({
+        "schema": "baobab.erp.dev11.cp-sales-preflight.v1",
+        "disposable_synthetic_context": True,
+        "cp_http_ok": observed["http_ok"],
+        "cp_decision": observed["decision"],
+        "exact_operation": observed["exact_operation"],
+        "provider_grant_not_inferred": observed["provider_permissions"],
+        "native_effect_qualified": False,
+        "buyer_trade_commitment_qualified": False,
+    }, sort_keys=True) + "\n")
+    print("DEV11_CP_SALES_PREFLIGHT " + json.dumps(observed, sort_keys=True),
+          flush=True)
+    demand(observed["http_ok"] and observed["decision"] == "AUTHORIZED" and
+           observed["exact_operation"] and observed["provider_permissions"],
+           "DEV11_CP_SALES_PREFLIGHT_" + observed["decision"])
+    return observed
+
+
 def event_for(state, *, order, product_id, sku, unit, customer_key):
     from events.registry import dataschema_for
     event_id = str(uuid.uuid4())
@@ -389,6 +462,11 @@ def main():
         denied=event_for(state,order="order_dev11_revoked_"+uuid.uuid4().hex,
                          product_id=product,sku=sku,unit=unit,
                          customer_key=customer_key)
+        # Bind CP's live sales responsibility to the exact first positive
+        # order, without asserting that a Medusa buyer placed it.
+        require_current_cp_sales_preflight(
+            state, secret, context_id, positive["data"]["commerce_order_id"],
+            out/"dev11-cp-sales-preflight.json")
         registry=operator_file(run,state,context_id,(positive,ambiguous,denied))
         native_env["BAOBAB_ERP_INBOX_AUTHORITY_REGISTRY_FILE"]=str(registry)
 
