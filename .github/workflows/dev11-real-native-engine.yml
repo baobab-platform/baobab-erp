@@ -138,5 +138,6 @@ jobs:
             artifacts/dev11-real-native/dev09-cleanup.json
             artifacts/dev11-real-native/dev11-native-fixture-readiness.json
             artifacts/dev11-real-native/dev11-cp-sales-preflight.json
+            artifacts/dev11-real-native/dev11-cp-documentary-preflight.json
           if-no-files-found: warn
           retention-days: 14
