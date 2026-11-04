@@ -107,7 +107,7 @@ def verify(connection, tenant, event_id, legal_entity, ad_client, ad_org, *, map
     # across ALL companies, so a foreign client cannot satisfy the readback.
     actual_id, actual_client, actual_org, reference, docstatus = unique(
         connection,
-        "SELECT c_order_id, ad_client_id, ad_org_id, " + native_column + ", docstatus "
+        "SELECT c_order_id, ad_client_id, ad_org_id, " + native_column + "::text, docstatus "
         "FROM adempiere.c_order WHERE " + native_column + "=%s", (native_reference,),
         "IDEMPIERE_ORDER_MISSING_OR_DUPLICATED")
     require((actual_id, actual_client, actual_org, reference) ==
@@ -196,6 +196,60 @@ def verify(connection, tenant, event_id, legal_entity, ad_client, ad_org, *, map
     }
 
 
+# Only these source-owned failure categories may leave the observer. Database
+# error messages and query parameters can contain private business identifiers.
+NOT_PROVEN_CODES = frozenset({
+    'ADOPTED_NATIVE_ORDER',
+    'BLOCKED',
+    'COMMIT',
+    'CONSEQUENCE_EVENT_NOT_ATOMIC_OR_DUPLICATED',
+    'DEV11_REAL_NATIVE_ORDER=',
+    'ERP_CONSEQUENCE_FALSE_FINANCIAL_STATUS',
+    'ERP_CONSEQUENCE_MISSING',
+    'ERP_DATABASE_URL',
+    'ERP_EXECUTION_NOT_UNIQUE',
+    'EXECUTED',
+    'IDEMPIERE_ORDER_FOREIGN_OR_VOID',
+    'IDEMPIERE_ORDER_MISSING_OR_DUPLICATED',
+    'INVALID_EVENT_ID',
+    'INVALID_NATIVE_COMPANY',
+    'NATIVE_EXECUTION_IDENTITY_MISMATCH',
+    'NATIVE_INBOX_NOT_EXECUTED',
+    'NATIVE_INBOX_NOT_UNIQUE',
+    'NATIVE_JVM_AUTHORITY_ATTRIBUTION_MISSING',
+    'NATIVE_ORDER_LINES_INVALID',
+    'NATIVE_ORDER_PAYLOAD_INVALID',
+    'NATIVE_PLACEMENT_NOT_UNIQUE_OR_ACTIVE',
+    'NATIVE_READBACK_NOT_PROVEN',
+    'NATIVE_REFERENCE_MAPPING_CHANGED',
+    'NATIVE_REFERENCE_MAPPING_MISSING',
+    'UNTRUSTED_OBSERVER_SCOPE',
+    'VERIFIED',
+    '^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*$',
+})
+DATABASE_CONDITIONS = {
+    "42703": "UNDEFINED_COLUMN", "42P01": "UNDEFINED_TABLE",
+    "42883": "OPERATOR_OR_FUNCTION_MISSING", "42804": "TYPE_MISMATCH",
+    "22P02": "INVALID_REPRESENTATION", "42501": "INSUFFICIENT_PRIVILEGE",
+    "22003": "NUMERIC_OUT_OF_RANGE", "25006": "READ_ONLY_VIOLATION",
+}
+
+
+def failure_receipt(error):
+    reason = "NATIVE_READBACK_NOT_PROVEN"
+    if isinstance(error, NotProven) and str(error) in NOT_PROVEN_CODES:
+        reason = str(error)
+    receipt = {
+        "schema": "erp.dev11.independent-real-native-order.v1",
+        "native_order_effect_qualified": False, "reason": reason,
+        "l4_ops_01": "BLOCKED", "protected_acceptance": False,
+    }
+    if isinstance(error, psycopg.Error):
+        receipt["database_condition"] = DATABASE_CONDITIONS.get(
+            error.sqlstate, "DATABASE_READBACK_REFUSED")
+    return receipt
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tenant", required=True)
@@ -214,19 +268,15 @@ def main():
                              mapped_reference=args.mapped_native_reference)
             db.execute("COMMIT")
         success = True
-    except (NotProven, psycopg.Error, OSError, KeyError, ValueError):
-        receipt = {
-            "schema": "erp.dev11.independent-real-native-order.v1",
-            "native_order_effect_qualified": False,
-            "reason": "NATIVE_READBACK_NOT_PROVEN",
-            "l4_ops_01": "BLOCKED",
-            "protected_acceptance": False,
-        }
+    except (NotProven, psycopg.Error, OSError, KeyError, ValueError) as error:
+        receipt = failure_receipt(error)
         success = False
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(receipt, sort_keys=True, indent=2) + "\n")
     print("DEV11_REAL_NATIVE_ORDER=" + ("VERIFIED" if success else "BLOCKED"))
+    if not success:
+        print("DEV11_NATIVE_READBACK_REFUSAL " + json.dumps(receipt, sort_keys=True))
     return 0 if success else 2
 
 

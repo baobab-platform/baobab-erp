@@ -52,6 +52,17 @@ def demand(ok, code):
         raise RuntimeError(code)
 
 
+def run_independent_observer(command, *, env, stage):
+    """Run the observer without exposing private command arguments on failure."""
+    demand(stage in ("NATIVE", "CP_LINEAGE", "RECOVERY"),
+           "DEV11_OBSERVER_STAGE_INVALID")
+    try:
+        completed = subprocess.run(command, env=env, check=False, timeout=45)
+    except (subprocess.TimeoutExpired, OSError):
+        raise RuntimeError("DEV11_INDEPENDENT_OBSERVER_UNAVAILABLE:" + stage) from None
+    demand(completed.returncode == 0, "DEV11_INDEPENDENT_OBSERVER_REFUSED:" + stage)
+
+
 def fixture_order_reference():
     # Exercise an unshortened Medusa-shaped ID that exceeds POReference.
     # The ERP recovery mapping retains the complete input; native UUID is separate.
@@ -613,7 +624,7 @@ def main():
                     "scripts/dev11_verify_native_idempiere_order.py"),
                 *common,"--event-id",positive["id"],
                 "--output",str(out/"dev11-native-effect.json")]
-            subprocess.run(verify_native,env=native_env,check=True,timeout=45)
+            run_independent_observer(verify_native, env=native_env, stage="NATIVE")
             verify_cp=[
                 sys.executable,"-B",
                 str(Path(__file__).resolve().parents[4] /
@@ -621,7 +632,7 @@ def main():
                 *common,"--commerce-order",positive["data"]["commerce_order_id"],
                 "--market",state["market"],
                 "--output",str(out/"dev11-cp-jvm-lineage.json")]
-            subprocess.run(verify_cp,env=native_env,check=True,timeout=45)
+            run_independent_observer(verify_cp, env=native_env, stage="CP_LINEAGE")
 
             if trade:
                 trade.verify_effect_join(db,positive,out/"dev11-trade-jvm-joined.json")
@@ -675,11 +686,11 @@ def main():
             demand(after_replay==1,"DEV11_NATIVE_UNKNOWN_RETRY_DUPLICATED_ORDER")
             native_receipt=Path(__file__).resolve().parents[4] / (
                 "scripts/dev11_verify_native_idempiere_order.py")
-            subprocess.run([
+            run_independent_observer([
                 sys.executable,"-B",str(native_receipt),
                 *common,"--event-id",ambiguous["id"],
                 "--output",str(out/"dev11-native-unknown-adopted.json")],
-                env=native_env,check=True,timeout=45)
+                env=native_env, stage="RECOVERY")
 
             if trade:
                 trade.verify_effect_join(db,ambiguous,out/"dev11-trade-jvm-unknown-joined.json")

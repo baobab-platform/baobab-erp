@@ -95,5 +95,23 @@ schema. Final-source runtime and independent originals remain required.
 The native index checks use PostgreSQL 17's
 [pg_index catalogue](https://www.postgresql.org/docs/17/catalog-pg-index.html):
 unique, valid, ready and live, with one exact non-expression key and no partial
-predicate. The current local pinned environment passes 407 unit tests and
+predicate. The current local pinned environment passes 414 unit tests and
 `pip check`; the actual Actions PostgreSQL 17/JVM proof remains mandatory.
+
+
+The UUID profile requires the provider's independent full-business readback
+port before any lookup or write. Both a newly returned native ID and an
+adopted ID must pass that comparison; a transport returning an integer alone
+cannot settle success. Older events retain `STALE_VERSION` without reserving
+a new intent, newer versions retain `AMENDMENT_UNSUPPORTED`, and equal-version
+replays require the immutable scope and payload digest to match.
+
+
+Run `41910924583` at `698a5e9` reached actual native creation with the UUID
+schema verified and an `EXECUTED` inbox outcome. The independent effect
+observer refused, so the overall run FAILED and neither mapping nor joined
+qualification was accepted. Closed observer categories now identify the exact
+failed check or database error class without exporting private SQL or child
+command arguments. Native UUID readback projects textual identity consistently
+for both physically supported native UUID and string columns. All original
+company, business, CP attribution and consequence checks remain required.

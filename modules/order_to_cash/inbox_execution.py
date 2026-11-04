@@ -98,16 +98,19 @@ def _execute(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQ
         if known is not None:
             if known.legal_entity_id != order.legal_entity_id:
                 raise _dead("ORDER_SCOPE_CHANGED", "an executed order belongs to another legal entity")
+            if order.order_version < known.order_version:
+                return Outcome("processed", "STALE_VERSION")
+            if order.order_version > known.order_version:
+                raise _dead("AMENDMENT_UNSUPPORTED", "a later version of an executed order; amendment is not implemented")
+            # Only an equal-version replay compares immutable current facts.
+            # An older historical event must keep its existing STALE_VERSION
+            # outcome; a later amendment is never interpreted as a new intent.
             if references.configured():
                 try:
                     references.reserve(connection, claim, order, target, require_existing=True)
                 except IdempiereClientError:
                     raise _dead("NATIVE_REFERENCE_CHANGED", "native reference requires immutable scope and business facts") from None
-            if order.order_version == known.order_version:
-                return Outcome("processed", "ALREADY_EXECUTED")
-            if order.order_version < known.order_version:
-                return Outcome("processed", "STALE_VERSION")
-            raise _dead("AMENDMENT_UNSUPPORTED", "a later version of an executed order; amendment is not implemented")
+            return Outcome("processed", "ALREADY_EXECUTED")
 
         lines = _resolve_lines(masters, target, order)
         try:
@@ -226,6 +229,9 @@ def _find_or_create(engine: IdempiereOrders, order: PlacedOrder, customer: int, 
             raise OrderToCashError("native order lookup/creation requires a governed operation")
         _deny_legacy_native_action(scope, "create_sales_order", order.commerce_order_id)
     try:
+        verify_existing = getattr(engine, "assert_existing_order_matches", None)
+        if reference is not None and not callable(verify_existing):
+            raise IdempiereClientError("NATIVE_REFERENCE_READBACK_REQUIRED")
         existing = engine.query("C_Order", [Eq(
             "C_Order_UU" if reference else "POReference",
             reference.native_uuid if reference else order.commerce_order_id)], ["C_Order_ID"])
@@ -240,8 +246,7 @@ def _find_or_create(engine: IdempiereOrders, order: PlacedOrder, customer: int, 
             # The DEV-11 real-JVM adapter independently reads back all lines
             # before marking an event processed; a different payload or
             # foreign company never becomes 'adopted' by POReference alone.
-            verify_existing = getattr(engine, "assert_existing_order_matches", None)
-            if verify_existing is not None:
+            if callable(verify_existing):
                 verify_existing(native_id, order, customer, lines, **(
                     {"native_uuid": reference.native_uuid} if reference else {}))
             return native_id, True
@@ -256,6 +261,10 @@ def _find_or_create(engine: IdempiereOrders, order: PlacedOrder, customer: int, 
             references.mark_creation_attempt(connection, reference)
         with references.using_reference(reference), authorised_native_financial_request("POST", "/models/C_Order", fields):
             native_id = engine.create_record("C_Order", fields)
+        if reference is not None:
+            # The same full-fact readback is mandatory for initial creation
+            # and recovery; a provider-returned ID is not a business effect.
+            verify_existing(native_id, order, customer, lines, native_uuid=reference.native_uuid)
         return native_id, False
     except IdempiereApiError as exc:
         if exc.status in (400, 422):

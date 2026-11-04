@@ -18,18 +18,29 @@ sys.path.insert(0, str(DRIVER))
 try:
     from dev11_native_connected import (inspect_outcome, inspect_cp_sales_decision,
                                        inspect_cp_documentary_decision, native_customer,
-                                       native_id, fixture_order_reference)
+                                       native_id, fixture_order_reference, run_independent_observer)
 finally:
     sys.path.remove(str(DRIVER))
 
 
 class NativeCustomerSelectorTests(unittest.TestCase):
-    def test_synthetic_order_identity_is_created_within_native_reference_width(self):
-        with patch("dev11_native_connected.secrets.token_hex", return_value="ab" * 7):
-            reference = fixture_order_reference()
-        self.assertEqual(len(reference), 20)
-        self.assertTrue(reference.startswith("order_"))
-        self.assertRegex(reference, r"^order_[0-9a-f]{14}$")
+    def test_synthetic_order_keeps_full_identity_beyond_legacy_reference_width(self):
+        reference = fixture_order_reference()
+        self.assertEqual(len(reference), 38)
+        self.assertRegex(reference, r"^order_[0-9a-f]{32}$")
+
+    def test_observer_refusal_never_discloses_private_command_arguments(self):
+        import subprocess
+        for failure in (subprocess.TimeoutExpired(["private-event", "private-tenant"], 1),
+                        OSError("private-event private-tenant"), None):
+            with self.subTest(failure=type(failure).__name__), patch(
+                    "dev11_native_connected.subprocess.run", side_effect=failure,
+                    return_value=SimpleNamespace(returncode=2)):
+                with self.assertRaises(RuntimeError) as raised:
+                    run_independent_observer(["private-event", "private-tenant"],
+                                             env={}, stage="NATIVE")
+                self.assertNotIn("private-", str(raised.exception))
+                self.assertIn("NATIVE", str(raised.exception))
 
     def test_native_outcome_diagnostic_never_emits_provider_text(self):
         class Row:

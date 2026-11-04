@@ -7,7 +7,7 @@ these mocks are NEVER business-effect acceptance.
 from __future__ import annotations
 import unittest
 
-from scripts.dev11_verify_native_idempiere_order import NotProven, verify
+from scripts.dev11_verify_native_idempiere_order import NotProven, verify, failure_receipt
 
 TENANT = "tn_dev11synthetic"
 EVENT_ID = "1d032305-669c-45df-b988-01166de4c14c"
@@ -82,6 +82,17 @@ class MappedDatabase(FakeDatabase):
 
 
 class NativeReadbackSafetyTests(unittest.TestCase):
+    def test_closed_refusal_diagnostic_keeps_scope_and_provider_data_private(self):
+        closed = failure_receipt(NotProven("NATIVE_REFERENCE_MAPPING_CHANGED"))
+        self.assertEqual(closed["reason"], "NATIVE_REFERENCE_MAPPING_CHANGED")
+        for error in (NotProven("private-tenant private-event"),
+                      ValueError("private-token"), KeyError("private-tenant")):
+            result = failure_receipt(error)
+            self.assertEqual(result["reason"], "NATIVE_READBACK_NOT_PROVEN")
+            self.assertNotIn("private-", str(result))
+            self.assertFalse(result["native_order_effect_qualified"])
+            self.assertEqual(result["l4_ops_01"], "BLOCKED")
+
     def test_mapped_readback_requires_full_payload_digest_and_source_event(self):
         observed=verify(MappedDatabase(),TENANT,EVENT_ID,LEGAL,11,11,mapped_reference=True)
         self.assertTrue(observed["lossless_native_reference_mapping_verified"])
