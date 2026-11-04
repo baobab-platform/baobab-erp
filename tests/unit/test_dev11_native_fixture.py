@@ -15,7 +15,9 @@ from types import SimpleNamespace
 DRIVER = Path(__file__).resolve().parents[2] / "idempiere/acceptance/erp-a/driver"
 sys.path.insert(0, str(DRIVER))
 try:
-    from dev11_native_connected import inspect_outcome, inspect_cp_sales_decision, native_customer, native_id
+    from dev11_native_connected import (inspect_outcome, inspect_cp_sales_decision,
+                                       inspect_cp_documentary_decision, native_customer,
+                                       native_id)
 finally:
     sys.path.remove(str(DRIVER))
 
@@ -71,6 +73,43 @@ class NativeCustomerSelectorTests(unittest.TestCase):
                     and result["exact_operation"] and result["provider_permissions"])
                 self.assertNotIn("secret_access_token", str(result))
                 self.assertNotIn("must-not-be-reported", str(result))
+
+    def test_documentary_preflight_is_negative_only_and_exactly_scoped(self):
+        context, organisation, order, market, capability = (
+            "cp-context", "cp-organisation", "order-native", "US", "erp.erp-a")
+        good = {
+            "context_id": context, "organisation_id": organisation,
+            "operation_reference": order, "market": market,
+            "capability": capability,
+            "policy_reference": "ADR-BCP-026/PEO-02T:negative-only",
+            "blocked": False, "authority_granted": False,
+            "private_bearer": "never-export",
+        }
+        def read(status, body):
+            return inspect_cp_documentary_decision(
+                SimpleNamespace(status=status, body=body),
+                context_id=context, organisation_id=organisation,
+                order_reference=order, market=market, capability=capability)
+        expected = {"http_ok": True, "exact_operation": True,
+                    "unblocked": True, "negative_only": True}
+        self.assertEqual(read(200, good), expected)
+        for status, body in (
+                (403, good),
+                (200, {**good, "blocked": True}),
+                (200, {**good, "authority_granted": True}),
+                (200, {**good, "context_id": "other"}),
+                (200, {**good, "organisation_id": "other"}),
+                (200, {**good, "operation_reference": "another-order"}),
+                (200, {**good, "market": "ZA"}),
+                (200, {**good, "capability": "erp.other"}),
+                (200, {**good, "policy_reference": "not-a-policy"}),
+                (200, []),
+        ):
+            with self.subTest(status=status, body=body):
+                actual = read(status, body)
+                self.assertFalse(all(actual.values()))
+                self.assertNotIn("private_bearer", str(actual))
+                self.assertNotIn("never-export", str(actual))
 
     def test_exact_native_numeric_ids_without_coercion(self):
         for value in (101, Decimal("101"), Decimal("101.000")):
