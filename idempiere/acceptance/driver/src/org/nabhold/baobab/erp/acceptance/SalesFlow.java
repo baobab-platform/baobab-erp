@@ -178,8 +178,19 @@ final class SalesFlow {
     }
 
     private static int customer() {
-        return DB.getSQLValueEx(null, "SELECT MIN(C_BPartner_ID) FROM C_BPartner WHERE AD_Client_ID=? AND Name='Joe Block'"
-                + " AND IsCustomer='Y' AND IsActive='Y'", CLIENT);
+        // Native seed releases may rename the sample customer. Select an
+        // actual active customer with usable billing/shipping in this fixture
+        // company, rather than guessing a display name or substituting an ID.
+        // The DEV-11 private mapping must still match this exact fresh native
+        // selection; no caller may select another company, partner or product.
+        return DB.getSQLValueEx(null, """
+                SELECT MIN(bp.C_BPartner_ID) FROM C_BPartner bp
+                 WHERE bp.AD_Client_ID=? AND bp.AD_Org_ID IN (0,11)
+                   AND bp.IsCustomer='Y' AND bp.IsActive='Y'
+                   AND EXISTS (SELECT 1 FROM C_BPartner_Location loc
+                                WHERE loc.C_BPartner_ID=bp.C_BPartner_ID
+                                  AND loc.IsActive='Y' AND loc.IsBillTo='Y'
+                                  AND loc.IsShipTo='Y')""", CLIENT);
     }
 
     private static MOrder order(Properties in, Properties ctx, String trx) {

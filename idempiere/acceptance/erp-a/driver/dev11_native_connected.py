@@ -57,9 +57,13 @@ def native_fixture(db):
     # Resolve the *same native GardenWorld fixture* as SalesFlow.order; never
     # guess a product by price/name on the business execution path.
     customer = db.execute(
-        """SELECT min(c_bpartner_id) FROM adempiere.c_bpartner
-           WHERE ad_client_id=11 AND name='Joe Block'
-             AND iscustomer='Y' AND isactive='Y'""").fetchone()[0]
+        """SELECT min(bp.c_bpartner_id) FROM adempiere.c_bpartner bp
+           WHERE bp.ad_client_id=11 AND bp.ad_org_id IN (0,11)
+             AND bp.iscustomer='Y' AND bp.isactive='Y'
+             AND EXISTS (SELECT 1 FROM adempiere.c_bpartner_location loc
+                         WHERE loc.c_bpartner_id=bp.c_bpartner_id
+                           AND loc.isactive='Y' AND loc.isbillto='Y'
+                           AND loc.isshipto='Y')""").fetchone()[0]
     demand(type(customer) is int and customer > 0, "DEV11_NATIVE_CUSTOMER_NOT_READY")
     warehouse = db.execute(
         """SELECT min(m_warehouse_id) FROM adempiere.m_warehouse

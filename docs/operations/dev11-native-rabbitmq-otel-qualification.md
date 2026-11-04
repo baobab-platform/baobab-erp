@@ -80,6 +80,15 @@ event. Until then: **L4-OPS-01 = BLOCKED**.
 
 ## 4 November 2026 maintenance corrections
 
+Run `41803579510` narrowed the remaining native fixture failure to the
+customer selector. Both the JVM and its independent Python preflight had
+assumed the sample customer's display name was `Joe Block`. They now select
+the same real active customer in native fixture company 11, with an active
+billing/shipping location and an allowed fixture Organisation. The private
+expected-customer mapping is still rechecked by the JVM; missing customer
+data still fails closed. No partner ID, authority, stock, cost or successful
+order is invented. Actual native execution must be rerun at the corrected head.
+
 The real native run `41601781964` reached the ERP-A scenarios, then failed
 because the DEV-12 restore drill had stopped ERP before DEV-11's JVM probe.
 The orchestrator now executes every live DEV-11 scenario first and performs
