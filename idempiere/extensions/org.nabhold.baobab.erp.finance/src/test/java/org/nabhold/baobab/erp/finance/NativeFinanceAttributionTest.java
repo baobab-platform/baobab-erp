@@ -44,6 +44,25 @@ class NativeFinanceAttributionTest {
     }
 
     @Test
+    void persistedExpiryNeverRoundsPastTheOriginalAuthorityCeiling() throws Exception {
+        for (String value : List.of("2026-11-05T00:00:20.123456499Z",
+                "2026-11-05T00:00:20.123456500Z", "2026-11-05T00:00:20.999999999Z")) {
+            Instant expiry = Instant.parse(value);
+            FakeJdbc db = new FakeJdbc();
+            var decision = new NativeFinanceAttribution.Decision(DECISION.decisionId(),
+                DECISION.contextId(), DECISION.mandateId(), DECISION.supersedesMandateId(),
+                DECISION.evidenceReference(), DECISION.mandateEffectiveFrom(), expiry);
+            new NativeFinanceAttribution(t -> db.connection()).append(
+                operation("Fact_Acct", 0), PLACEMENT, decision, BASELINE);
+            Instant stored = ((java.sql.Timestamp) db.updates.get(0).get(20)).toInstant();
+            assertFalse(stored.isAfter(expiry), "persistence must never extend CP authority");
+            assertEquals(0, stored.getNano() % 1000);
+            assertTrue(java.time.Duration.between(stored, expiry).toNanos() < 1000);
+            assertEquals(0, db.commits);
+        }
+    }
+
+    @Test
     void autocommitUnboundOrMismatchedEvidenceFailBeforeMutation() {
         FakeJdbc auto = new FakeJdbc();
         auto.autoCommit = true;

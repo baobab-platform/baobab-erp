@@ -31,6 +31,7 @@ from typing import Callable
 import psycopg
 
 from inbox.postgres_queue import Claim, PostgresInboxQueue
+from application.observability import configure, consumer_span, diagnostic_outcome
 from integration.idempiere_client import RestIdempiereClient
 from order_to_cash.execution_policy import ALL_ORGANIZATIONS_AD_ORG_ID, ORDER_PLACED
 from customers.projection_execution import CUSTOMER_PROJECTED, run_claim as run_customer_claim
@@ -38,6 +39,19 @@ from order_to_cash.inbox_execution import EngineOrgMismatch, InboxNativeAuthorit
 
 
 def _engine_factory(credentials: dict):
+    # Only the isolated ERP-A/DEV-11 acceptance harness may use the real JVM
+    # fixture bridge. Normal ERP deployments continue using the native REST
+    # adapter and MUST NOT install/accept a fixture transport.
+    private_driver = os.environ.get("BAOBAB_DEV11_ENGINE_DRIVER_DIR")
+    if private_driver is not None:
+        from integration.idempiere_gate_d_real import RealJvmGateDOrderAdapter
+        def real_jvm_for(ad_client_id: int, ad_org_id: int):
+            return RealJvmGateDOrderAdapter(
+                ad_client_id, ad_org_id,
+                db_url=os.environ.get("BAOBAB_DEV11_ENGINE_NATIVE_DATABASE_URL", ""),
+                driver_dir=private_driver)
+        return real_jvm_for
+
     def engine_for(ad_client_id: int, ad_org_id: int):
         found = credentials.get(ad_client_id)
         if found is None:
@@ -52,31 +66,47 @@ def _engine_factory(credentials: dict):
 
 
 def run_once(connection: psycopg.Connection, engine_for, *, worker_id: str, limit: int = 50, lease_seconds: int = 300,
-             authority_for: Callable[[Claim], InboxNativeAuthority | None] | None = None) -> dict:
+             authority_for: Callable[[Claim], InboxNativeAuthority | None] | None = None,
+             event_types: tuple[str, ...] = (CUSTOMER_PROJECTED, ORDER_PLACED)) -> dict:
     """One pass: up to ``limit`` rows per event type, customers first. ``pass`` and ``codes`` count outcomes across both types; the
     backlog is reported per type so an alert can watch each."""
+    # The DEV-11 order-only worker must not process customer projections or
+    # any unqualified event type merely because it shares the same inbox.
+    if event_types not in ((CUSTOMER_PROJECTED, ORDER_PLACED), (ORDER_PLACED,)):
+        raise ValueError("ERP_DEV11_INBOX_EVENT_PROFILE_NOT_APPROVED")
     queue = PostgresInboxQueue(connection)
     done: dict[str, int] = {}
     codes: dict[str, int] = {}
-    for event_type in (CUSTOMER_PROJECTED, ORDER_PLACED):
+    for event_type in event_types:
         for _ in range(limit):
             claim = queue.claim(event_type=event_type, worker_id=worker_id, lease_seconds=lease_seconds)
             if claim is None:
                 break
-            if event_type == ORDER_PLACED:
-                # The operator-controlled worker composition resolves the
-                # exact IAM/CP authority per CLAIM, never from event data.
-                # Missing/failed lookup becomes an explicitly blocked inbox
-                # item; it must never fall back to the tenant's default actor.
-                authority = None
-                if authority_for is not None:
-                    try:
-                        authority = authority_for(claim)
-                    except Exception:
-                        authority = None
-                outcome = run_claim(claim, connection, queue, engine_for, authority=authority)
-            else:
-                outcome = run_customer_claim(claim, connection, queue, engine_for)
+            with consumer_span(claim.traceparent, "baobab.erp.inbox.execute") as span:
+                span.set_attribute("messaging.system", "rabbitmq")
+                # Same original event identity, never an inferred replay ID.
+                span.set_attribute("messaging.message.id", str(claim.event_id))
+                span.set_attribute("messaging.operation.type", "process")
+                span.set_attribute("baobab.erp.event_type", event_type)
+                if event_type == ORDER_PLACED:
+                    # Authority is re-resolved per CLAIM, never inferred from
+                    # a W3C trace or a signed message's tenant field.
+                    authority = None
+                    if authority_for is not None:
+                        try:
+                            authority = authority_for(claim)
+                        except Exception:
+                            authority = None
+                    outcome = run_claim(claim, connection, queue, engine_for, authority=authority)
+                else:
+                    outcome = run_customer_claim(claim, connection, queue, engine_for)
+                classification = {
+                    "processed": "BUSINESS_PROCESSED",
+                    "blocked": "BUSINESS_BLOCKED",
+                    "retry": "BUSINESS_RETRY",
+                    "dead_letter": "BUSINESS_DEAD_LETTER",
+                }.get(outcome.status, "BUSINESS_BLOCKED")
+                diagnostic_outcome(span, classification, failed=classification != "BUSINESS_PROCESSED")
             done[outcome.status] = done.get(outcome.status, 0) + 1
             codes[outcome.code] = codes.get(outcome.code, 0) + 1
     return {"event": "inbox.execute", "worker": worker_id, "pass": done, "codes": codes,
@@ -93,10 +123,29 @@ def main() -> None:
     lease = int(os.environ.get("BAOBAB_INBOX_LEASE_SECONDS", "300"))
     if limit < 1 or lease < 30:
         raise RuntimeError("BAOBAB_INBOX_BATCH_LIMIT must be >= 1 and BAOBAB_INBOX_LEASE_SECONDS >= 30")
+    configure()
+    # DEV-11: even disposable workers MUST never interpret an accepted
+    # Trade event as native ERP posting/creation authority. This CLI is
+    # stricter than the legacy directly invoked synthetic unit-test seam.
+    if os.environ.get("BAOBAB_REQUIRE_LEGAL_ACTOR_GATE", "").lower() == "false":
+        raise RuntimeError("ERP_INBOX_NATIVE_ACTION_GATE_CANNOT_BE_DISABLED")
+    os.environ["BAOBAB_REQUIRE_LEGAL_ACTOR_GATE"] = "true"
     engine_for = _engine_factory(_load_idempiere_credentials())
     with psycopg.connect(database_url) as connection:
+        # The registry is operator-owned and event-specific; the event cannot
+        # name a Context, role, mandate, provider policy or authority source.
+        from application.inbox_authority import from_operator_configuration
+        composition = from_operator_configuration(connection, engine_for)
+        profile = os.environ.get("BAOBAB_ERP_INBOX_PROFILE", "normal")
+        if composition is not None and profile != "dev11-order-placed":
+            raise RuntimeError("ERP_DEV11_OPERATOR_AUTHORITY_REQUIRES_ORDER_ONLY_WORKER")
+        if profile not in ("normal", "dev11-order-placed"):
+            raise RuntimeError("ERP_INBOX_EVENT_PROFILE_NOT_APPROVED")
+        enabled_events = ((ORDER_PLACED,) if profile == "dev11-order-placed"
+                          else (CUSTOMER_PROJECTED, ORDER_PLACED))
         report = run_once(connection, engine_for, worker_id=f"{socket.gethostname()}-{os.getpid()}", limit=limit,
-                          lease_seconds=lease)
+                          lease_seconds=lease, authority_for=composition.for_claim if composition else None,
+                          event_types=enabled_events)
     print(json.dumps(report, sort_keys=True), file=sys.stdout, flush=True)
 
 

@@ -178,8 +178,22 @@ final class SalesFlow {
     }
 
     private static int customer() {
-        return DB.getSQLValueEx(null, "SELECT MIN(C_BPartner_ID) FROM C_BPartner WHERE AD_Client_ID=? AND Name='Joe Block'"
-                + " AND IsCustomer='Y' AND IsActive='Y'", CLIENT);
+        // Native seed releases may rename the sample customer. Select an
+        // actual active customer with usable billing/shipping in this fixture
+        // company, rather than guessing a display name or substituting an ID.
+        // The DEV-11 private mapping must still match this exact fresh native
+        // selection; no caller may select another company, partner or product.
+        // Billing and shipping need not be the same native location.
+        return DB.getSQLValueEx(null, """
+                SELECT MIN(bp.C_BPartner_ID) FROM C_BPartner bp
+                 WHERE bp.AD_Client_ID=? AND bp.AD_Org_ID IN (0,11)
+                   AND bp.IsCustomer='Y' AND bp.IsActive='Y'
+                   AND EXISTS (SELECT 1 FROM C_BPartner_Location loc
+                                WHERE loc.C_BPartner_ID=bp.C_BPartner_ID
+                                  AND loc.IsActive='Y' AND loc.IsBillTo='Y')
+                   AND EXISTS (SELECT 1 FROM C_BPartner_Location loc
+                                WHERE loc.C_BPartner_ID=bp.C_BPartner_ID
+                                  AND loc.IsActive='Y' AND loc.IsShipTo='Y')""", CLIENT);
     }
 
     private static MOrder order(Properties in, Properties ctx, String trx) {
@@ -208,11 +222,50 @@ final class SalesFlow {
         o.setM_Warehouse_ID(warehouse);
         o.setM_PriceList_ID(priceList);
         o.setDescription("Baobab Gate D synthetic sales order (CI only)");
+        // DEV-11: bind the real JVM-created draft to the exact signed Trade
+        // order reference. This is a disposable driver, not a production API.
+        String reference = in.getProperty("reference", "");
+        if (!reference.isEmpty()) {
+            if (!"acceptance".equals(System.getProperty("baobab.erp.native.environment"))
+                    || !"signed-event-erp".equals(in.getProperty("dev11_profile"))) {
+                throw new IllegalArgumentException("DEV11_NATIVE_PROTECTED_DRIVER_REQUIRED");
+            }
+            if (reference.length() > 127 || !reference.matches("[A-Za-z0-9][A-Za-z0-9._:-]{2,126}")) {
+                throw new IllegalArgumentException("DEV11_ORDER_REFERENCE_INVALID");
+            }
+            // Only the exact native fixture GardenWorld identities are usable:
+            // no file caller may widen AD_Client/Org, change partner or product
+            // on the JVM; CP still authorises every native mutation.
+            if (!Integer.toString(customer()).equals(in.getProperty("expected_customer"))
+                    || !Integer.toString(product).equals(in.getProperty("expected_product"))) {
+                throw new IllegalArgumentException("DEV11_NATIVE_FIXTURE_MAPPING_MISMATCH");
+            }
+            if ("native-uuid".equals(in.getProperty("reference_kind"))) {
+                java.util.UUID nativeUuid = java.util.UUID.fromString(reference);
+                if (nativeUuid.version() != 4 || !nativeUuid.toString().equals(reference)) {
+                    throw new IllegalArgumentException("DEV11_ORDER_REFERENCE_INVALID");
+                }
+                o.setC_Order_UU(reference);
+            } else if ("poreference".equals(in.getProperty("reference_kind", "poreference"))
+                    && reference.length() <= 20) {
+                o.setPOReference(reference);
+            } else {
+                throw new IllegalArgumentException("DEV11_ORDER_REFERENCE_INVALID");
+            }
+        }
         o.saveEx();
         MOrderLine l = new MOrderLine(o);
         l.setM_Product_ID(product, true);
         l.setQty(new BigDecimal(in.getProperty("qty", "1")));
         l.setPrice();
+        if (!reference.isEmpty()) {
+            BigDecimal price = new BigDecimal(in.getProperty("unit_price", "-1"));
+            if (price.signum() < 0 || price.scale() > 4 || price.precision() > 20) {
+                throw new IllegalArgumentException("DEV11_NATIVE_PRICE_INVALID");
+            }
+            l.setPriceEntered(price);
+            l.setPriceActual(price);
+        }
         l.saveEx();
         return o;
     }

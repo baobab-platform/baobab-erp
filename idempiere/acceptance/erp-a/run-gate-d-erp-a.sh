@@ -53,7 +53,9 @@ cleanup() {
   trap - EXIT
   collect || status=1
   if [ "${GATE_D_KEEP:-0}" != "1" ]; then
-    "${COMPOSE[@]}" down -v --remove-orphans > "$OUT/cleanup.log" 2>&1 || status=1
+    # Include the optional broker even after a failed DEV-11 run. An inactive
+    # Compose profile must not leave its containers/network/volumes behind.
+    "${COMPOSE[@]}" --profile dev11 down -v --remove-orphans > "$OUT/cleanup.log" 2>&1 || status=1
     rm -rf "$RUN" || status=1
     python3 "$REPO/scripts/dev09_evidence.py" cleanup --project "$ERP_A_PROJECT" --run "$RUN" \
       --output "$OUT/dev09-cleanup.json" || status=1
@@ -61,7 +63,7 @@ cleanup() {
   exit "$status"
 }
 # Old receipts never survive an aborted rerun. Only these owned evidence files are removed.
-rm -f "$OUT"/{erp-a-receipt,dev09-cleanup,dev09-report,dev09-report.sha256,dev09-ory-provision,dev09-ory-consumption,dev09-native-company,dev09-connected-report,dev09-connected-report.sha256,dev12-native-restore,dev12-native-restore.sha256}.json
+rm -f "$OUT"/{erp-a-receipt,dev09-cleanup,dev09-report,dev09-report.sha256,dev09-ory-provision,dev09-ory-consumption,dev09-native-company,dev09-connected-report,dev09-connected-report.sha256}.json
 trap cleanup EXIT
 : > "$OUT/run.log"
 : > "$OUT/erp-a-report.txt"
@@ -158,5 +160,51 @@ export CP_COMMIT ERP_COMMIT=$(git -C "$REPO" rev-parse HEAD)
 python3 "$HERE/driver/gate_d_erp_a.py" scenarios --run "$RUN" --out "$OUT" --compose "$HERE/compose.yaml"
 grep -q '^ERP-A failures: 0$' "$OUT/erp-a-report.txt"
 
+# Explicit opt-in independent, real-component DEV-11 evidence using the
+# already-running protected iDempiere JVM. The core ERP-A suite above remains
+# unchanged. This is SYNTHETIC Trade origin, not L4-OPS-01 acceptance.
+if [ "${DEV11_REAL_NATIVE_ACCEPTANCE:-false}" = "true" ]; then
+  log "DEV-11 real Hydra/CP -> quorum RabbitMQ -> ERP -> protected JVM"
+  python3 -m venv "$RUN/dev11-venv"
+  if [ "${DEV11_TRADE_PERSISTED_REQUIRED:-false}" = "true" ]; then
+    : "${TRADE_SRC:?Exact composed Trade source is required}"
+    # One fresh resolution: installing latest OTel first then downgrading only
+    # its SDK leaves incompatible orphan exporter packages in the environment.
+    "$RUN/dev11-venv/bin/python" -m pip install -q --disable-pip-version-check \
+      -e "$REPO/modules" -r "$TRADE_SRC/scripts/dev11-rabbit-requirements.txt"
+  else
+    "$RUN/dev11-venv/bin/python" -m pip install -q --disable-pip-version-check \
+      -e "$REPO/modules" "pika==1.3.2"
+  fi
+  "$RUN/dev11-venv/bin/python" -m pip check
+  "$RUN/dev11-venv/bin/python" -B "$HERE/driver/dev11_native_connected.py" \
+    --run "$RUN" --out "$OUT" --compose "$HERE/compose.yaml"
+  python3 - "$OUT" <<'PYDEV11'
+import json
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+engine = json.loads((root/"dev11-engine-local.json").read_text())
+native = json.loads((root/"dev11-native-effect.json").read_text())
+adopted = json.loads((root/"dev11-native-unknown-adopted.json").read_text())
+lineage = json.loads((root/"dev11-cp-jvm-lineage.json").read_text())
+assert engine.get("real_cp_authorized_idempiere_jvm_sales_order") is True
+assert native.get("native_order_effect_qualified") is True
+assert adopted.get("native_order_effect_qualified") is True
+assert adopted.get("adopted_after_recovery") is True
+assert engine.get("real_jvm_committed_then_worker_outcome_lost_and_adopted") is True
+assert lineage.get("native_cp_lineage_qualified") is True
+# A synthetic engine-local candidate can NEVER be marked fully qualified.
+assert all(record.get("l4_ops_01") == "BLOCKED" for record in
+           (engine, native, lineage))
+assert engine["full_medusa_buyer_commitment_proven"] is False
+assert engine["independent_exported_trace_graph_proven"] is False
+print("DEV11_NATIVE_ENGINE_LOCAL_CANDIDATE_PASS; FULL_L4_BLOCKED")
+PYDEV11
+fi
+
+# The restore drill deliberately quiesces the JVM and leaves it stopped.
+# Run it after every live native consumer scenario; a stale ready marker
+# cannot make a stopped ERP executable or qualify DEV-11.
 log "DEV-12 native PG17 logical restore, preserved COMMIT veto and sibling cleanup"
 python3 "$HERE/driver/restore_drill.py" --compose "$HERE/compose.yaml" --out "$OUT"

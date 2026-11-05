@@ -20,6 +20,57 @@ networks:
   erpa: {}
 
 services:
+  # Optional disposable DEV-11 signed CloudEvent transport. The ordinary
+  # ERP-A suites never start this profile; no public listener or production
+  # broker configuration may be inherited from this fixture.
+  rabbitmq:
+    image: rabbitmq:4.3.5-alpine
+    profiles: [dev11]
+    hostname: dev11-real-native-rabbit
+    environment:
+      RABBITMQ_DEFAULT_USER: dev11
+      RABBITMQ_DEFAULT_PASS: ${DEV11_RABBIT_PASSWORD:-dev11-only-disabled-default}
+    ports: ["127.0.0.1:15673:5672"]
+    networks: [erpa]
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  # Same-event integration reuses Trade's actual module and confirmed publisher.
+  # These services are disposable and remain outside normal ERP-A startup.
+  trade-db:
+    <<: *pg
+    profiles: [dev11]
+    environment:
+      POSTGRES_USER: baobab_trade
+      POSTGRES_PASSWORD: ${DEV11_TRADE_DB_PASSWORD:-disabled-fixture-only}
+      POSTGRES_DB: baobab_trade_jvm_test
+    ports: ["127.0.0.1:55464:5432"]
+    networks: [erpa]
+  trade-redis:
+    image: redis:7.4.11-alpine
+    profiles: [dev11]
+    ports: ["127.0.0.1:18379:6379"]
+    networks: [erpa]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      retries: 30
+  jaeger:
+    image: jaegertracing/jaeger:2.22.0
+    profiles: [dev11]
+    ports: ["127.0.0.1:16686:16686"]
+    networks: [erpa]
+  collector:
+    image: otel/opentelemetry-collector-contrib:0.159.0
+    profiles: [dev11]
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes: ["${INFRA_SRC:-/nonexistent}/compose/otel/dev11-collector.yaml:/etc/otelcol-contrib/config.yaml:ro"]
+    ports: ["127.0.0.1:4318:4318"]
+    networks: [erpa]
+    depends_on: [jaeger]
   # --- ERP: iDempiere's own PostgreSQL (the image entrypoint imports GardenWorld) and the engine.
   erpdb:
     <<: *pg
