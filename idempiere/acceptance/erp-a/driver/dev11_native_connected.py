@@ -679,6 +679,10 @@ def main():
             recovered=inspect_outcome(db,ambiguous["id"],allowed=True)
             demand(recovered=="ADOPTED_NATIVE_ORDER",
                    "DEV11_REAL_JVM_UNKNOWN_OUTCOME_NOT_ADOPTED")
+            attempts=db.execute(
+                "SELECT attempts,claimed_by,lease_expires_at FROM baobab.event_inbox WHERE event_id=%s::uuid",
+                (ambiguous["id"],)).fetchall()
+            demand(attempts==[(2,None,None)],"DEV11_NATIVE_UNKNOWN_RECOVERY_ATTEMPTS_UNBOUNDED")
             after_replay=db.execute(
                 "SELECT count(*) FROM adempiere.c_order o JOIN baobab.order_native_reference r "
                 "ON o.c_order_uu::text=r.native_uuid::text WHERE r.tenant_id=%s AND r.commerce_order_id=%s",
@@ -708,6 +712,22 @@ def main():
                 "ON o.c_order_uu::text=r.native_uuid::text WHERE r.tenant_id=%s AND r.commerce_order_id=%s",
                 (state["tenant"],denied["data"]["commerce_order_id"])).fetchone()[0]
             demand(no_order==0,"DEV11_REVOKED_REAL_NATIVE_ORDER_COMMITTED")
+            # A valid signature authenticates the producer, not the tenant
+            # placement. An otherwise valid signed order in a foreign tenant
+            # must reach durable admission and stop before native execution.
+            foreign=event_for({**state,"tenant":"tn_"+secrets.token_hex(10)},
+                order=fixture_order_reference(), product_id=product, sku=sku,
+                unit=unit, customer_key=customer_key)
+            before=db.execute("SELECT count(*) FROM adempiere.c_order").fetchone()[0]
+            send(channel,foreign,native_env["BAOBAB_EVENT_SIGNING_SECRET"])
+            await_inbox(db,foreign["id"])
+            worker_once(native_env)
+            demand(inspect_outcome(db,foreign["id"],allowed=False)=="TENANT_UNMAPPED",
+                   "DEV11_FOREIGN_TENANT_NOT_REFUSED_AT_PLACEMENT")
+            demand(db.execute("SELECT count(*) FROM adempiere.c_order").fetchone()[0]==before
+                   and db.execute("SELECT count(*) FROM baobab.order_execution WHERE source_event_id=%s::uuid",
+                                  (foreign["id"],)).fetchone()[0]==0,
+                   "DEV11_FOREIGN_TENANT_CREATED_NATIVE_EFFECT")
             if trade:
                 trade.verify_exported_trace(positive,out/"dev11-trade-jvm-exported.json")
             report={
@@ -724,6 +744,8 @@ def main():
                 "real_live_cp_mandate_revocation_denied_next_order":True,
                 "real_broker_redelivery_one_native_order":True,
                 "real_jvm_committed_then_worker_outcome_lost_and_adopted":True,
+                "ambiguous_jvm_outcome_recovered_in_two_attempts":True,
+                "signed_foreign_tenant_denied_without_native_effect":True,
                 "synthetic_trade_origin_not_authorized_commitment":True,
                 "full_medusa_buyer_commitment_proven":False,
                 "lossless_native_uuid_reference_mapping":True,

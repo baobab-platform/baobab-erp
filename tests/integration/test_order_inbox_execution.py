@@ -643,6 +643,30 @@ class ReplayAndRecoveryTests(_Base):
         with self.assertRaises(LeaseLostError):
             first.processed(claim, "EXECUTED")
 
+    def test_expired_final_attempt_is_terminal_and_does_not_block_other_orders(self):
+        from inbox.postgres_queue import PostgresInboxQueue
+        from order_to_cash.execution_policy import MAX_ATTEMPTS
+
+        self.seed()
+        abandoned = self.placed()
+        self.deliver(abandoned)
+        claim = PostgresInboxQueue(self.connect()).claim(
+            event_type=ORDER_PLACED, worker_id="crashed", lease_seconds=300)
+        with self.db.cursor() as cursor:
+            cursor.execute(
+                """UPDATE baobab.event_inbox
+                      SET attempts=%s, lease_expires_at=now()-interval '1 second' WHERE id=%s""",
+                (MAX_ATTEMPTS, claim.row_id))
+        self.db.commit()
+        other = self.placed(order=self.order + "_other")
+        self.deliver(other)
+        self.assertEqual(self.work()["codes"], {"EXECUTED": 1})
+        row = self.row(abandoned["id"])
+        self.assertEqual((row["status"], row["code"], row["attempts"], row["claimed_by"]),
+                         ("dead_letter", "LEASE_ATTEMPTS_EXHAUSTED", MAX_ATTEMPTS, None))
+        self.assertEqual(len(self.engine_orders()), 1)
+        self.assertEqual(self.work()["pass"], {})
+
     def test_the_next_version_of_an_executed_order_is_surfaced_not_applied_and_an_old_one_is_stale(self):
         self.seed()
         first = self.placed(version=2)
