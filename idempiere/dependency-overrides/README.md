@@ -79,3 +79,27 @@ Final-source image scan, actual core/client OSGi probe, native Gate D/ERP-A,
 Trade event/recovery/revocation and independent exported evidence must pass
 before the new image is considered qualified. L4-OPS-01 and protected release
 authority remain blocked.
+
+## Separate setup bootstrap — 5 November repair
+
+The image vulnerability scan at `b42e6b29` passes, but native Gate D and ERP-A
+exit during initial setup. The pinned public runtime layer
+`sha256:31096b19226e4754e06666e6749ab7681b2630e33dffb0469fa294530f0eaa15`
+was independently downloaded and hash-verified before inspecting its actual
+plugins and configurations. The setup application has its own explicit
+`setup/configuration/config.ini` bundle list; it does not consume the main
+runtime `bundles.info`. Its old JMS entry did not install the new JMS 2 API.
+The Docker repair now adds the capability to both bootstraps with exact old
+configuration guards and a single new setup entry.
+
+A local test using the **actual image's Equinox 3.18.500 and actual setup
+plugin set** observes: original stock profile resolves; fixed client without
+JMS 2 refuses resolution; fixed profile with the new JMS 2 entry resolves and
+native core/client see the identical JMS class. This is dependency/bootstrap
+resolution, not database or business acceptance. Actual full CI must rerun.
+
+Gitleaks also matched the **public** JMS archive checksum beside the artifact
+name `jakarta.jms-api`. Current source separates the digest constant from that
+name. One exact historical commit/path/line fingerprint is recorded with its
+public provenance; full-history scanning and every detection rule remain on.
+This does not suppress a credential, a future match or a vulnerability finding.

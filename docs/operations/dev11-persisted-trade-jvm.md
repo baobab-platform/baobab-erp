@@ -134,3 +134,11 @@ precision. Native attribution now floors expiry to microseconds, so persistence
 cannot extend CP's exact authority ceiling. Tests keep even a one-microsecond
 overrun refused; no clock tolerance is added. A fresh actual run must establish
 whether the current source passes; the earlier failure is never relabelled.
+
+At `b42e6b29` the container CVE scan passes, but actual native bootstrap fails
+before source-event execution. Public image/configuration inspection and actual
+Equinox resolution identify the separate setup JVM's missing JMS 2 bundle.
+The repair registers it there as well as in the ordinary runtime. A historical
+public checksum false positive is handled at its exact fingerprint; secret and
+vulnerability scanning remain enabled. This failed candidate supplies no
+same-event business or exported-lineage acceptance.

@@ -23,12 +23,14 @@ import java.util.jar.Manifest;
  */
 public final class PrepareNativeMessaging {
     private static final String VERSION = "5.19.12";
+    // Public Maven archive digest, never an API credential.
+    private static final String JMS_DIGEST = "5940937cb1095764a0039dae147395e37528a0575e2366f4dd20713b7785044a";
     private static final Map<String, String> HASHES = Map.of(
         "activemq-client", "d433eb32bfda4c3ec20fcf4dfb8cd2b256fb3fde52f14f16aebdf99822840770",
         "activemq-jaas", "10953cccc30fbd281c91223898974322fc518c39f2887e4bbe4e1683008445f0",
         "activemq-kahadb-store", "02ce2410091653e23c0603f52a958612b1a1f77ebf6706acb875907f0d38d9ae",
         "activemq-openwire-legacy", "fa7dccbcc2bdc3089c8c5a762498aa66241055bf97317b3f901e471a618f4874",
-        "jakarta.jms-api", "5940937cb1095764a0039dae147395e37528a0575e2366f4dd20713b7785044a");
+        "jakarta.jms-api", JMS_DIGEST);
 
     public static void main(String[] args) throws Exception {
         if (args.length != 2) throw new IllegalArgumentException("input/output directories required");

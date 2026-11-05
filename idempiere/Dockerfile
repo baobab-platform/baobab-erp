@@ -189,7 +189,8 @@ RUN set -eu; \
 # Preserve native symbolic names/start levels and full vendor bytes. JMS 2.0.3
 # exports javax.jms (not jakarta.jms); its separate bundle supplies the client's
 # mandatory [2.0,3) import without deleting the existing legacy API capability.
-# The CI-only OSGi probe checks that core and client use the SAME JMS classes.
+# Setup has a separate explicit osgi.bundles list, so BOTH bootstrap profiles
+# must install JMS 2. The CI probe checks that core/client share its actual types.
 # Owner: ERP engineering. Upstream: idempiere 13-release target remains 5.16.7.
 # Remove this complete override once upstream supplies a reviewed fixed family
 # and compatible JMS API. Any upstream drift fails below; never silently adapt.
@@ -216,6 +217,11 @@ RUN set -eu; \
     [ "$(awk -F, '$1=="jakarta.jms-api" {print}' "$info" | wc -l)" = 0 ]; \
     install -o idempiere -g idempiere -m 0644 /tmp/native-messaging/jakarta.jms-api_2.0.3.jar "${IDEMPIERE_PLUGINS_DIR}/"; \
     echo 'jakarta.jms-api,2.0.3,plugins/jakarta.jms-api_2.0.3.jar,4,false' >> "$info"; \
+    setup="${IDEMPIERE_HOME}/setup/configuration/config.ini"; \
+    [ "$(grep -Fc ' org.apache.geronimo.specs.geronimo-jms_1.1_spec,' "$setup")" = 1 ]; \
+    ! grep -Fq 'jakarta.jms-api' "$setup"; \
+    sed -i '/^ org.apache.geronimo.specs.geronimo-jms_1.1_spec,/a\ jakarta.jms-api,\\' "$setup"; \
+    [ "$(grep -Fc ' jakarta.jms-api,' "$setup")" = 1 ]; \
     if find "${IDEMPIERE_PLUGINS_DIR}" -maxdepth 1 -name '*activemq*5.16.7*.jar' | grep -q .; then \
       echo 'unexpected old ActiveMQ artifact remains; review upstream drift' >&2; exit 1; \
     fi; \
