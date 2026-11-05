@@ -84,6 +84,8 @@ def run_once(connection: psycopg.Connection, engine_for, *, worker_id: str, limi
                 break
             with consumer_span(claim.traceparent, "baobab.erp.inbox.execute") as span:
                 span.set_attribute("messaging.system", "rabbitmq")
+                # Same original event identity, never an inferred replay ID.
+                span.set_attribute("messaging.message.id", str(claim.event_id))
                 span.set_attribute("messaging.operation.type", "process")
                 span.set_attribute("baobab.erp.event_type", event_type)
                 if event_type == ORDER_PLACED:
