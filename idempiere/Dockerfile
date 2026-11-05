@@ -116,7 +116,20 @@ LABEL org.opencontainers.image.source="https://github.com/baobab-platform/baobab
 # behind on (e.g. openssl). This patches OS packages only; it does not touch
 # iDempiere or its bundled plugin jars, so it isn't a fork under ADR-ERP-004.
 USER root
-RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+# USN-8996-1: disable download retries until the patched APT is installed.
+# Check both binary packages against Ubuntu Noble's fixed floor. A stale
+# mirror or an incompatible base image must fail before further APT use.
+RUN set -eu; \
+    apt-get -o Acquire::Retries=0 update; \
+    apt-get -o Acquire::Retries=0 upgrade -y; \
+    for package in apt libapt-pkg6.0t64; do \
+      version=$(dpkg-query -W -f='${Version}' "$package"); \
+      if ! dpkg --compare-versions "$version" ge 2.8.4ubuntu0.1; then \
+        echo "$package $version is below the USN-8996-1 fixed version" >&2; exit 1; \
+      fi; \
+      printf 'USN-8996-1: %s %s\n' "$package" "$version"; \
+    done; \
+    rm -rf /var/lib/apt/lists/*
 
 # Confirmed against idempiere/idempiere-docker's 13-release Dockerfile: IDEMPIERE_HOME
 # is /opt/idempiere, IDEMPIERE_PLUGINS_HOME is $IDEMPIERE_HOME/plugins, and the image
@@ -367,35 +380,6 @@ RUN if [ -f /tmp/rest-api-p2/content.xml ] || [ -f /tmp/rest-api-p2/content.jar 
         echo "No pre-built REST API p2 repository at idempiere/vendor/rest-api-p2/; skipping install (see idempiere/rest-api/README.md)"; \
     fi && \
     rm -rf /tmp/rest-api-p2
-
-# CVE-2026-109518 affects both Ubuntu APT packages in the runtime image.
-# APT is only needed by the image build above. Purge the affected packages
-# and any installed APT utilities after the final install. Reject a plan
-# that changes packages outside this closed build-tool family.
-# Keep dpkg's installed-package records and all runtime tooling intact.
-USER root
-RUN set -eu; \
-    packages='apt libapt-pkg6.0t64'; \
-    for utility in apt-utils apt-transport-https; do \
-      if dpkg-query -W -f='${db:Status-Status}' "$utility" 2>/dev/null | grep -qx installed; then \
-        packages="$packages $utility"; \
-      fi; \
-    done; \
-    plan=$(LC_ALL=C apt-get --simulate purge --no-auto-remove $packages); \
-    removals=$(printf '%s\n' "$plan" | awk '$1=="Purg" || $1=="Remv" {sub(/:.*/,"",$2); print $2}' | sort -u); \
-    expected=$(printf '%s\n' $packages | sort -u); \
-    [ "$removals" = "$expected" ] || { echo 'Unexpected APT removal plan; review the native base image' >&2; exit 1; }; \
-    if printf '%s\n' "$plan" | grep -q '^Inst '; then echo 'APT purge proposes an install' >&2; exit 1; fi; \
-    apt-get purge -y --no-auto-remove $packages; \
-    for package in $packages; do \
-      if dpkg-query -W -f='${db:Status-Status}' "$package" 2>/dev/null | grep -qx installed; then \
-        echo 'APT runtime package remains after purge' >&2; exit 1; \
-      fi; \
-    done; \
-    if command -v apt-get >/dev/null; then echo 'APT executable remains' >&2; exit 1; fi; \
-    [ -z "$(dpkg --audit)" ]; \
-    rm -rf /var/lib/apt/lists/*
-USER idempiere
 
 # Readiness of the ZK web UI. iDempiere bootstraps OSGi and its database
 # connections slowly (and runs setup on first start), so allow a 3-minute

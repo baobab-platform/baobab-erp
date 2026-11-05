@@ -142,12 +142,21 @@ The repair registers it there as well as in the ordinary runtime. A historical
 public checksum false positive is handled at its exact fingerprint; secret and
 vulnerability scanning remain enabled. This failed candidate supplies no
 same-event business or exported-lineage acceptance.
-## Final runtime APT footprint
 
-Foundation run `41958462556` found CVE-2026-109518 in the Ubuntu base
-image's `apt` and `libapt-pkg6.0t64` packages. The image uses APT during
-construction and purges the affected packages and any installed APT utilities
-after the last package install. The simulated purge must match the exact
-installed APT family. Extra removals or new installs abort the build.
-The container scan, native Gate D, ERP-A and same-event JVM workflow qualify
-the resulting runtime.
+## Ubuntu APT security update
+
+Foundation run `41958462556` reported CVE-2026-109518 for both APT
+binary packages at `2.8.4ubuntu0.1`. Ubuntu's published Noble advisory
+identifies that version as fixed. The later `2191ad8d` purge attempt was
+refused by the base image's essential package safeguard. The runtime
+retains both packages and the build disables APT download retries until
+the security upgrade has run. It requires both package versions to be
+at or above the vendor's fixed version and prints the installed versions
+for scan reconciliation.
+
+Run the full image scan and native workflows against the same revision.
+If the scanner still disagrees with the Ubuntu advisory, record both
+results and investigate the scanner's vulnerability data. The scan gate
+continues to apply.
+
+[Ubuntu security notice USN-8996-1](https://ubuntu.com/security/notices/USN-8996-1)
