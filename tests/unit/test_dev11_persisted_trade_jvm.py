@@ -40,6 +40,22 @@ class Erp:
   return Rows([(EVENT["id"],EVENT["data"]["commerce_order_id"],11,12 if self.changed=="native-id" else 11,11)])
 
 class SameEventSafetyTests(unittest.TestCase):
+ def test_trace_child_failure_refuses_stale_success_without_exposing_private_ids(self):
+  bridge=PersistedTrade.__new__(PersistedTrade)
+  with tempfile.TemporaryDirectory() as root,patch.dict(os.environ,{
+      "INFRA_SRC":root,"INFRA_COMMIT":"a"*40}),patch(
+      "scripts.dev11_trade_persisted_jvm.exact_source"),patch("time.sleep"):
+   out=Path(root)/"trace.json"
+   for failure in (subprocess.TimeoutExpired(["private-trace-id"],1),
+                   OSError("private-trace-id")):
+    out.write_text('{"exported_lineage_observed":true}')
+    with self.subTest(failure=type(failure).__name__),patch(
+        "scripts.dev11_trade_persisted_jvm.subprocess.run",side_effect=failure):
+     with self.assertRaises(RuntimeError) as raised:
+      bridge.verify_exported_trace(EVENT,out)
+     self.assertEqual(str(raised.exception),"DEV11_SAME_EVENT_EXPORTED_COMPONENT_TRACE_NOT_OBSERVED")
+     self.assertFalse(out.exists())
+
  def test_child_failure_never_prints_private_command_or_event_ids(self):
   with tempfile.TemporaryDirectory() as root:
    for index,failure in enumerate((subprocess.TimeoutExpired(["private-event-id","private-bearer"],1),

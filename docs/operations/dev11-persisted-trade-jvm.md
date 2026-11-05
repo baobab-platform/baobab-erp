@@ -90,3 +90,27 @@ and [53917 advisory](https://activemq.apache.org/security-advisories.data/CVE-20
 identify fixed 5.19.8/6.2.7 lines. This is a separate merge blocker; no scan
 exception, severity reduction or unqualified OSGi replacement is introduced.
 The integration proof must not be described as an approved release image.
+
+## 5 November 2026 — physical UUID join correction
+
+Run `41913135994` at `c2084bee` passed independent real native-order
+and CP/JVM lineage checks, then failed at the same-event database join with
+`uuid = text`. It is a failed qualification, despite the positive worker
+and independent native observations. The physical iDempiere system column is
+UUID in this fixture; the explicitly supported string-column variant remains
+valid too. All native UUID joins and duplicate/recovery/revocation counts now
+compare both coordinates as their complete textual UUID representation.
+Neither canonical identifiers nor authority/business comparisons change.
+
+The trace observer also removes a previous receipt before running, suppresses
+private subprocess arguments on timeout or process errors, and refuses after
+the same bounded retry budget. A failed or missing export cannot retain an
+earlier success. Final-source real PostgreSQL 17/JVM re-execution is required.
+
+The public dependency inventory workflow reads the base image's actual OSGi
+registry/manifests and verifies candidate vendor checksums from Maven Central.
+It reports exact SHA-256 values for a reviewed fixed bundle family and JMS
+API. This inventory does not mutate the runtime, suppress CVEs or qualify a
+replacement; the final image must still pass the container scan, OSGi startup
+and actual native business/recovery tests. The local execution environment was
+unavailable on 5 November; new changes require actual owning Actions checks.

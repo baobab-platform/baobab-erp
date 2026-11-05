@@ -646,7 +646,7 @@ def main():
                 time.sleep(.2)
             count=db.execute(
                 "SELECT count(*) FROM adempiere.c_order o JOIN baobab.order_native_reference r "
-                "ON o.c_order_uu=r.native_uuid::text WHERE r.tenant_id=%s AND r.commerce_order_id=%s",
+                "ON o.c_order_uu::text=r.native_uuid::text WHERE r.tenant_id=%s AND r.commerce_order_id=%s",
                 (state["tenant"],positive["data"]["commerce_order_id"])).fetchone()[0]
             demand(count==1,"DEV11_REAL_BROKER_REDELIVERY_CREATED_EXTRA_NATIVE_ORDER")
 
@@ -662,7 +662,7 @@ def main():
             inspect_outcome(db,ambiguous["id"],allowed=False)
             before_replay=db.execute(
                 "SELECT count(*) FROM adempiere.c_order o JOIN baobab.order_native_reference r "
-                "ON o.c_order_uu=r.native_uuid::text WHERE r.tenant_id=%s AND r.commerce_order_id=%s",
+                "ON o.c_order_uu::text=r.native_uuid::text WHERE r.tenant_id=%s AND r.commerce_order_id=%s",
                 (state["tenant"],ambiguous["data"]["commerce_order_id"])).fetchone()[0]
             demand(before_replay==1,"DEV11_REAL_JVM_UNKNOWN_COMMIT_NOT_OBSERVED")
             ready=False
@@ -681,7 +681,7 @@ def main():
                    "DEV11_REAL_JVM_UNKNOWN_OUTCOME_NOT_ADOPTED")
             after_replay=db.execute(
                 "SELECT count(*) FROM adempiere.c_order o JOIN baobab.order_native_reference r "
-                "ON o.c_order_uu=r.native_uuid::text WHERE r.tenant_id=%s AND r.commerce_order_id=%s",
+                "ON o.c_order_uu::text=r.native_uuid::text WHERE r.tenant_id=%s AND r.commerce_order_id=%s",
                 (state["tenant"],ambiguous["data"]["commerce_order_id"])).fetchone()[0]
             demand(after_replay==1,"DEV11_NATIVE_UNKNOWN_RETRY_DUPLICATED_ORDER")
             native_receipt=Path(__file__).resolve().parents[4] / (
@@ -705,7 +705,7 @@ def main():
             inspect_outcome(db,denied["id"],allowed=False)
             no_order=db.execute(
                 "SELECT count(*) FROM adempiere.c_order o JOIN baobab.order_native_reference r "
-                "ON o.c_order_uu=r.native_uuid::text WHERE r.tenant_id=%s AND r.commerce_order_id=%s",
+                "ON o.c_order_uu::text=r.native_uuid::text WHERE r.tenant_id=%s AND r.commerce_order_id=%s",
                 (state["tenant"],denied["data"]["commerce_order_id"])).fetchone()[0]
             demand(no_order==0,"DEV11_REVOKED_REAL_NATIVE_ORDER_COMMITTED")
             if trade:

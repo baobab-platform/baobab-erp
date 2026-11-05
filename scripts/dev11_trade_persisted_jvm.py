@@ -148,7 +148,7 @@ class PersistedTrade:
                 e.native_id,r.native_id,o.c_order_id
             FROM baobab.order_execution e
             JOIN baobab.order_native_reference r USING (tenant_id,legal_entity_id,commerce_order_id)
-            JOIN adempiere.c_order o ON o.c_order_uu=r.native_uuid::text
+            JOIN adempiere.c_order o ON o.c_order_uu::text=r.native_uuid::text
             WHERE e.tenant_id=%s AND e.commerce_order_id=%s""",
             (event["tenantid"],event["data"]["commerce_order_id"])).fetchall()
         require(len(effects)==1 and effects[0][:2]==(event["id"],event["data"]["commerce_order_id"])
@@ -170,15 +170,21 @@ class PersistedTrade:
         source=Path(os.environ["INFRA_SRC"])
         exact_source(source,os.environ["INFRA_COMMIT"])
         trace_id=event["traceparent"].split("-")[1]
+        Path(output).unlink(missing_ok=True)
         # Independent observer queries real Jaeger; it never trusts stdout,
         # a stored traceparent, or the producer's own source-only graph.
         import time
         for _ in range(25):
-            result=subprocess.run([sys.executable,"-B",str(source/"tests/platform-integration/development/dev11_exported_trace.py"),
-                "--trace-id",trace_id,"--jaeger","http://127.0.0.1:16686",
-                "--service","baobab-trade","--service","baobab-trade-rabbit-publisher",
-                "--service","baobab-erp","--output",str(output)],
-                stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30,check=False)
-            if result.returncode==0:return
+            try:
+                result=subprocess.run([sys.executable,"-B",str(source/"tests/platform-integration/development/dev11_exported_trace.py"),
+                    "--trace-id",trace_id,"--jaeger","http://127.0.0.1:16686",
+                    "--service","baobab-trade","--service","baobab-trade-rabbit-publisher",
+                    "--service","baobab-erp","--output",str(output)],
+                    stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30,check=False)
+            except (subprocess.TimeoutExpired, OSError):
+                # The command contains the private trace ID. Never repeat it
+                # in an Actions exception, and never retain an old success.
+                result=None
+            if result is not None and result.returncode==0:return
             time.sleep(2)
         raise RuntimeError("DEV11_SAME_EVENT_EXPORTED_COMPONENT_TRACE_NOT_OBSERVED")
