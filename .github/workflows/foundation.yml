@@ -57,7 +57,7 @@ jobs:
           docker run --rm --read-only --network none --cap-drop ALL \
             --security-opt no-new-privileges --user idempiere \
             --entrypoint /usr/bin/dpkg-query erp-noble-security:current \
-            -W '-f=${Package}\\t${Version}\\n' apt libapt-pkg6.0t64 \
+            -W '-f=${Package}\t${Version}\n' apt libapt-pkg6.0t64 \
             > "${RUNNER_TEMP}/erp-noble-packages.tsv"
           test "$(wc -l < "${RUNNER_TEMP}/erp-noble-packages.tsv")" -eq 2
       - name: Install verified Trivy 0.73.0
