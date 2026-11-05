@@ -64,6 +64,7 @@ def admit(body: bytes, signature: object, content_type: object, store, secret: s
     # Event trace metadata is now authenticated by the signed canonical
     # envelope. A linked consumer span does not create an authority grant.
     with consumer_span(event.traceparent, "baobab.erp.inbox.admit") as span:
+        span.set_attribute("messaging.message.id", str(event.id))
         span.set_attribute("messaging.system", "rabbitmq")
         span.set_attribute("messaging.operation.type", "receive")
         diagnostic_outcome(span, "ADMITTED")
