@@ -142,3 +142,12 @@ The repair registers it there as well as in the ordinary runtime. A historical
 public checksum false positive is handled at its exact fingerprint; secret and
 vulnerability scanning remain enabled. This failed candidate supplies no
 same-event business or exported-lineage acceptance.
+## Final runtime APT footprint
+
+Foundation run `41958462556` found CVE-2026-109518 in the Ubuntu base
+image's `apt` and `libapt-pkg6.0t64` packages. The image uses APT during
+construction and purges the affected packages and any installed APT utilities
+after the last package install. The simulated purge must match the exact
+installed APT family. Extra removals or new installs abort the build.
+The container scan, native Gate D, ERP-A and same-event JVM workflow qualify
+the resulting runtime.
