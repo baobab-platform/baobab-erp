@@ -7,6 +7,8 @@ on:
   pull_request:
     paths:
       - .github/workflows/dev11-real-native-engine.yml
+      - idempiere/Dockerfile
+      - idempiere/dependency-overrides/**
       - idempiere/acceptance/erp-a/**
       - idempiere/acceptance/driver/**
       - idempiere/extensions/**

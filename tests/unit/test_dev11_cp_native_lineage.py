@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import unittest
 
-from scripts.dev11_verify_cp_native_lineage import EvidenceMissing, verify
+from scripts.dev11_verify_cp_native_lineage import EvidenceMissing, verify, failure_receipt
 
 NOW = datetime(2026, 11, 2, 14, 0, tzinfo=timezone.utc)
 TENANT = "tn_dev11synthetic"
@@ -136,6 +136,20 @@ class NativeAuthorityLineageTests(unittest.TestCase):
         ):
             with self.subTest(corrupted=corrupted), self.assertRaises(EvidenceMissing):
                 self.check(erp_corrupt=corrupted)
+
+    def test_even_one_microsecond_past_cp_expiry_is_refused_without_tolerance(self):
+        with self.assertRaises(EvidenceMissing) as failed:
+            self.check(erp_corrupt=("FROM baobab_native.finance_authority_attribution",
+                "authority_expires_at", NOW + timedelta(seconds=25, microseconds=1)))
+        self.assertEqual(failure_receipt(failed.exception)["failed_checks"], ["CP_EXPIRY_CEILING"])
+
+    def test_refusal_diagnostics_never_echo_private_identifiers_or_values(self):
+        for error in (EvidenceMissing("private-tenant private-token", ("private-trace",)),
+                      ValueError("private-event")):
+            report = failure_receipt(error)
+            self.assertNotIn("private-", str(report))
+            self.assertFalse(report["native_cp_lineage_qualified"])
+            self.assertEqual(report["l4_ops_01"], "BLOCKED")
 
     def test_maker_checker_not_independent_rejected(self):
         with self.assertRaises(EvidenceMissing):

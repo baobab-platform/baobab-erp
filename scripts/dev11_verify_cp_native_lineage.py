@@ -29,7 +29,9 @@ ROLE = "CONTRACTING_PARTY"
 
 
 class EvidenceMissing(Exception):
-    pass
+    def __init__(self, reason, failed_checks=()):
+        super().__init__(reason)
+        self.failed_checks = tuple(failed_checks)
 
 
 def require(value, reason):
@@ -108,25 +110,28 @@ def cp_decision(cp, audit, *, tenant, entity, market, native_id):
             WHERE decision_id=%s::uuid""", (did,)).fetchall()
     require(len(rows) == 1, "CP_IMMUTABLE_DECISION_NOT_FOUND")
     d = rows[0]
-    require(d["outcome"] == "AUTHORIZED" and
-            d["context_id"] == audit["context_id"] and
-            d["placement_id"] == audit["placement_id"] and
-            d["placement_version"] == audit["placement_version"] and
-            d["operation_class"] == SALE and
-            d["tenant_id"] == tenant and
-            d["operating_organisation_id"] == audit["operating_organisation_id"] and
-            d["market"] == market and d["legal_actor_role"] == ROLE and
-            d["activity"] == ACTIVITY and
-            d["mandate_id"] == audit["cp_mandate_id"] and
-            d["responsible_legal_entity_id"] == entity and
-            isinstance(d["engine_instance_id"], str) and
-            d["engine_instance_id"].startswith("ei_") and
-            d["operation_reference"].startswith(
-                "erp/" + SALE + "/C_Order/" + str(native_id) + "/") and
-            d["evaluated_at"] <= audit["received_at"] < d["expires_at"] and
-            audit["authority_expires_at"] <= d["expires_at"] and
-            len(d["evidence_references"] or []) >= 1,
-            "CP_NATIVE_AUTHORITY_JOIN_DENIED")
+    # Preserve every original comparison. Closed categories diagnose failure
+    # without exporting IDs, timestamps, provider text or query parameters.
+    checks = {
+        "CP_OUTCOME": d["outcome"] == "AUTHORIZED",
+        "CP_CONTEXT": d["context_id"] == audit["context_id"],
+        "CP_PLACEMENT": d["placement_id"] == audit["placement_id"] and d["placement_version"] == audit["placement_version"],
+        "CP_OPERATION": d["operation_class"] == SALE,
+        "CP_TENANT": d["tenant_id"] == tenant,
+        "CP_ORGANISATION": d["operating_organisation_id"] == audit["operating_organisation_id"],
+        "CP_MARKET": d["market"] == market,
+        "CP_ROLE_ACTIVITY": d["legal_actor_role"] == ROLE and d["activity"] == ACTIVITY,
+        "CP_MANDATE": d["mandate_id"] == audit["cp_mandate_id"],
+        "CP_ENTITY": d["responsible_legal_entity_id"] == entity,
+        "CP_ENGINE": isinstance(d["engine_instance_id"], str) and d["engine_instance_id"].startswith("ei_"),
+        "CP_NATIVE_OPERATION_REFERENCE": d["operation_reference"].startswith("erp/" + SALE + "/C_Order/" + str(native_id) + "/"),
+        "CP_RECEIPT_WINDOW": d["evaluated_at"] <= audit["received_at"] < d["expires_at"],
+        "CP_EXPIRY_CEILING": audit["authority_expires_at"] <= d["expires_at"],
+        "CP_EVIDENCE": len(d["evidence_references"] or []) >= 1,
+    }
+    failed = tuple(key for key, passed in checks.items() if not passed)
+    if failed:
+        raise EvidenceMissing("CP_NATIVE_AUTHORITY_JOIN_DENIED", failed)
 
     ctx = cp.execute(
         """SELECT tenant_id, authority_purpose, resolved_at, expires_at
@@ -201,6 +206,79 @@ def verify(erp, cp, *, tenant, order, entity, market, client, org, mapped_refere
     }
 
 
+SAFE_REASONS = frozenset({
+    'AUTHORIZED',
+    'BLOCKED',
+    'CONTRACTING_PARTY',
+    'CP_CONTEXT',
+    'CP_DATABASE_URL',
+    'CP_DECISION_COVERAGE_INCOMPLETE',
+    'CP_ENGINE',
+    'CP_ENTITY',
+    'CP_EVIDENCE',
+    'CP_EXPIRY_CEILING',
+    'CP_IMMUTABLE_DECISION_NOT_FOUND',
+    'CP_MANDATE',
+    'CP_MANDATE_HISTORY_NOT_INDEPENDENTLY_APPROVED',
+    'CP_MARKET',
+    'CP_NATIVE_AUTHORITY_JOIN_DENIED',
+    'CP_NATIVE_OPERATION_REFERENCE',
+    'CP_OPERATION',
+    'CP_ORGANISATION',
+    'CP_OUTCOME',
+    'CP_PLACEMENT',
+    'CP_RECEIPT_WINDOW',
+    'CP_ROLE_ACTIVITY',
+    'CP_RUNTIME_CONTEXT_PROVENANCE_DENIED',
+    'CP_TENANT',
+    'DEV11_NATIVE_CP_IMMUTABLE_LINEAGE=',
+    'ERP_NATIVE_DATABASE_URL',
+    'INDEPENDENT_CP_JVM_LINEAGE_NOT_PROVEN',
+    'NATIVE_AUDIT_UUID_INVALID',
+    'NATIVE_BASELINE_OR_AUTHORITY_WINDOW_INVALID',
+    'NATIVE_JVM_CP_ATTRIBUTION_MISSING',
+    'NATIVE_REFERENCE_ID_CHANGED',
+    'NATIVE_REFERENCE_MAPPING_MISSING',
+    'NATIVE_SALES_ORDER_COMPANY_INVALID',
+    'NATIVE_SALES_ORDER_NOT_UNIQUE',
+    'NATIVE_SOURCE_DOCUMENT_INVALID',
+    'OBSERVER_SCOPE_INVALID',
+    'RUNTIME',
+    'SALES_ORDER_COMMITMENT',
+    'TWO_INDEPENDENT_POSTGRES_READ_ONLY_OBSERVERS',
+})
+SAFE_CHECKS = frozenset({
+    'CP_OUTCOME',
+    'CP_CONTEXT',
+    'CP_PLACEMENT',
+    'CP_OPERATION',
+    'CP_TENANT',
+    'CP_ORGANISATION',
+    'CP_MARKET',
+    'CP_ROLE_ACTIVITY',
+    'CP_MANDATE',
+    'CP_ENTITY',
+    'CP_ENGINE',
+    'CP_NATIVE_OPERATION_REFERENCE',
+    'CP_RECEIPT_WINDOW',
+    'CP_EXPIRY_CEILING',
+    'CP_EVIDENCE',
+})
+
+
+def failure_receipt(error):
+    reason = str(error) if isinstance(error, EvidenceMissing) and str(error) in SAFE_REASONS else "INDEPENDENT_CP_JVM_LINEAGE_NOT_PROVEN"
+    report = {"schema": "baobab.erp.dev11.independent-cp-jvm-lineage.v1",
+              "native_cp_lineage_qualified": False, "reason": reason,
+              "l4_ops_01": "BLOCKED", "protected_acceptance": False}
+    if isinstance(error, EvidenceMissing):
+        report["failed_checks"] = sorted(set(error.failed_checks) & SAFE_CHECKS)
+    if isinstance(error, psycopg.Error):
+        report["database_condition"] = {"42883": "OPERATOR_OR_FUNCTION_MISSING",
+            "42703": "UNDEFINED_COLUMN", "42P01": "UNDEFINED_TABLE"}.get(
+                error.sqlstate, "DATABASE_READBACK_REFUSED")
+    return report
+
 def main():
     args = argparse.ArgumentParser(description=__doc__)
     args.add_argument("--tenant", required=True)
@@ -222,19 +300,15 @@ def main():
                     entity=v.legal_entity, market=v.market,
                     client=v.ad_client, org=v.ad_org, mapped_reference=v.mapped_native_reference)
         passed = True
-    except (EvidenceMissing, psycopg.Error, KeyError, ValueError, TypeError):
+    except (EvidenceMissing, psycopg.Error, KeyError, ValueError, TypeError) as error:
         passed = False
-        report = {
-            "schema": "baobab.erp.dev11.independent-cp-jvm-lineage.v1",
-            "native_cp_lineage_qualified": False,
-            "reason": "INDEPENDENT_CP_JVM_LINEAGE_NOT_PROVEN",
-            "l4_ops_01": "BLOCKED",
-            "protected_acceptance": False,
-        }
+        report = failure_receipt(error)
     out = Path(v.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
     print("DEV11_NATIVE_CP_IMMUTABLE_LINEAGE=" + ("PASS" if passed else "BLOCKED"))
+    if not passed:
+        print("DEV11_CP_NATIVE_READBACK_REFUSAL " + json.dumps(report, sort_keys=True))
     return 0 if passed else 2
 
 

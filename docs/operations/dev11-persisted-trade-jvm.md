@@ -114,3 +114,23 @@ API. This inventory does not mutate the runtime, suppress CVEs or qualify a
 replacement; the final image must still pass the container scan, OSGi startup
 and actual native business/recovery tests. The local execution environment was
 unavailable on 5 November; new changes require actual owning Actions checks.
+
+
+## Native dependency repair and strict authority time precision
+
+The [native messaging repair](../../idempiere/dependency-overrides/README.md)
+replaces the complete installed ActiveMQ family with checksum-pinned 5.19.12
+archives and adds the required versioned JMS 2 API. A CI-only actual OSGi
+class-space/OpenWire probe now precedes native readiness. Final image scanning
+and native integration remain mandatory; neither a source change nor the
+public dependency inventory closes the prior CVEs.
+
+Run `41940241463` at `261549cc` passed the real native effect readback but
+refused CP/JVM lineage. Its old generic refusal did not establish which
+comparison failed. The observer now reports only closed failure categories,
+with every existing comparison retained. Source review separately found that
+JDBC can round nanosecond expiry up when writing PostgreSQL's microsecond
+precision. Native attribution now floors expiry to microseconds, so persistence
+cannot extend CP's exact authority ceiling. Tests keep even a one-microsecond
+overrun refused; no clock tolerance is added. A fresh actual run must establish
+whether the current source passes; the earlier failure is never relabelled.

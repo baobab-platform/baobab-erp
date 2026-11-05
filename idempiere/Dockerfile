@@ -89,6 +89,22 @@ RUN set -eu; mkdir -p /build/guava; \
       https://repo1.maven.org/maven2/com/google/guava/guava/33.7.2-jre/guava-33.7.2-jre.jar; \
     echo "b530942257fb935f8b2cfaa5f8eb5bd59c555fd8e8d01b8ce98912e077ea606c  /build/guava/com.google.guava_33.7.2.jre.jar" | sha256sum --check --strict
 
+# ADR-ERP-004 emergency security mitigation: fixed native ActiveMQ dependencies.
+# Pins were independently read from real Maven bytes in inventory run 41940241513.
+# No core source changes: nested vendor archives retain exact bytes/signatures.
+COPY idempiere/dependency-overrides/ /build/native-messaging-tools/
+RUN set -eu; mkdir -p /build/native-messaging-input; \
+    for a in activemq-client activemq-jaas activemq-kahadb-store activemq-openwire-legacy; do \
+      curl -fsSL --retry 5 --retry-all-errors \
+        -o "/build/native-messaging-input/${a}-5.19.12.jar" \
+        "https://repo.maven.apache.org/maven2/org/apache/activemq/${a}/5.19.12/${a}-5.19.12.jar"; \
+    done; \
+    curl -fsSL --retry 5 --retry-all-errors \
+      -o /build/native-messaging-input/jakarta.jms-api-2.0.3.jar \
+      https://repo.maven.apache.org/maven2/jakarta/jms/jakarta.jms-api/2.0.3/jakarta.jms-api-2.0.3.jar; \
+    java /build/native-messaging-tools/PrepareNativeMessaging.java \
+      /build/native-messaging-input /build/native-messaging
+
 FROM ${IDEMPIERE_IMAGE}
 ARG VERSION=0.0.0-dev
 ARG REVISION=unknown
@@ -167,6 +183,43 @@ RUN set -eu; \
     left=$(awk -F, -v o="$old" 'index($1,"com.fasterxml.jackson.")==1 && $2==o {print $1}' "$info"); \
     [ "$left" = "com.fasterxml.jackson.datatype.jackson-datatype-joda" ] || { echo "unexpected Jackson ${old} bundles left: ${left}" >&2; exit 1; }; \
     rm -rf /tmp/jackson
+
+# Native ActiveMQ client 5.16.7 carries HIGH CVE-2026-50734/53917.
+# Upgrade the installed client/JAAS/KahaDB/legacy-codec family together to 5.19.12.
+# Preserve native symbolic names/start levels and full vendor bytes. JMS 2.0.3
+# exports javax.jms (not jakarta.jms); its separate bundle supplies the client's
+# mandatory [2.0,3) import without deleting the existing legacy API capability.
+# The CI-only OSGi probe checks that core and client use the SAME JMS classes.
+# Owner: ERP engineering. Upstream: idempiere 13-release target remains 5.16.7.
+# Remove this complete override once upstream supplies a reviewed fixed family
+# and compatible JMS API. Any upstream drift fails below; never silently adapt.
+COPY --from=extensions-builder /build/native-messaging/*.jar /tmp/native-messaging/
+RUN set -eu; \
+    info="${IDEMPIERE_HOME}/configuration/org.eclipse.equinox.simpleconfigurator/bundles.info"; \
+    lines=$(wc -l < "$info"); \
+    for n in org.apache.activemq.activemq-client \
+             wrapped.org.apache.activemq.activemq-jaas \
+             wrapped.org.apache.activemq.activemq-kahadb-store \
+             wrapped.org.apache.activemq.activemq-openwire-legacy; do \
+      old="${IDEMPIERE_PLUGINS_DIR}/${n}_5.16.7.jar"; \
+      new="${n}_5.19.12.jar"; \
+      [ -f "$old" ] && [ -f "/tmp/native-messaging/$new" ]; \
+      [ "$(awk -F, -v n="$n" '$1==n && $2=="5.16.7" {print}' "$info" | wc -l)" = 1 ]; \
+      install -o idempiere -g idempiere -m 0644 "/tmp/native-messaging/$new" "${IDEMPIERE_PLUGINS_DIR}/$new"; \
+      awk -F, -v OFS=, -v n="$n" -v f="plugins/$new" \
+        '$1==n && $2=="5.16.7" {$2="5.19.12"; $3=f} {print}' "$info" > /tmp/messaging-bundles.info; \
+      cat /tmp/messaging-bundles.info > "$info"; \
+      rm -f "$old"; \
+    done; \
+    [ "$(wc -l < "$info")" = "$lines" ]; \
+    [ -f "${IDEMPIERE_PLUGINS_DIR}/org.apache.geronimo.specs.geronimo-jms_1.1_spec_1.1.1.jar" ]; \
+    [ "$(awk -F, '$1=="jakarta.jms-api" {print}' "$info" | wc -l)" = 0 ]; \
+    install -o idempiere -g idempiere -m 0644 /tmp/native-messaging/jakarta.jms-api_2.0.3.jar "${IDEMPIERE_PLUGINS_DIR}/"; \
+    echo 'jakarta.jms-api,2.0.3,plugins/jakarta.jms-api_2.0.3.jar,4,false' >> "$info"; \
+    if find "${IDEMPIERE_PLUGINS_DIR}" -maxdepth 1 -name '*activemq*5.16.7*.jar' | grep -q .; then \
+      echo 'unexpected old ActiveMQ artifact remains; review upstream drift' >&2; exit 1; \
+    fi; \
+    rm -rf /tmp/native-messaging /tmp/messaging-bundles.info
 
 # ADR-ERP-004 section 5 emergency mitigation: remove the unused Hazelcast clustering bundle.
 #   reason:   org.idempiere.hazelcast.service carries Hazelcast 5.3.7's own shaded
