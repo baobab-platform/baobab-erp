@@ -11,7 +11,6 @@ Only exact OCI Ubuntu Noble plus the two actual dpkg patch identities qualify.
 from __future__ import annotations
 
 import json
-import re
 import sys
 from pathlib import Path
 
