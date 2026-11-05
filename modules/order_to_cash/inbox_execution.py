@@ -24,6 +24,8 @@ from datetime import datetime
 from typing import Callable, Protocol
 
 import psycopg
+from opentelemetry import trace
+from opentelemetry.trace import SpanKind
 
 from provisioning.control_plane_client import ControlPlaneUnavailable
 from inbox.execution_support import (AdvisoryLock, EngineOrgMismatch, PostgresMasterData, Stop, Target, blocked as _blocked,
@@ -232,9 +234,13 @@ def _find_or_create(engine: IdempiereOrders, order: PlacedOrder, customer: int, 
         verify_existing = getattr(engine, "assert_existing_order_matches", None)
         if reference is not None and not callable(verify_existing):
             raise IdempiereClientError("NATIVE_REFERENCE_READBACK_REQUIRED")
-        existing = engine.query("C_Order", [Eq(
-            "C_Order_UU" if reference else "POReference",
-            reference.native_uuid if reference else order.commerce_order_id)], ["C_Order_ID"])
+        # A real native engine transport call, not a fabricated Java span.
+        # Its result still needs independent native DB + CP immutable readback.
+        with trace.get_tracer("baobab.erp.native", "dev11").start_as_current_span(
+                "baobab.erp.jvm.lookup", kind=SpanKind.CLIENT):
+            existing = engine.query("C_Order", [Eq(
+                "C_Order_UU" if reference else "POReference",
+                reference.native_uuid if reference else order.commerce_order_id)], ["C_Order_ID"])
         if len(existing) > 1:
             raise _dead("DUPLICATE_NATIVE_ORDERS", f"{len(existing)} engine orders carry the order's reference")
         if existing:
@@ -260,7 +266,9 @@ def _find_or_create(engine: IdempiereOrders, order: PlacedOrder, customer: int, 
             fields["C_Order_UU"] = reference.native_uuid
             references.mark_creation_attempt(connection, reference)
         with references.using_reference(reference), authorised_native_financial_request("POST", "/models/C_Order", fields):
-            native_id = engine.create_record("C_Order", fields)
+            with trace.get_tracer("baobab.erp.native", "dev11").start_as_current_span(
+                    "baobab.erp.jvm.create", kind=SpanKind.CLIENT):
+                native_id = engine.create_record("C_Order", fields)
         if reference is not None:
             # The same full-fact readback is mandatory for initial creation
             # and recovery; a provider-returned ID is not a business effect.
