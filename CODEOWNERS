@@ -1,10 +1,13 @@
-* @nabhold/platform-engineering
-/idempiere/ @nabhold/platform-engineering
-/modules/ @nabhold/platform-engineering
-/db/ @nabhold/platform-engineering @nabhold/security
-/migration/ @nabhold/platform-engineering
-/contracts/ @nabhold/platform-engineering
-/.github/ @nabhold/platform-engineering @nabhold/security
-/docs/adr/ @nabhold/platform-engineering
-/architecture/ @nabhold/platform-engineering
-/SECURITY.md @nabhold/security @nabhold/platform-engineering
+* @baobab-platform/platform-engineering
+/idempiere/ @baobab-platform/platform-engineering
+/modules/ @baobab-platform/platform-engineering
+/db/ @baobab-platform/platform-engineering @baobab-platform/security
+/migration/ @baobab-platform/platform-engineering
+/contracts/ @baobab-platform/platform-engineering
+/.github/ @baobab-platform/platform-engineering @baobab-platform/security
+/docs/adr/ @baobab-platform/platform-engineering
+/architecture/ @baobab-platform/platform-engineering
+/SECURITY.md @baobab-platform/security @baobab-platform/platform-engineering
+/docs/security/dependency-maintenance.md @baobab-platform/platform-engineering @baobab-platform/security
+/tests/unit/test_dependency_maintenance.py @baobab-platform/platform-engineering @baobab-platform/security
+/docs/security/idempiere-legacy-trivy-findings.md @baobab-platform/platform-engineering @baobab-platform/security
