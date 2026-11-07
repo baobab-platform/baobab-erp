@@ -161,3 +161,35 @@ providers:
           - type: integration-test
             path: tests/integration/test_boundary_api.py
             description: Canonical authenticated ERP Boundary API routing and tenant-scoped behavior.
+
+# ADR-ERP-023 / Shared proposal PR #434: plans only, not provider support.
+# Proposed names are NOT catalogue membership or grants (ADR-SHARED-017).
+planned_capabilities:
+  - proposed_key: workforce.employment.manage
+    proposal_status: PROPOSED
+    target_provider_key: baobab-erp.idempiere
+    provenance:
+      authority:
+        repository: baobab-platform/baobab-erp
+        decision: ADR-ERP-023
+  - proposed_key: workforce.attendance.approve
+    proposal_status: PROPOSED
+    target_provider_key: baobab-erp.idempiere
+    provenance:
+      authority:
+        repository: baobab-platform/baobab-erp
+        decision: ADR-ERP-023
+  - proposed_key: payroll.run.manage
+    proposal_status: PROPOSED
+    target_provider_key: baobab-erp.idempiere
+    provenance:
+      authority:
+        repository: baobab-platform/baobab-erp
+        decision: ADR-ERP-023
+  - proposed_key: payroll.journal-handoff.prepare
+    proposal_status: PROPOSED
+    target_provider_key: baobab-erp.idempiere
+    provenance:
+      authority:
+        repository: baobab-platform/baobab-erp
+        decision: ADR-ERP-023

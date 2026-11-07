@@ -50,3 +50,11 @@ These validators and format dependencies are installed in production, with wheel
 byte/inventory and isolated-runtime checks. See the
 [maintenance plan](../docs/plans/P0-04A-erp-contract-convergence.md) for regeneration
 and remaining protected acceptance requirements.
+
+## Baobab People (non-activating scaffold)
+
+`people` contains employer-scoped effective-dated workforce versioning and a
+readiness-only payroll approval gate, behind trusted authority/calculation and
+atomic repository Protocols. It has no live HR/payroll endpoint, calculator,
+statutory rules or access to the iDempiere native posting authority. See
+[People foundation](../docs/people/README.md) and Shared proposal PR #434.

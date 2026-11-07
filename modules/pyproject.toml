@@ -40,6 +40,12 @@ packages = [
     "provisioning",
     "order_to_cash",
     "shared_contracts",
+    "people",
+    "people.workforce",
+    "people.payroll",
+    "people.providers",
+    "people.localisation",
+    "people.reconciliation",
 ]
 
 # Imported immutable schemas must survive wheel/image builds.

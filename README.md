@@ -53,9 +53,9 @@ native providers and protected posting certification remain separate requirement
 
 - iDempiere: `13-release` ("Orion" LTS)
 - Database: PostgreSQL 17
-- Java: 17
+- Java: **21 target** for People/ERP (current deployable iDempiere 13 image and OSGi bytecode remain Java 17 pending independent Java 21 runtime qualification)
 
-See `upstream.lock.yaml`. Upgrades are reviewed changes and must run the compatibility
+See `upstream.lock.yaml` and [the People compatibility matrix](docs/people/compatibility-matrix.md). Upgrades are reviewed changes and must run the compatibility
 suite. Existing PostgreSQL 16 volumes require a deliberate, independently reviewed
 major-version migration; see [PG17 upgrade runbook](docs/operations/postgresql-17-upgrade.md).
 
