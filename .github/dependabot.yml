@@ -72,3 +72,12 @@ updates:
     open-pull-requests-limit: 5
     labels: ["dependencies", "docker"]
     commit-message: {prefix: "chore", include: "scope"}
+
+  # Codespaces' actual developer topology is independently maintained;
+  # test images cannot be assumed safe from the production compose config.
+  - package-ecosystem: "docker-compose"
+    directory: "/.devcontainer"
+    schedule: {interval: "weekly", day: "monday", time: "07:10", timezone: "Africa/Johannesburg"}
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "docker"]
+    commit-message: {prefix: "chore", include: "scope"}
