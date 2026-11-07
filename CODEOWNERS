@@ -11,3 +11,8 @@
 /docs/security/dependency-maintenance.md @baobab-platform/platform-engineering @baobab-platform/security
 /tests/unit/test_dependency_maintenance.py @baobab-platform/platform-engineering @baobab-platform/security
 /docs/security/idempiere-legacy-trivy-findings.md @baobab-platform/platform-engineering @baobab-platform/security
+/.baobab/repository.yaml @baobab-platform/platform-engineering @baobab-platform/security
+/idempiere/Dockerfile @baobab-platform/platform-engineering @baobab-platform/security
+/modules/Dockerfile @baobab-platform/platform-engineering @baobab-platform/security
+/compose.yaml @baobab-platform/platform-engineering @baobab-platform/security
+/uv.lock @baobab-platform/platform-engineering @baobab-platform/security
