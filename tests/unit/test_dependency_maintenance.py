@@ -22,6 +22,7 @@ REQUIRED = (
         ("docker", "/idempiere"), ("docker", "/modules"),
         ("docker-compose", "/"),
         ("docker-compose", "/idempiere/acceptance/erp-a"),
+        ("docker-compose", "/.devcontainer"),
     }
     if IS_ERP
     else {
