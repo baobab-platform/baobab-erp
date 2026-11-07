@@ -17,7 +17,8 @@ runtime:
     engine: "postgresql"
     image: "postgres:17-alpine"
   java:
-    release: "17"
+    release: "17"  # current deployable runtime, NOT Java21-certified
+    target_release: "21"  # Baobab People target; requires a new runtime qualification
 policy:
   vendor_upstream_source: false
   direct_upstream_modification: false
