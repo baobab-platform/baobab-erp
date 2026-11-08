@@ -164,6 +164,11 @@ providers:
 
 # ADR-ERP-023 / Shared proposal PR #434: plans only, not provider support.
 # Proposed names are NOT catalogue membership or grants (ADR-SHARED-017).
+# This is ONE optional Baobab-native provider candidate, NOT a platform default.
+# Tenants may keep their existing HR/payroll providers indefinitely, with
+# independently qualified vendor adapter declarations and CP-selected bindings.
+# Do not infer mandatory native People/ERP usage, migration or activation from
+# target_provider_key. External-only and mixed-provider workflows remain valid.
 planned_capabilities:
   - proposed_key: workforce.employment.manage
     proposal_status: PROPOSED
