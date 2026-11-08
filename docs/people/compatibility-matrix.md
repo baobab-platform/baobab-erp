@@ -6,6 +6,7 @@
 | Java **21** | Target for first-party People and eventually ERP runtime | DEV10-R3 Java 21 compilation/bytecode probe and native finance PG17 tests exist; real iDempiere 13 runtime on Java 21 is **not yet qualified** |
 | PostgreSQL **17** | Required | Already the configured image/CI baseline; existing PG16 physical volumes require separately supervised migration |
 | CDSoftware | Optional reference/adapter | No release/license transitive dependency or Payroll-on-13 compatibility certified; no vendored source |
+| Tenant's existing HRIS/payroll vendor (BYOP) | Optional, permanent first-class choice | Per-employer/function/jurisdiction adapter + CP binding; no provider qualified or bound yet, no forced native People/ERP/Payments migration |
 | ZA payroll | First | No legal/statutory golden vectors certified, no live provider |
 | UG payroll | Second | No legal/statutory qualification certified |
 | Payroll GL | ERP-owned | Use existing independent native posting/mandate veto; not connected to People |
