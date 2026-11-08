@@ -282,6 +282,15 @@ fenced() { # label sql expected-tag
   else fail "$1" "not refused by the COMMIT fence"; fi
 }
 if [ -n "${J1:-}" ]; then
+  facts_before=$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 224 AND record_id = $J1")
+  ledger_before=$(sql "SELECT md5(coalesce(string_agg(to_jsonb(f)::text, '|' ORDER BY f.fact_acct_id), '')) FROM fact_acct f WHERE ad_table_id = 224 AND record_id = $J1")
+  fenced_at_statement "direct SQL DELETE of committed Fact_Acct" "DELETE FROM adempiere.fact_acct
+    WHERE fact_acct_id = (SELECT min(fact_acct_id) FROM adempiere.fact_acct
+     WHERE ad_table_id = 224 AND record_id = $J1)"
+  [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 224 AND record_id = $J1")" = "$facts_before" ] \
+  && [ "$(sql "SELECT md5(coalesce(string_agg(to_jsonb(f)::text, '|' ORDER BY f.fact_acct_id), '')) FROM fact_acct f WHERE ad_table_id = 224 AND record_id = $J1")" = "$ledger_before" ] \
+  && pass "independent PostgreSQL readback: original committed Fact_Acct unaffected by direct DELETE" \
+  || fail "direct SQL committed ledger DELETE" "persisted ledger changed"
   fenced "direct SQL Fact_Acct insert" "INSERT INTO adempiere.fact_acct SELECT (jsonb_populate_record(f, jsonb_build_object(
       'fact_acct_id', (SELECT max(fact_acct_id) + 1 FROM adempiere.fact_acct),
       'fact_acct_uu', gen_random_uuid()::text, 'ad_table_id', 224, 'record_id', $J1))).*
@@ -389,12 +398,19 @@ else fail "injected shipment failure" "shipment ${SF:-?} facts ${FF:-?} costs ${
 # S5. Retry and background repost of the posted shipment.
 if [ -n "${S:-}" ]; then
   F0=$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $S"); C0=$(cost_details "$S"); D0=$(derived_rows "$S")
+  shipment_ledger_hash() { sql "SELECT md5(coalesce(string_agg(to_jsonb(f)::text, '|' ORDER BY f.fact_acct_id), '')) FROM fact_acct f WHERE ad_table_id = 319 AND record_id = $S"; }
+  shipment_cost_hash() { sql "SELECT md5(coalesce(string_agg(to_jsonb(cd)::text, '|' ORDER BY cd.m_costdetail_id), '')) FROM m_costdetail cd JOIN m_inoutline l ON l.m_inoutline_id = cd.m_inoutline_id WHERE l.m_inout_id = $S"; }
+  FH0=$(shipment_ledger_hash); CH0=$(shipment_cost_hash)
   run shp_retry authorized action=repostDoc table=M_InOut id="$S" || true
-  [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $S")" = "$F0" ] && [ "$(cost_details "$S")" = "$C0" ] \
-    && pass "shipment retry after commit: ledger ($F0) and costing ($C0) unchanged" || fail "shipment retry" "duplicated"
+  [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $S")" = "$F0" ] \
+    && [ "$(cost_details "$S")" = "$C0" ] \
+    && [ "$(shipment_ledger_hash)" = "$FH0" ] && [ "$(shipment_cost_hash)" = "$CH0" ] \
+    && pass "shipment replay adopts exact native ledger and cost fact identities unchanged" \
+    || fail "shipment replay" "ledger/cost identities mutated or duplicated"
   run shp_force authorized action=repostDoc table=M_InOut id="$S" force=true || true
   if [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $S")" = "$F0" ] \
      && [ "$(cost_details "$S")" = "$C0" ] && [ "$(derived_rows "$S")" = "$D0" ] \
+     && [ "$(shipment_ledger_hash)" = "$FH0" ] && [ "$(shipment_cost_hash)" = "$CH0" ] \
      && [ "$(prop shp_force post_error)" != "null" ]; then
     pass "forced shipment repost refused: native ledger and cost facts unchanged"
   else fail "forced shipment repost" "ledger/cost changed or refusal missing ($(prop shp_force post_error))"; fi
