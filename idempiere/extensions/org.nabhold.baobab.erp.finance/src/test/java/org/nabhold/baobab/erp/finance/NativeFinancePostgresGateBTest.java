@@ -1769,8 +1769,9 @@ class NativeFinancePostgresGateBTest {
     @Test
     void accountingConfigurationHasNoDirectSqlBackdoorForPlacedClients() throws Exception {
         String[] tables = {
-                "c_acctschema", "c_elementvalue", "c_validcombination",
-                "c_tax", "c_tax_acct", "c_bankaccount"
+                "c_acctschema", "c_acctschema_default", "c_acctschema_gl",
+                "c_elementvalue", "c_validcombination",
+                "c_tax", "c_tax_acct", "c_bankaccount", "c_bankaccount_acct"
         };
         for (String table : tables) {
             String pk = table + "_id";
@@ -1811,8 +1812,9 @@ class NativeFinancePostgresGateBTest {
                 "c_allocationhdr", "m_inout", "c_order",
                 "c_bankstatement", "c_cash", "gl_journalline",
                 "c_invoiceline", "c_orderline", "m_inoutline",
-                "c_allocationline", "c_acctschema", "c_elementvalue",
-                "c_validcombination", "c_tax", "c_tax_acct", "c_bankaccount"
+                "c_allocationline", "c_acctschema", "c_acctschema_default",
+                "c_acctschema_gl", "c_elementvalue",
+                "c_validcombination", "c_tax", "c_tax_acct", "c_bankaccount", "c_bankaccount_acct"
         };
         for (String table : protectedTables) {
             String triggerName;
