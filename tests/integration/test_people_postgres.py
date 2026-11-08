@@ -166,6 +166,41 @@ class PeoplePostgresTests(unittest.TestCase):
         self.refusal("TRUNCATE baobab_people.payroll_draft")
         self.conn.rollback()
 
+    def test_concurrent_employment_writers_do_not_bypass_native_cas(self):
+        # One independent connection holds the employer/person transaction
+        # lock while the other attempts the same version. PostgreSQL's own
+        # transaction lock serialises the conflict; no in-process mutex exists.
+        first = self.employment()
+        store = PostgresEmploymentProposalStore(self.conn)
+        WorkforceService(Authority(), store).propose(first, authority_proof="synthetic-cp-allow")
+        with psycopg.connect(require_database_url()) as contender:
+            with contender.cursor() as cur:
+                cur.execute("SET LOCAL lock_timeout = '200ms'")
+                with self.assertRaises(psycopg.Error) as blocked:
+                    cur.execute("""INSERT INTO baobab_people.employment_proposal
+                        (tenant_id,legal_employer_id,person_ref,version,effective_from,
+                         work_jurisdiction,tax_jurisdiction,pay_currency,
+                         contract_evidence_ref,writer_principal_ref)
+                        VALUES (%s,%s,%s,1,'2026-11-01','ZA','ZA','ZAR',
+                                'ev_synthetic_race','principal_hr_other')""",
+                                (self.tenant, self.employer, self.person))
+                self.assertIn("lock timeout", str(blocked.exception).lower())
+            contender.rollback()
+            self.conn.commit()
+            reopened = PostgresEmploymentProposalStore(contender)
+            self.assertEqual(1, reopened.latest(
+                tenant_id=self.tenant, employer_id=self.employer, person_ref=self.person).version)
+            with self.assertRaises(PeopleDomainError):
+                reopened.append_if_version(first, previous_version=None,
+                                           principal_ref="principal_hr_other")
+            contender.rollback()
+        with self.conn.cursor() as cur:
+            cur.execute("""SELECT count(*) FROM baobab_people.employment_proposal
+                WHERE tenant_id=%s AND legal_employer_id=%s AND person_ref=%s""",
+                (self.tenant, self.employer, self.person))
+            self.assertEqual(1, cur.fetchone()[0])
+        self.conn.rollback()
+
     def test_correction_cannot_cross_employer_or_reference_unseen_run(self):
         store = PostgresPayrollDraftStore(self.conn)
         service = PayrollDraftService(Authority(), store)
