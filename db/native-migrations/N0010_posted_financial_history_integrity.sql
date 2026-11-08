@@ -55,6 +55,15 @@ BEGIN
   END IF;
   -- Existing N0002 guards all changes of client and org, even on drafts.
   IF OLD.docstatus IN ('CO', 'CL') THEN
+    -- Native Doc.post() may try to mark a previously posted document
+    -- 'invalid' after a blocked attempt to DELETE its committed Fact_Acct.
+    -- Preserve the independently observed Posted=Y state and immutable
+    -- ledger together. First-time transitions N/I -> Y are not blocked.
+    IF (to_jsonb(OLD) ->> 'posted') = 'Y'
+       AND (to_jsonb(NEW) ->> 'posted') IS DISTINCT FROM 'Y' THEN
+      RAISE EXCEPTION 'BAOBAB_NATIVE_FINANCE_DENIED: cannot downgrade a completed posted document without approved reversal'
+        USING ERRCODE = '42501';
+    END IF;
     IF NEW.docstatus IS DISTINCT FROM OLD.docstatus THEN
       RAISE EXCEPTION 'BAOBAB_NATIVE_FINANCE_DENIED: completed document state is immutable without a reversal class'
         USING ERRCODE = '42501';
