@@ -209,6 +209,18 @@ identities and negative intercompany tests.
    AR/AP, settlement, FX and consolidation/elimination require an
    additional qualified business execution path.
 
+**Adjacent group-company registration status (owner's update, 8 November 2026):**
+Nabhold Group Africa and Thamani Global are **legally incorporated in South
+Africa**. Thamani Global's **Uganda incorporation remains pending**. These
+are separate legal-status facts from ZuriBeans' own in-progress
+incorporations in Uganda and South Africa. No Uganda Thamani LegalEntity,
+registration number, CP binding or native `AD_Client` is implied by its
+future operating footprint; and South African incorporation does not itself
+grant production ERP activation. CP onboarding must independently verify
+each existing company's actual registry documentation, authorised legal
+identity and current mandates. This ADR remains scoped to **ZuriBeans'
+two-country topology**, not a new topology decision for Nabhold or Thamani.
+
 The two existing
 `config/provisioning/zuribeans-{ug,za}.production.template.json` files
 retain their **`draft-not-approved`** status and `REQUIRED_*` placeholders.
