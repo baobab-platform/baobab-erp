@@ -156,8 +156,23 @@ export DATABASE_URL="postgresql://adempiere:adempiere@127.0.0.1:55462/idempiere"
 # import employee data, or create a financial document from this probe.
 if [[ "${BAOBAB_PEOPLE_EXPERIMENTAL_NATIVE:-0}" == "1" ]]; then
   log "BP-04 non-activating People proposal-schema probe in native ERP PostgreSQL 17"
+  # Capture native AD and GL counts BEFORE installing the People schema.
+  # An experimental People migration must never register native AD windows
+  # or create/alter a financial record by side effect.
+  native_before=$(psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -tAc "
+    SELECT (SELECT count(*) FROM adempiere.ad_table),
+           (SELECT count(*) FROM adempiere.fact_acct),
+           (SELECT count(*) FROM baobab_native.finance_authority_attribution);")
   BAOBAB_PEOPLE_EXPERIMENTAL=1 BAOBAB_ENVIRONMENT=integration \
     bash "$REPO/db/migrate-people-experimental.sh" >> "$OUT/erp-migrate.log"
+  native_after=$(psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -tAc "
+    SELECT (SELECT count(*) FROM adempiere.ad_table),
+           (SELECT count(*) FROM adempiere.fact_acct),
+           (SELECT count(*) FROM baobab_native.finance_authority_attribution);")
+  if [[ "$native_before" != "$native_after" ]]; then
+    echo "BP-04 native-install FAILED: AD/GL/authority state changed" >&2
+    exit 1
+  fi
   check=$(psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -tAc "
     SELECT to_regclass('baobab_people.employment_proposal') IS NOT NULL,
            to_regclass('baobab_people.payroll_draft') IS NOT NULL,
