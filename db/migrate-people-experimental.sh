@@ -25,3 +25,13 @@ for script in "${repo_root}"/db/people-migrations/P*.sql; do
     -f "${script}" \
     -c "INSERT INTO baobab.schema_migrations(filename) VALUES ('${file}')"
 done
+
+# Independently verify actual enabled native DB safeguards, even on repeated
+# invocations where all migration tracking rows already exist.
+missing=$(psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 -tA \
+  -f "${repo_root}/db/check-people-experimental.sql")
+if [[ "${missing}" != "0" ]]; then
+  echo "BAOBAB_PEOPLE_DENIED: missing/disabled experimental PostgreSQL People safeguards" >&2
+  exit 1
+fi
+echo "BP-04 native PostgreSQL 17 proposal guards: PASS"
