@@ -24,6 +24,11 @@ class ZuriBeansTopologyDecisionTests(unittest.TestCase):
         self.assertIn("ZURIBEANS_UG", text)
         self.assertIn("ZURIBEANS_ZA", text)
         self.assertIn("ERP-AF-SOUTH-01", text)
+        # A neighbouring group company is not ZuriBeans: SA incorporation is
+        # independently recorded; Uganda Thamani incorporation remains pending.
+        self.assertIn("Nabhold Group Africa and Thamani Global are **legally incorporated in South", text)
+        self.assertIn("Uganda incorporation remains pending", text)
+        self.assertIn("ZuriBeans' own in-progress", text)
         for index in range(1, 9):
             self.assertIn(f"INV-ERP-TOPO-{index:03d}", text)
 
