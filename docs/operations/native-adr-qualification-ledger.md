@@ -1,7 +1,7 @@
 # ERP native ADR implementation and qualification ledger
 
 Status: **engineering work in progress; no full native ADR acceptance or protected activation**.
-Governing baseline: Accepted ERP ADR-001–020 and 022–023; ADR-021 design acceptance is recorded in ERP PR #133 (**Accepted**), not yet presumed merged into `main`; production incorporation/Finance/CP gates stay independent. EA v2.3 / EA-DEV DEV-07/09/11/12/14.
+Governing baseline: Accepted ERP ADR-001–020 and 022–023; ADR-021 is **Accepted on `main`** via ERP PR #133 (squash `7068382b4784`); production incorporation, Finance and CP approval remain independent. EA v2.3 / EA-DEV DEV-07/09/11/12/14.
 Evidence custody: each gate requires exact source tuple, actual iDempiere 13 + PostgreSQL 17, native JVM/OSGi activation, positive AND negative cases and read-only independent database observations. Source tests are not substituted for business proof.
 
 ## Native capability inventory
@@ -28,7 +28,7 @@ Evidence custody: each gate requires exact source tuple, actual iDempiere 13 + P
 | 018 | Canonical event/projection abstractions | Governed financial reporting extracts with independently reconciled trial balances, tenant-filtered analytics, erasure |
 | 019 | CP-directed provisioning worker and idempotent commands | Real native onboarding/credential issuance/deactivation, migration, rehome and revocation proof |
 | 020 | Readiness evaluation with explicit fail-closed gates | Independent release evidence for each mandatory capability, full multi-company real golden paths |
-| 021 | Pattern B UG/ZA ZuriBeans two-client design approved in ERP #133 (pending merge); both ZuriBeans incorporations remain in progress | Verified incorporation and legal actors, Finance baseline, CP identifiers and independent native clients; no synthetic activation |
+| 021 | Accepted Pattern B UG/ZA ZuriBeans two-client design, merged in ERP #133; both ZuriBeans incorporations remain in progress | Verified incorporation and legal actors, Finance baseline, CP identifiers and independent native clients; no synthetic activation |
 | 022 | Native placement, provenance, class catalogue, PostgreSQL COMMIT fences, N0010 history and N0011 configuration controls | Qualified reversal/bank/cash/manufacturing catalogue extensions only after Shared CP policy revision; do not widen classes locally |
 | 023 | Baobab People/CDSoftware candidate on ERP #126 | Licence and compatibility audit, native OSGi/2Pack, statutory ZA/UG parallel payroll, approved posting and HR isolation |
 
