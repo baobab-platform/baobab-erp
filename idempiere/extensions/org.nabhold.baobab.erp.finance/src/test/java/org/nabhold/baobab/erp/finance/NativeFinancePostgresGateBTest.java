@@ -1874,11 +1874,10 @@ class NativeFinancePostgresGateBTest {
                       (placement_id,version,tenant_id,engine_instance_id,operating_organisation_id,
                        legal_entity_id,market,ad_client_id,ad_org_id,effective_from,
                        approved_by,checked_by,evidence_reference,erp_assignment_reference)
-                    VALUES ('%s',1,'tn_history01','ei_history01',
-                      '29e7e63e-78c2-4d49-94b8-2c8951bb8003',
+                    VALUES ('%s',1,'tn_history01','ei_history01','%s',
                       'LE-HISTORY01','UG',%d,%d,clock_timestamp()-interval '1 day',
                       'History Maker','History Checker','synthetic:gate-b/history','synthetic:plan/history')
-                    """.formatted(placement, company, org));
+                    """.formatted(placement, UUID.randomUUID(), company, org));
             // A one-time closure is allowed (ERP-owned legal-actor history);
             // it must NOT permit reusing the original native identifiers.
             stmt.execute("UPDATE baobab_native.native_placement SET effective_to = "
