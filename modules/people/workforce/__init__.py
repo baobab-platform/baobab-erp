@@ -1,4 +1,4 @@
-"""Immutable effective-dated workforce aggregates and authority ports."""
+"""Immutable effective-dated workforce proposals and authority ports."""
 from .model import EmploymentVersion, PeopleDomainError
 from .service import WorkforceService
 

@@ -26,7 +26,9 @@ class Store:
     def latest(self, *, tenant_id, employer_id, person_ref):
         return self.values.get((tenant_id, employer_id, person_ref))
 
-    def append_if_version(self, record, *, previous_version):
+    def append_if_version(self, record, *, previous_version, principal_ref):
+        if not principal_ref:
+            raise PeopleDomainError('Attested writer required')
         key = (record.tenant_id, record.legal_employer_id, record.person_ref)
         existing = self.values.get(key)
         if (existing.version if existing else None) != previous_version:
