@@ -8,8 +8,9 @@ class PayrollPolicyError(ValueError):
     """An authority/qualification failure without employee information."""
 
 
-def _ref(value: str) -> None:
-    if not isinstance(value, str) or not (3 <= len(value) <= 160) or value != value.strip() or any(c.isspace() for c in value):
+def _ref(value: str, *, scope: bool = False) -> None:
+    pattern = r"[A-Za-z0-9_.:-]{3,160}" if scope else r"[A-Za-z0-9_.:/-]{3,160}"
+    if not isinstance(value, str) or re.fullmatch(pattern, value) is None:
         raise PayrollPolicyError("Invalid payroll reference")
 
 
@@ -28,15 +29,17 @@ class PayrollDraft:
     correction_of_run_ref: str | None = None
 
     def __post_init__(self) -> None:
-        for value in (self.run_ref, self.tenant_id, self.legal_employer_id, self.maker_ref):
+        for value in (self.run_ref, self.maker_ref):
             _ref(value)
-        if self.correction_of_run_ref:
+        for value in (self.tenant_id, self.legal_employer_id):
+            _ref(value, scope=True)
+        if self.correction_of_run_ref is not None:
             _ref(self.correction_of_run_ref)
             if self.correction_of_run_ref == self.run_ref:
                 raise PayrollPolicyError("Correction must name a prior run")
         if type(self.version) is not int or self.version < 1:
             raise PayrollPolicyError("Invalid payroll run version")
-        if not isinstance(self.period_from, date) or not isinstance(self.period_until, date) or self.period_until < self.period_from:
+        if type(self.period_from) is not date or type(self.period_until) is not date or self.period_until < self.period_from:
             raise PayrollPolicyError("Invalid payroll period")
         if not isinstance(self.statutory_jurisdiction, str) or not re.fullmatch(r"[A-Z]{2}", self.statutory_jurisdiction):
             raise PayrollPolicyError("Invalid statutory jurisdiction")

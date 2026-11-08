@@ -44,7 +44,7 @@ class PayrollEligibilityGate:
             proof=authority_proof, tenant_id=draft.tenant_id,
             legal_employer_id=draft.legal_employer_id, run_ref=draft.run_ref,
         )
-        if not checker or checker == draft.maker_ref:
+        if not isinstance(checker, str) or not checker.strip() or checker != checker.strip() or checker == draft.maker_ref:
             raise PayrollPolicyError("Independent payroll checker required")
         receipt = self.verifier.verify(
             evidence_ref=calculation_evidence_ref, tenant_id=draft.tenant_id,

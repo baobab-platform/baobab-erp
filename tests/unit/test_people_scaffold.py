@@ -96,10 +96,14 @@ class WorkforceTests(unittest.TestCase):
 
     def test_invalid_versions_and_effective_window_denied(self):
         for changes in (
-            {"version": True}, {"version": 0},
+            {"version": True}, {"correction_of_run_ref": ""},
+            {"run_ref": "bad run with spaces"},
+            {"period_from": datetime(2026, 11, 1, tzinfo=timezone.utc)}, {"version": 0},
             {"effective_until": date(2026, 11, 1)},
             {"tax_jurisdiction": "za"}, {"pay_currency": "zar"},
             {"state": "ACTIVE"}, {"contract_evidence_ref": "bad evidence ref"},
+            {"person_ref": "person@untrusted"}, {"tenant_id": "tn/unsafe"},
+            {"effective_from": datetime(2026, 11, 1, tzinfo=timezone.utc)},
         ):
             with self.subTest(changes=changes), self.assertRaises(PeopleDomainError):
                 workforce_record(**changes)

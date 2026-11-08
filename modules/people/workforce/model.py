@@ -9,7 +9,11 @@ class PeopleDomainError(ValueError):
 
 
 def _reference(value: str, label: str) -> None:
-    if not isinstance(value, str) or not (3 <= len(value) <= 160) or value != value.strip() or any(c.isspace() for c in value):
+    # Match the stricter PostgreSQL 17 staging schema. Reject characters
+    # that could leak a free-text employee name or create key ambiguity.
+    pattern = (r"[A-Za-z0-9_.:-]{3,160}" if label in ("tenant_id", "legal_employer_id")
+               else r"[A-Za-z0-9_.:/-]{3,160}")
+    if not isinstance(value, str) or re.fullmatch(pattern, value) is None:
         raise PeopleDomainError(f"Invalid {label}")
 
 
@@ -32,9 +36,9 @@ class EmploymentVersion:
             _reference(getattr(self, label), label)
         if type(self.version) is not int or self.version < 1:
             raise PeopleDomainError("Invalid employment version")
-        if not isinstance(self.effective_from, date) or (
+        if type(self.effective_from) is not date or (
             self.effective_until is not None and (
-                not isinstance(self.effective_until, date) or self.effective_until <= self.effective_from
+                type(self.effective_until) is not date or self.effective_until <= self.effective_from
             )
         ):
             raise PeopleDomainError("Invalid employment effective window")
