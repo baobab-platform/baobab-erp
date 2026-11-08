@@ -69,7 +69,8 @@ BEGIN
       'isonline', 'c_bpartner_id', 'c_currency_id', 'grandtotal',
       'totallines', 'payamt', 'c_invoice_id', 'c_paymentterm_id',
       'c_charge_id', 'c_tax_id', 'dateinvoiced', 'dateordered',
-      'c_acctschema_id', 'c_conversiontype_id', 'c_bankaccount_id'
+      'c_acctschema_id', 'c_conversiontype_id', 'c_bankaccount_id',
+      'totaldr', 'totalcr', 'controlamt'
     ] LOOP
       IF original -> key IS DISTINCT FROM incoming -> key THEN
         RAISE EXCEPTION 'BAOBAB_NATIVE_FINANCE_DENIED: completed document financial facts are immutable'
