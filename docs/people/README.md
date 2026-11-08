@@ -1,8 +1,8 @@
 # Baobab People — ADR-ERP-023 BP-00/BP-04 engineering
 
-**Status: experimental; not a canonical capability, live HR service, certified payroll or native GL integration.**
+**Status: experimental adapter implementation; accepted Shared capability vocabulary exists, but no live certified HR/payroll provider, statutory qualification or native GL integration.**
 
-Governing decision: accepted ERP ADR-ERP-023. Shared PR #434 proposes obligations, not accepted People API/capability names. Java 17 + iDempiere 13 + PostgreSQL 17 are the **current deployable baseline**. Java 21 remains a target only until independently qualified in the actual OSGi runtime.
+Governing decision: accepted ERP ADR-ERP-023. Shared PR #434 is merged as Accepted ADR-SHARED-045, registering four DRAFT/EXPERIMENTAL People v1 capabilities. Canonical semantics do not mean provider runtime acceptance. Java 17 + iDempiere 13 + PostgreSQL 17 are the **current deployable baseline**. Java 21 remains a target only until independently qualified in the actual OSGi runtime.
 
 ## What can execute in the current BP-04 candidate
 
@@ -16,7 +16,15 @@ Governing decision: accepted ERP ADR-ERP-023. Shared PR #434 proposes obligation
 
 **Bring Your Own Provider (BYOP)** is a first-class product requirement across HRIS/workforce, attendance, leave and payroll, not a fallback limited to payroll bureaus. The legal employer chooses the authority for each function and effective period; Shared defines the provider-neutral contract and CP governs any Baobab-side provider binding, subject to IAM, jurisdiction and evidence. No provider is allowed to silently replace, double-write, re-finalise or export restricted employee records merely because Baobab People is installed.
 
-See [Provider-neutrality and portability design](provider-neutrality.md) and ADR-ERP-023 Addendum B for the source-of-record matrix, mixed-provider design, migration-out and BYOP-01…12 acceptance cases. **This PR implements none of those live provider adapters or CP bindings**; the experimental payroll verifier does not yet prove provider-selection authority.
+See [Provider-neutrality and portability design](provider-neutrality.md) and ADR-ERP-023 Addendum B for the source-of-record matrix, mixed-provider design, migration-out and BYOP-01…12 acceptance cases. **This PR now includes a guarded provider-selection and signed external payroll-evidence adapter port** (see [provider adapters](provider-adapters.md)). Those are not live qualified providers or activated CP bindings: current CP #466 and IAM #157 remain gated; no vendor issued a verified runtime receipt in this PR.
+
+## Accepted Shared contract and BYOP adapter increment (8 November 2026)
+
+The stable canonical interface is [Shared ADR-SHARED-045](https://github.com/baobab-platform/shared/pull/434). Shared #436 proposes the non-authorising `people:provider:read` workload scope. CP #466 and IAM #157 provide independently gated development-only provider-selection enforcement.
+
+The new `people.providers.selection.CPProviderSelector` accepts only trusted `context_id`, one of the four accepted capability names, correlation and major version. It rejects untrusted provider/employer selection and verifies CP readback freshness and jurisdiction. `people.providers.evidence.ExternalEvidenceAdapter` verifies an Ed25519-signed source-payroll evidence receipt bound to that chosen provider, employer, run/version, jurisdiction, rule digest and binding revision. `SelectedCalculationVerifier` implements the existing PayrollEligibilityGate verifier port, but also demands a **separate independent statutory reviewer signature**. The qualification reader has **no defaults or keys**, so all real calls deny until authorised evidence custody is provided.
+
+The native PG17 draft scaffold remains **draft-only** and cannot be used as a qualified native payroll calculator. External-only and hybrid BYOP arrangements do not need to post iDempiere or run Baobab Payments. The new synthetic signature tests are not legal or statutory certification.
 
 ## Disabled by default
 
