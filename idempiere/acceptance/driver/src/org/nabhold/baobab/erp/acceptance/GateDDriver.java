@@ -230,12 +230,24 @@ public final class GateDDriver implements BundleActivator, Runnable {
                 j.saveEx();
             }
             if (rollbackAfterPost) {
-                // Injected failure AFTER Fact_Acct rows were written in this
-                // transaction and BEFORE commit: nothing may survive.
-                String err = DocumentEngine.postImmediate(ctx, client, GL_JOURNAL_TABLE, id, true, trxName);
-                int facts = DB.getSQLValueEx(trxName, "SELECT COUNT(*) FROM Fact_Acct WHERE AD_Table_ID=? AND Record_ID=?", GL_JOURNAL_TABLE, id);
+                // Real iDempiere has already processed and posted this journal
+                // inside THIS database transaction. Observe its original
+                // native facts and CP authority before deliberately rolling
+                // back the transaction. Forcing a second Doc.post() here
+                // attempts to delete those provisional facts; that tests
+                // destructive reposting, NOT atomic rollback.
+                int facts = DB.getSQLValueEx(trxName,
+                        "SELECT COUNT(*) FROM Fact_Acct WHERE AD_Table_ID=? AND Record_ID=?",
+                        GL_JOURNAL_TABLE, id);
+                int decisions = DB.getSQLValueEx(trxName,
+                        "SELECT COUNT(*) FROM baobab_native.finance_authority_attribution"
+                        + " WHERE lower(source_table)='gl_journal' AND source_record_id=?"
+                        + " AND decision_id IS NOT NULL", id);
                 out.setProperty(prefix + "facts_before_rollback", String.valueOf(facts));
-                out.setProperty(prefix + "post_error", String.valueOf(err));
+                out.setProperty(prefix + "decisions_before_rollback", String.valueOf(decisions));
+                if (facts <= 0 || decisions <= 0) {
+                    throw new IllegalStateException("GATE_D_ROLLBACK_REQUIRES_REAL_NATIVE_FACTS_AND_AUTHORITY");
+                }
                 trx.rollback();
                 out.setProperty(prefix + "committed", "false");
             } else {
