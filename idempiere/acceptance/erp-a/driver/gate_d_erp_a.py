@@ -263,10 +263,14 @@ VALUES (gen_random_uuid(), 'SYNTHETIC_ENGINE_LOCAL', '{PLACEMENT}', 1, '{self.st
                            f"WHERE il.c_invoice_id = {inv or 0} AND coalesce(cd.m_inoutline_id, 0) = 0")
         inv_derived = self.q(f"SELECT count(*) FROM baobab_native.derived_write_attribution "
                              f"WHERE root_table = 'C_Invoice' AND root_record_id = {inv or 0}")
+        match_posted = self.q(f"SELECT posted FROM m_matchinv WHERE m_matchinv_id = {mi or 0}")
+        match_balanced = self.balanced(T_MATCHINV, mi or 0)
+        match_facts = self.facts(T_MATCHINV, mi or 0)
         ev.scenario("S04b", "invoice match: MatchInv posted and balanced, invoice-line cost detail derived from the vendor invoice",
-                    bool(mi) and self.q(f"SELECT posted FROM m_matchinv WHERE m_matchinv_id = {mi or 0}") == "Y"
-                    and self.balanced(T_MATCHINV, mi or 0) and int(inv_costs or 0) > 0 and int(inv_derived or 0) > 0,
-                    f"matchinv={mi} costs={inv_costs} derived={inv_derived}")
+                    bool(mi) and match_posted == "Y" and match_balanced
+                    and int(inv_costs or 0) > 0 and int(inv_derived or 0) > 0,
+                    f"matchinv={mi} posted={match_posted} balanced={match_balanced} "
+                    f"fact_rows={match_facts} costs={inv_costs} derived={inv_derived}")
         self.evidence(inv)
         r = self.doc("vpayment", invoice_id=inv)
         pay = r.get("id", "")
