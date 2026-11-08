@@ -291,13 +291,19 @@ public final class GateDDriver implements BundleActivator, Runnable {
     private static Properties repost(Properties in) {
         Properties out = new Properties();
         int id = Integer.parseInt(in.getProperty("journal_id"));
+        int client = Integer.parseInt(in.getProperty("client", String.valueOf(CLIENT)));
+        int org = Integer.parseInt(in.getProperty("org", "11"));
+        if (client != CLIENT
+                && !"DEV09_SECOND_COMPANY_ONLY".equals(in.getProperty("profile"))) {
+            throw new IllegalArgumentException("DEV09_SECOND_JOURNAL_PROFILE_REQUIRED");
+        }
         boolean force = Boolean.parseBoolean(in.getProperty("force", "false"));
-        Properties ctx = context(11);
+        Properties ctx = context(client, org);
         try {
             out.setProperty("post_error", String.valueOf(
                     force
-                        ? DocumentEngine.postImmediate(ctx, CLIENT, GL_JOURNAL_TABLE, id, true, null)
-                        : NativePostReadback.postIfNeeded(ctx, CLIENT, "GL_Journal", GL_JOURNAL_TABLE, id)));
+                        ? DocumentEngine.postImmediate(ctx, client, GL_JOURNAL_TABLE, id, true, null)
+                        : NativePostReadback.postIfNeeded(ctx, client, "GL_Journal", GL_JOURNAL_TABLE, id)));
         } catch (Exception failed) {
             out.setProperty("error", String.valueOf(failed.getMessage()));
         } finally {
