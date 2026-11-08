@@ -31,6 +31,10 @@ CREATE TABLE adempiere.gl_journalline (gl_journalline_id numeric(10) PRIMARY KEY
   ad_client_id numeric(10) NOT NULL, ad_org_id numeric(10) NOT NULL);
 CREATE TABLE adempiere.c_invoiceline (c_invoiceline_id numeric(10) PRIMARY KEY, c_invoice_id numeric(10) NOT NULL,
   ad_client_id numeric(10) NOT NULL, ad_org_id numeric(10) NOT NULL);
+-- N0010: financial line integrity uses the same parent/status vocabulary as
+-- the real Order Module; these are deliberately only the necessary columns.
+CREATE TABLE adempiere.c_orderline (c_orderline_id numeric(10) PRIMARY KEY, c_order_id numeric(10) NOT NULL,
+  ad_client_id numeric(10) NOT NULL, ad_org_id numeric(10) NOT NULL);
 CREATE TABLE adempiere.fact_acct (fact_acct_id numeric(10) PRIMARY KEY, ad_client_id numeric(10) NOT NULL,
   ad_org_id numeric(10) NOT NULL, ad_table_id numeric(10) NOT NULL, record_id numeric(10) NOT NULL,
   c_period_id numeric(10), dateacct date NOT NULL DEFAULT current_date,
