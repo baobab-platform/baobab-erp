@@ -42,7 +42,7 @@ BEGIN
     'm_costdetail', 'm_cost', 'c_payselection',
     'c_payselectionline', 'c_payselectioncheck',
     'c_acctschema', 'c_elementvalue', 'c_validcombination',
-    'c_tax', 'c_taxacct', 'c_bankaccount'
+    'c_tax', 'c_tax_acct', 'c_bankaccount'
   ] LOOP
     IF to_regclass('adempiere.' || relation) IS NULL THEN
       RAISE EXCEPTION 'N0012 missing mandatory native ERP relation: %', relation;
