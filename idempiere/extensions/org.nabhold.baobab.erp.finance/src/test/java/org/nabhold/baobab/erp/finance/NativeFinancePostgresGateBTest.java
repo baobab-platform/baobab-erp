@@ -1765,4 +1765,70 @@ class NativeFinancePostgresGateBTest {
         }
         assertEquals(0, count("SELECT count(*) FROM adempiere.fact_acct WHERE fact_acct_id = " + id));
     }
+
+    @Test
+    void accountingConfigurationHasNoDirectSqlBackdoorForPlacedClients() throws Exception {
+        String[] tables = {
+                "c_acctschema", "c_elementvalue", "c_validcombination",
+                "c_tax", "c_taxacct", "c_bankaccount"
+        };
+        for (String table : tables) {
+            String pk = table + "_id";
+            int existing = table.equals("c_acctschema") ? 101 : 111;
+            for (String mutation : new String[] {
+                    "INSERT INTO adempiere." + table + " (" + pk + ", ad_client_id) VALUES ("
+                            + IDS.incrementAndGet() + ", 11)",
+                    "UPDATE adempiere." + table + " SET ad_client_id = 97 WHERE " + pk + " = " + existing,
+                    "DELETE FROM adempiere." + table + " WHERE " + pk + " = " + existing
+            }) {
+                try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+                    SQLException denied = assertThrows(SQLException.class, () -> stmt.execute(mutation), table);
+                    assertTrue(denied.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"),
+                            table + " " + denied.getMessage());
+                    c.rollback();
+                }
+            }
+            assertEquals(1, count("SELECT count(*) FROM adempiere." + table
+                    + " WHERE " + pk + " = " + existing + " AND ad_client_id = 11"));
+        }
+        // Both sides of a cross-client move are independently fenced:
+        // a previously unplaced row cannot be moved INTO a governed client.
+        int unplaced = IDS.incrementAndGet();
+        try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+            stmt.execute("INSERT INTO adempiere.c_tax (c_tax_id, ad_client_id) VALUES (" + unplaced + ", 97)");
+            SQLException denied = assertThrows(SQLException.class, () ->
+                    stmt.execute("UPDATE adempiere.c_tax SET ad_client_id = 11 WHERE c_tax_id = " + unplaced));
+            assertTrue(denied.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"));
+            c.rollback();
+        }
+        assertEquals(0, count("SELECT count(*) FROM adempiere.c_tax WHERE c_tax_id = " + unplaced));
+    }
+
+    @Test
+    void nativeHistoryAndConfigurationFencesCannotBeSilentlySkipped() throws Exception {
+        String[] protectedTables = {
+                "fact_acct", "gl_journal", "c_invoice", "c_payment",
+                "c_allocationhdr", "m_inout", "c_order",
+                "c_bankstatement", "c_cash", "gl_journalline",
+                "c_invoiceline", "c_orderline", "m_inoutline",
+                "c_allocationline", "c_acctschema", "c_elementvalue",
+                "c_validcombination", "c_tax", "c_taxacct", "c_bankaccount"
+        };
+        for (String table : protectedTables) {
+            String triggerName;
+            if (table.equals("fact_acct")) triggerName = "baobab_ledger_immutable_history";
+            else if (java.util.Set.of("gl_journal", "c_invoice", "c_payment", "c_allocationhdr",
+                    "m_inout", "c_order", "c_bankstatement", "c_cash").contains(table))
+                triggerName = "baobab_protect_governed_header_history";
+            else if (java.util.Set.of("gl_journalline", "c_invoiceline", "c_orderline",
+                    "m_inoutline", "c_allocationline").contains(table))
+                triggerName = "baobab_protect_completed_financial_line";
+            else triggerName = "baobab_uncatalogued_finance_configuration";
+            assertEquals(1, count("SELECT count(*) FROM pg_trigger t JOIN pg_class rel ON rel.oid=t.tgrelid "
+                            + "JOIN pg_namespace n ON n.oid=rel.relnamespace "
+                            + "WHERE n.nspname='adempiere' AND rel.relname='" + table
+                            + "' AND t.tgname='" + triggerName + "' AND t.tgenabled='O'"),
+                    "native history guard must be installed AND enabled on " + table);
+        }
+    }
 }
