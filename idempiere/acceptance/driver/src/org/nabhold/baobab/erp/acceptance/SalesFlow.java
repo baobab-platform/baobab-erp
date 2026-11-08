@@ -99,7 +99,7 @@ final class SalesFlow {
                 out.setProperty("committed", String.valueOf(trx.commit(true)));
                 if (complete && post && "true".equals(out.getProperty("complete_ok"))) {
                     out.setProperty("post_error", String.valueOf(
-                            DocumentEngine.postImmediate(ctx, CLIENT, doc.get_Table_ID(), doc.get_ID(), false, null)));
+                            NativePostReadback.postIfNeeded(ctx, CLIENT, doc.get_TableName(), doc.get_Table_ID(), doc.get_ID())));
                 }
             }
         } catch (Exception failed) {
@@ -152,7 +152,7 @@ final class SalesFlow {
             out.setProperty("committed", String.valueOf(trx.commit(true)));
             if (ok) {
                 out.setProperty("post_error", String.valueOf(
-                        DocumentEngine.postImmediate(ctx, CLIENT, doc.get_Table_ID(), id, false, null)));
+                        NativePostReadback.postIfNeeded(ctx, CLIENT, doc.get_TableName(), doc.get_Table_ID(), id)));
             }
         } catch (Exception failed) {
             trx.rollback();
@@ -169,7 +169,9 @@ final class SalesFlow {
         int tableId = MTable.getTable_ID(in.getProperty("table"));
         int id = Integer.parseInt(in.getProperty("id"));
         boolean force = Boolean.parseBoolean(in.getProperty("force", "false"));
-        out.setProperty("post_error", String.valueOf(DocumentEngine.postImmediate(ctx, CLIENT, tableId, id, force, null)));
+        out.setProperty("post_error", String.valueOf(force
+                ? DocumentEngine.postImmediate(ctx, CLIENT, tableId, id, true, null)
+                : NativePostReadback.postIfNeeded(ctx, CLIENT, in.getProperty("table"), tableId, id)));
         return out;
     }
 
