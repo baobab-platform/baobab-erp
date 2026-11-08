@@ -17,6 +17,8 @@ from datetime import datetime
 
 import psycopg
 
+from order_to_cash.execution_policy import MAX_ATTEMPTS
+
 
 class LeaseLostError(Exception):
     """The row is no longer this worker's attempt (lease expired and re-claimed, or already settled)."""
@@ -33,6 +35,9 @@ class Claim:
     received_at: datetime
     correlation_id: str | None
     worker_id: str
+    traceparent: str | None = None
+    source: str | None = None
+    idempotency_key: str | None = None
 
 
 class PostgresInboxQueue:
@@ -43,6 +48,20 @@ class PostgresInboxQueue:
         with self._connection.cursor() as cursor:
             cursor.execute(
                 """
+                WITH exhausted AS (
+                    SELECT id FROM baobab.event_inbox
+                     WHERE envelope_format = 'cloudevents' AND event_type = %(type)s
+                       AND status = 'processing' AND lease_expires_at <= now()
+                       AND attempts >= %(max_attempts)s
+                     ORDER BY next_attempt_at, id
+                     FOR UPDATE SKIP LOCKED LIMIT 50
+                ), terminal AS (
+                    UPDATE baobab.event_inbox AS inbox
+                       SET status = 'dead_letter', outcome_code = 'LEASE_ATTEMPTS_EXHAUSTED',
+                           last_error = 'Delivery outcome requires reconciliation',
+                           claimed_by = NULL, lease_expires_at = NULL
+                      FROM exhausted WHERE inbox.id = exhausted.id
+                )
                 UPDATE baobab.event_inbox
                    SET status = 'processing', claimed_by = %(worker)s, attempts = attempts + 1,
                        lease_expires_at = now() + make_interval(secs => %(lease)s)
@@ -50,18 +69,23 @@ class PostgresInboxQueue:
                        SELECT id FROM baobab.event_inbox
                         WHERE envelope_format = 'cloudevents' AND event_type = %(type)s
                           AND ((status IN ('received', 'retry', 'blocked') AND next_attempt_at <= now())
-                            OR (status = 'processing' AND lease_expires_at <= now()))
+                            OR (status = 'processing' AND lease_expires_at <= now()
+                                AND attempts < %(max_attempts)s))
                         ORDER BY next_attempt_at, id
                         FOR UPDATE SKIP LOCKED LIMIT 1)
-             RETURNING id, event_id::text, event_type, tenant_id, payload_json, attempts, received_at, ce_correlation_id::text
+             RETURNING id, event_id::text, event_type, tenant_id, payload_json, attempts, received_at, ce_correlation_id::text, ce_traceparent, ce_source, ce_idempotency_key
                 """,
-                {"worker": worker_id, "lease": lease_seconds, "type": event_type})
+                {"worker": worker_id, "lease": lease_seconds, "type": event_type,
+                 "max_attempts": MAX_ATTEMPTS})
             row = cursor.fetchone()
         self._connection.commit()
         if row is None:
             return None
         return Claim(row_id=row[0], event_id=row[1], event_type=row[2], tenant_id=row[3], data=row[4], attempts=row[5],
-                     received_at=row[6], correlation_id=row[7], worker_id=worker_id)
+                     received_at=row[6], correlation_id=row[7], worker_id=worker_id,
+                     traceparent=row[8] if len(row) > 8 else None,
+                     source=row[9] if len(row) > 9 else None,
+                     idempotency_key=row[10] if len(row) > 10 else None)
 
     def processed(self, claim: Claim, outcome_code: str) -> None:
         self._settle(claim, "processed", outcome_code, None, None, refund_attempt=False)

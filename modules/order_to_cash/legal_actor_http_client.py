@@ -21,6 +21,23 @@ _ALLOWED_FIELDS = frozenset({
     "context_id", "role", "activity", "market", "capability", "operation_reference",
 })
 _REQUIRED = frozenset({"context_id", "role", "activity", "market", "operation_reference"})
+ASSESSMENT_FAILURE_STAGES = frozenset({
+    "CP_REQUEST_CONTRACT", "CP_TOKEN_REQUEST", "CP_HTTP_REQUEST",
+    "CP_RESPONSE_DECODE", "CP_RESPONSE_CONTRACT", "CP_RESPONSE_BINDING",
+    "CP_ASSESSMENT_UNAVAILABLE",
+})
+
+
+class LegalActorAssessmentUnavailable(ControlPlaneUnavailable):
+    """A closed diagnostic stage, never upstream text or authorization.
+
+    Existing callers still receive ControlPlaneUnavailable. Only an explicitly
+    enabled private integration observer may log this static classification.
+    """
+
+    def __init__(self, message: str, *, stage: str):
+        super().__init__(message)
+        self.diagnostic_stage = stage if stage in ASSESSMENT_FAILURE_STAGES else "CP_ASSESSMENT_UNAVAILABLE"
 
 
 def _without_duplicates(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -58,11 +75,14 @@ class HttpControlPlaneLegalActorAssessor:
             validate_contract("legal_request", request)
             validate_contract("context_uuid", request["context_id"])
         except ContractViolation as exc:
-            raise ControlPlaneUnavailable("invalid canonical legal-actor request") from exc
+            raise LegalActorAssessmentUnavailable(
+                "invalid canonical legal-actor request", stage="CP_REQUEST_CONTRACT") from exc
         if (not isinstance(request, Mapping) or set(request) - _ALLOWED_FIELDS or
                 not _REQUIRED.issubset(request) or
                 any(not isinstance(v, str) or not v.strip() for v in request.values())):
-            raise ControlPlaneUnavailable("invalid legal-actor operation context")
+            raise LegalActorAssessmentUnavailable(
+                "invalid legal-actor operation context", stage="CP_REQUEST_CONTRACT")
+        stage = "CP_TOKEN_REQUEST"
         try:
             token = self._get_token()
             correlation_id = self._correlation()
@@ -80,6 +100,7 @@ class HttpControlPlaneLegalActorAssessor:
                     "Cache-Control": "no-store",
                 },
             )
+            stage = "CP_HTTP_REQUEST"
             with self._open(http, timeout=self._timeout) as response:
                 # Cap potentially malicious upstream payload before parsing.
                 if getattr(response, "status", 200) != 200:
@@ -87,20 +108,25 @@ class HttpControlPlaneLegalActorAssessor:
                 payload = response.read(16_385)
             if len(payload) > 16_384:
                 raise ValueError("oversized Control Plane response")
+            stage = "CP_RESPONSE_DECODE"
             decoded = json.loads(payload, object_pairs_hook=_without_duplicates)
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError,
                 ValueError, TypeError) as exc:
-            raise ControlPlaneUnavailable("legal actor assessment unavailable or invalid") from exc
+            raise LegalActorAssessmentUnavailable(
+                "legal actor assessment unavailable or invalid", stage=stage) from exc
         except Exception as exc:  # noqa: BLE001 - issuer/token provider failures must deny
-            raise ControlPlaneUnavailable("authenticated legal actor assessment unavailable") from exc
+            raise LegalActorAssessmentUnavailable(
+                "authenticated legal actor assessment unavailable", stage=stage) from exc
         try:
             validate_contract("legal_response", decoded)
         except ContractViolation as exc:
-            raise ControlPlaneUnavailable("invalid canonical legal-actor response") from exc
+            raise LegalActorAssessmentUnavailable(
+                "invalid canonical legal-actor response", stage="CP_RESPONSE_CONTRACT") from exc
         if (not isinstance(decoded, dict) or
                 decoded.get("context_id") != request["context_id"] or
                 decoded.get("operation_reference") != request["operation_reference"] or
                 decoded.get("provider_permissions_granted") is not False or
                 not isinstance(decoded.get("legal_actor_resolution"), dict)):
-            raise ControlPlaneUnavailable("Control Plane returned an unbound legal actor decision")
+            raise LegalActorAssessmentUnavailable(
+                "Control Plane returned an unbound legal actor decision", stage="CP_RESPONSE_BINDING")
         return decoded

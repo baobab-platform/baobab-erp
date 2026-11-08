@@ -92,8 +92,12 @@ class ClientCredentialsTokenProvider:
     """OAuth2 client-credentials token for ERP's workload client, cached until shortly before it expires."""
 
     def __init__(self, token_url: str, client_id: str, client_secret: str, scope: str, *, timeout: float = 5.0,
-                 clock: Callable[[], float] = time.monotonic, opener=None, leeway: float = 30.0) -> None:
+                 clock: Callable[[], float] = time.monotonic, opener=None, leeway: float = 30.0,
+                 audience: str | None = None) -> None:
         self._url, self._id, self._secret, self._scope = token_url, client_id, client_secret, scope
+        if audience is not None and (audience != "baobab-control-plane"):
+            raise ValueError("DEV11_WORKLOAD_AUDIENCE_NOT_APPROVED")
+        self._audience = audience
         self._timeout, self._clock, self._leeway = timeout, clock, leeway
         self._open = (opener or urllib.request.build_opener()).open
         self._lock = threading.Lock()
@@ -104,8 +108,13 @@ class ClientCredentialsTokenProvider:
             now = self._clock()
             if self._cached and now < self._cached[1]:
                 return self._cached[0]
-            data = urllib.parse.urlencode({"grant_type": "client_credentials", "client_id": self._id,
-                                           "client_secret": self._secret, "scope": self._scope}).encode()
+            params = {"grant_type": "client_credentials", "client_id": self._id,
+                      "client_secret": self._secret, "scope": self._scope}
+            if self._audience is not None:
+                # The real Ory Hydra provider requires the CP resource audience
+                # explicitly. Without it a signed token is NOT a CP credential.
+                params["audience"] = self._audience
+            data = urllib.parse.urlencode(params).encode()
             request = urllib.request.Request(self._url, data=data, method="POST",
                                              headers={"Content-Type": "application/x-www-form-urlencoded"})
             try:

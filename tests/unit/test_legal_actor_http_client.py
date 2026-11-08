@@ -4,7 +4,9 @@ import json
 import unittest
 from datetime import datetime, timezone
 
-from order_to_cash.legal_actor_http_client import HttpControlPlaneLegalActorAssessor
+from order_to_cash.legal_actor_http_client import (
+    HttpControlPlaneLegalActorAssessor, LegalActorAssessmentUnavailable,
+)
 from order_to_cash.legal_actor_gate import (
     LegalActorNotAuthorised, LegalActorOperation, perform_governed_financial_action,
 )
@@ -45,6 +47,40 @@ def result(outcome="NO_APPLICABLE_MANDATE"):
 
 
 class TestLegalActorHTTPClient(unittest.TestCase):
+    def test_failure_diagnosis_is_closed_and_preserves_unavailable_semantics(self):
+        private = "bearer-must-not-appear-in-public-diagnostics"
+        class BadTransport:
+            def open(self, *_args, **_kwargs):
+                raise OSError(private)
+        class BadJSON:
+            def open(self, *_args, **_kwargs):
+                return io.BytesIO(b"not JSON")
+        def token_failure():
+            raise RuntimeError(private)
+        for stage, token, opener in (
+            ("CP_TOKEN_REQUEST", token_failure, Opener(result())),
+            ("CP_HTTP_REQUEST", lambda: "synthetic", BadTransport()),
+            ("CP_RESPONSE_DECODE", lambda: "synthetic", BadJSON()),
+            ("CP_RESPONSE_CONTRACT", lambda: "synthetic", Opener({**result(), "unexpected": private})),
+            ("CP_RESPONSE_BINDING", lambda: "synthetic", Opener({**result(), "operation_reference": "other-order"})),
+        ):
+            client = HttpControlPlaneLegalActorAssessor(
+                "https://control-plane.example", token, lambda: "synthetic-correlation", opener=opener)
+            with self.subTest(stage=stage), self.assertRaises(LegalActorAssessmentUnavailable) as failure:
+                client.assess(REQUEST)
+            self.assertIsInstance(failure.exception, ControlPlaneUnavailable)
+            self.assertEqual(failure.exception.diagnostic_stage, stage)
+            self.assertNotIn(private, str(failure.exception))
+
+    def test_unknown_diagnostic_and_invalid_request_do_not_become_authority(self):
+        failure = LegalActorAssessmentUnavailable("unavailable", stage="private-bearer")
+        self.assertEqual(failure.diagnostic_stage, "CP_ASSESSMENT_UNAVAILABLE")
+        opener = Opener(result())
+        with self.assertRaises(LegalActorAssessmentUnavailable) as denied:
+            self.client(opener).assess({**REQUEST, "tenant_id": "caller-supplied"})
+        self.assertEqual(denied.exception.diagnostic_stage, "CP_REQUEST_CONTRACT")
+        self.assertEqual(opener.calls, [])
+
     def client(self, opener):
         return HttpControlPlaneLegalActorAssessor(
             "https://control-plane.example", lambda: "synthetic-workload-token",

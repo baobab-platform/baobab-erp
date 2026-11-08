@@ -1,0 +1,777 @@
+#!/usr/bin/env python3
+"""DEV-11 opt-in actual Hydra -> CP -> RabbitMQ -> ERP inbox -> protected JVM.
+
+This runs only INSIDE the established ERP-A disposable iDempiere13 / Postgres17
+acceptance stack, AFTER its real native JVM veto has been enabled. Creates
+synthetic business fixture data but uses real Hydra client credentials, CP
+binary/mandate assessment, RabbitMQ, ERP inbox/worker, and iDempiere's actual
+native MOrder/MOrderLine code. Independent Postgres observers corroborate CP
+immutable decisions, the JVM's native attribution and C_Order consequence.
+
+This is NOT a real buyer's Medusa commitment, NOT independently verified
+external legal identity and NOT full L4-OPS-01. It cannot be used in
+staging/production; its evidence never asserts those qualifications.
+"""
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import os
+from pathlib import Path
+import secrets
+import re
+import subprocess
+import sys
+import time
+import uuid
+from datetime import UTC, datetime
+from decimal import Decimal
+from urllib.parse import quote
+
+import pika
+import psycopg
+from psycopg.rows import dict_row
+from integration.idempiere_gate_d_real import NATIVE_DIAGNOSTIC_STAGES
+
+from erpalib import CP, Compose, Evidence, call
+from gate_d_erp_a import restore
+from ory_bootstrap import CLIENT as HYDRA_CLIENT, HYDRA_PUBLIC, SCOPES, http
+
+EVENT_TYPE = "com.baobab-platform.trade.order.placed.v1"
+EXCHANGE = "baobab.trade.events.v1"
+QUEUE = "baobab.erp.trade-order.v1"
+DLX = "baobab.trade.dlx.v1"
+DEAD = "baobab.erp.trade-order.dlq.v1"
+ORDER_SOURCE = "urn:baobab-platform:service:baobab-trade"
+PY_MODULES = str(Path(__file__).resolve().parents[4] / "modules")
+
+
+def demand(ok, code):
+    if not ok:
+        raise RuntimeError(code)
+
+
+def run_independent_observer(command, *, env, stage):
+    """Run the observer without exposing private command arguments on failure."""
+    demand(stage in ("NATIVE", "CP_LINEAGE", "RECOVERY"),
+           "DEV11_OBSERVER_STAGE_INVALID")
+    try:
+        completed = subprocess.run(command, env=env, check=False, timeout=45)
+    except (subprocess.TimeoutExpired, OSError):
+        raise RuntimeError("DEV11_INDEPENDENT_OBSERVER_UNAVAILABLE:" + stage) from None
+    demand(completed.returncode == 0, "DEV11_INDEPENDENT_OBSERVER_REFUSED:" + stage)
+
+
+def fixture_order_reference():
+    # Exercise an unshortened Medusa-shaped ID that exceeds POReference.
+    # The ERP recovery mapping retains the complete input; native UUID is separate.
+    return "order_" + secrets.token_hex(16)
+
+
+def db_rows(db, sql, params=()):
+    return db.execute(sql, params).fetchall()
+
+
+def native_id(value, code):
+    # iDempiere IDs are often NUMERIC(10,0), which psycopg correctly returns
+    # as Decimal. Accept only exact positive IDs representable by the JVM's
+    # int API; never truncate fractions or coerce strings/booleans to IDs.
+    valid = type(value) is int or type(value) is Decimal and value.is_finite()
+    demand(valid and 0 < value <= 2_147_483_647 and value == int(value), code)
+    return int(value)
+
+
+def native_customer(db):
+    # Billing and shipping can be distinct native locations. Requiring one
+    # address to serve both roles incorrectly rejects a valid customer.
+    return db.execute(
+        """SELECT min(bp.c_bpartner_id) FROM adempiere.c_bpartner bp
+           WHERE bp.ad_client_id=11 AND bp.ad_org_id IN (0,11)
+             AND bp.iscustomer='Y' AND bp.isactive='Y'
+             AND EXISTS (SELECT 1 FROM adempiere.c_bpartner_location loc
+                         WHERE loc.c_bpartner_id=bp.c_bpartner_id
+                           AND loc.isactive='Y' AND loc.isbillto='Y')
+             AND EXISTS (SELECT 1 FROM adempiere.c_bpartner_location loc
+                         WHERE loc.c_bpartner_id=bp.c_bpartner_id
+                           AND loc.isactive='Y' AND loc.isshipto='Y')""").fetchone()[0]
+
+
+def fixture_readiness(db):
+    """Closed aggregate diagnostics for this explicitly synthetic fixture.
+
+    Keep names, addresses and native IDs out of public logs/artifacts. Counts
+    help diagnose absent data without substituting it or loosening authority.
+    """
+    row = db.execute("""
+        SELECT count(*),
+               count(*) FILTER (WHERE bp.ad_org_id IN (0,11)),
+               count(*) FILTER (WHERE bp.ad_org_id IN (0,11) AND EXISTS (
+                 SELECT 1 FROM adempiere.c_bpartner_location loc
+                  WHERE loc.c_bpartner_id=bp.c_bpartner_id
+                    AND loc.isactive='Y' AND loc.isbillto='Y')),
+               count(*) FILTER (WHERE bp.ad_org_id IN (0,11) AND EXISTS (
+                 SELECT 1 FROM adempiere.c_bpartner_location loc
+                  WHERE loc.c_bpartner_id=bp.c_bpartner_id
+                    AND loc.isactive='Y' AND loc.isshipto='Y'))
+          FROM adempiere.c_bpartner bp
+         WHERE bp.ad_client_id=11 AND bp.iscustomer='Y' AND bp.isactive='Y'
+    """).fetchone()
+    keys = ("active_fixture_company_customers", "allowed_org_customers",
+            "allowed_org_bill_to_customers", "allowed_org_ship_to_customers")
+    return {"schema": "baobab.erp.dev11.fixture-readiness.v1",
+            "synthetic_fixture_only": True,
+            "counts": dict(zip(keys, row, strict=True))}
+
+
+def native_fixture(db):
+    # Resolve the *same native GardenWorld fixture* as SalesFlow.order; never
+    # guess a product by price/name on the business execution path.
+    customer = native_id(native_customer(db), "DEV11_NATIVE_CUSTOMER_NOT_READY")
+    warehouse = db.execute(
+        """SELECT min(m_warehouse_id) FROM adempiere.m_warehouse
+           WHERE ad_client_id=11 AND ad_org_id=11 AND isactive='Y'""").fetchone()[0]
+    warehouse = native_id(warehouse, "DEV11_NATIVE_WAREHOUSE_NOT_READY")
+    price_list = db.execute(
+        """SELECT min(m_pricelist_id) FROM adempiere.m_pricelist
+           WHERE ad_client_id=11 AND issopricelist='Y'
+             AND isdefault='Y' AND isactive='Y'""").fetchone()[0]
+    price_list = native_id(price_list, "DEV11_NATIVE_SALES_PRICELIST_NOT_READY")
+    product = db.execute(
+        """SELECT min(p.m_product_id)
+           FROM adempiere.m_product p
+           WHERE p.ad_client_id=11 AND p.isstocked='Y'
+             AND p.producttype='I' AND p.isactive='Y' AND p.issold='Y'
+             AND EXISTS (
+               SELECT 1 FROM adempiere.m_productprice pp
+               JOIN adempiere.m_pricelist_version v
+                 ON v.m_pricelist_version_id=pp.m_pricelist_version_id
+              WHERE pp.m_product_id=p.m_product_id
+                AND v.m_pricelist_id=%s AND pp.pricestd>0)
+             AND EXISTS (
+               SELECT 1 FROM adempiere.m_cost c
+               JOIN adempiere.m_costelement ce
+                 ON ce.m_costelement_id=c.m_costelement_id
+              WHERE c.m_product_id=p.m_product_id
+                AND ce.costingmethod='S' AND c.currentcostprice>0)
+             AND (SELECT coalesce(sum(s.qtyonhand),0)
+                  FROM adempiere.m_storageonhand s
+                  JOIN adempiere.m_locator l ON l.m_locator_id=s.m_locator_id
+                 WHERE s.m_product_id=p.m_product_id AND
+                       l.m_warehouse_id=%s)>=10""",
+        (price_list, warehouse)).fetchone()[0]
+    # Each failure is a closed diagnostic category, never a guessed native ID
+    # or a reason to loosen price/cost/stock predicates to force a positive.
+    product = native_id(product, "DEV11_NATIVE_SALEABLE_STOCK_NOT_READY")
+    unit = db.execute(
+        """SELECT u.x12de355 FROM adempiere.m_product p
+           JOIN adempiere.c_uom u ON u.c_uom_id=p.c_uom_id
+           WHERE p.m_product_id=%s""", (product,)).fetchone()[0]
+    demand(isinstance(unit, str) and unit, "DEV11_NATIVE_PRODUCT_UOM_MISSING")
+    return customer, product, unit
+
+
+def hydrate_context(state, secret):
+    status, token = http("POST", HYDRA_PUBLIC + "/oauth2/token", {
+        "grant_type": "client_credentials", "client_id": HYDRA_CLIENT,
+        "client_secret": secret, "scope": " ".join(SCOPES),
+        "audience": "baobab-control-plane",
+    }, form=True)
+    demand(status == 200 and isinstance(token.get("access_token"), str),
+           "DEV11_REAL_HYDRA_WORKLOAD_TOKEN_NOT_ISSUED")
+    resolved = call("POST", CP + "/v1/platform-context/resolve", {
+        "tenant_id": state["tenant"], "organisation_id": state["organisation"],
+        "country_code": state["market"]}, {
+        "Authorization": "Bearer " + token["access_token"],
+    })
+    demand(resolved.status == 200 and resolved.body["tenant_id"] == state["tenant"]
+           and resolved.body["organisation_id"] == state["organisation"]
+           and resolved.body["country_code"] == state["market"]
+           and isinstance(resolved.body.get("context_id"), str),
+           "DEV11_CP_RUNTIME_CONTEXT_NOT_ISSUED")
+    return str(uuid.UUID(resolved.body["context_id"]))
+
+
+# CP's own verdict is read on the exact native order reference BEFORE any
+# signed broker delivery. These bounded categories are diagnostic, not an
+# alternate authorization source; the ERP worker still independently performs
+# both live CP checks and its native JVM/documentary veto.
+_CP_OUTCOMES = frozenset({
+    "AUTHORIZED", "NO_APPLICABLE_MANDATE", "AMBIGUOUS",
+    "REVOKED_OR_EXPIRED", "ACTOR_NOT_VERIFIED",
+})
+
+
+def inspect_cp_sales_decision(reply, *, context_id, order_reference):
+    """Return closed, non-sensitive preflight categories; never return a permit."""
+    if reply.status != 200:
+        return {"http_ok": False, "decision": "HTTP_REFUSED",
+                "exact_operation": False, "provider_permissions": False}
+    body = reply.body
+    if not isinstance(body, dict):
+        return {"http_ok": True, "decision": "MALFORMED",
+                "exact_operation": False, "provider_permissions": False}
+    resolution = body.get("legal_actor_resolution")
+    outcome = resolution.get("outcome") if isinstance(resolution, dict) else None
+    exact = body.get("context_id") == context_id and (
+        body.get("operation_reference") == order_reference)
+    provider_permissions = body.get("provider_permissions_granted")
+    return {"http_ok": True,
+            "decision": outcome if outcome in _CP_OUTCOMES else "MALFORMED",
+            "exact_operation": exact,
+            "provider_permissions": provider_permissions is False}
+
+
+def require_current_cp_sales_preflight(state, secret, context_id, order, output):
+    """Observe real CP outcome, never mint, extend or cache sales authority.
+
+    This diagnostic may stop the disposable run earlier than the worker to
+    identify absent verification versus a documentary/native readiness veto.
+    Even an AUTHORIZED response is NOT a substitute for the worker's fresh
+    pre-effect and point-of-use assessments.
+    """
+    status, token = http("POST", HYDRA_PUBLIC + "/oauth2/token", {
+        "grant_type": "client_credentials", "client_id": HYDRA_CLIENT,
+        "client_secret": secret, "scope": " ".join(SCOPES),
+        "audience": "baobab-control-plane",
+    }, form=True)
+    demand(status == 200 and isinstance(token.get("access_token"), str),
+           "DEV11_CP_PREFLIGHT_HYDRA_TOKEN_UNAVAILABLE")
+    request = {
+        "context_id": context_id, "role": "CONTRACTING_PARTY",
+        "activity": "SALES_ORDER_COMMITMENT", "market": state["market"],
+        "capability": "erp.erp-a", "operation_reference": order,
+    }
+    result = call("POST", CP + "/internal/legal-actor/v1/assess", request, {
+        "Authorization": "Bearer " + token["access_token"],
+    })
+    observed = inspect_cp_sales_decision(
+        result, context_id=context_id, order_reference=order)
+    output.write_text(json.dumps({
+        "schema": "baobab.erp.dev11.cp-sales-preflight.v1",
+        "disposable_synthetic_context": True,
+        "cp_http_ok": observed["http_ok"],
+        "cp_decision": observed["decision"],
+        "exact_operation": observed["exact_operation"],
+        "provider_grant_not_inferred": observed["provider_permissions"],
+        "native_effect_qualified": False,
+        "buyer_trade_commitment_qualified": False,
+    }, sort_keys=True) + "\n")
+    print("DEV11_CP_SALES_PREFLIGHT " + json.dumps(observed, sort_keys=True),
+          flush=True)
+    demand(observed["http_ok"] and observed["decision"] == "AUTHORIZED" and
+           observed["exact_operation"] and observed["provider_permissions"],
+           "DEV11_CP_SALES_PREFLIGHT_" + observed["decision"])
+    return observed
+
+
+def inspect_cp_documentary_decision(reply, *, context_id, organisation_id,
+                                    order_reference, market, capability):
+    """Bounded negative-only CP observation; not a provider/Trade grant."""
+    refused = {"http_ok": False, "exact_operation": False,
+               "unblocked": False, "negative_only": False}
+    if reply.status != 200 or not isinstance(reply.body, dict):
+        return refused
+    data = reply.body
+    exact = (data.get("context_id") == context_id and
+             data.get("organisation_id") == organisation_id and
+             data.get("operation_reference") == order_reference and
+             data.get("market") == market and
+             data.get("capability") == capability and
+             data.get("policy_reference") == "ADR-BCP-026/PEO-02T:negative-only")
+    return {"http_ok": True, "exact_operation": exact,
+            "unblocked": data.get("blocked") is False,
+            "negative_only": data.get("authority_granted") is False}
+
+
+def require_current_cp_documentary_preflight(state, secret, context_id, order, output):
+    """Classify current negative-only CP restriction independently of ERP PEP.
+
+    The real worker MUST fetch its own fresh 2-second CP lease at point of use.
+    A preflight is an observation, never a cached documentary permission.
+    """
+    status, token = http("POST", HYDRA_PUBLIC + "/oauth2/token", {
+        "grant_type": "client_credentials", "client_id": HYDRA_CLIENT,
+        "client_secret": secret, "scope": " ".join(SCOPES),
+        "audience": "baobab-control-plane",
+    }, form=True)
+    demand(status == 200 and isinstance(token.get("access_token"), str),
+           "DEV11_CP_DOCUMENTARY_HYDRA_TOKEN_UNAVAILABLE")
+    capability = "erp.erp-a"
+    reply = call("POST", CP + "/internal/documentary/v1/restrictions/assess", {
+        "context_id": context_id, "capability": capability,
+        "market": state["market"], "operation_reference": order,
+    }, {"Authorization": "Bearer " + token["access_token"]})
+    observed = inspect_cp_documentary_decision(
+        reply, context_id=context_id, organisation_id=state["organisation"],
+        order_reference=order, market=state["market"], capability=capability)
+    output.write_text(json.dumps({
+        "schema": "baobab.erp.dev11.cp-documentary-preflight.v1",
+        "synthetic_disposable_scope": True,
+        "cp_http_ok": observed["http_ok"],
+        "exact_operation": observed["exact_operation"],
+        "not_blocked_observed": observed["unblocked"],
+        "negative_only": observed["negative_only"],
+        "finance_permission_inferred": False,
+        "native_business_effect_qualified": False,
+    }, sort_keys=True) + "\n")
+    print("DEV11_CP_DOCUMENTARY_PREFLIGHT " + json.dumps(observed, sort_keys=True),
+          flush=True)
+    demand(all(observed.values()), "DEV11_CP_DOCUMENTARY_PREFLIGHT_REFUSED")
+
+
+def event_for(state, *, order, product_id, sku, unit, customer_key):
+    from events.registry import dataschema_for
+    event_id = str(uuid.uuid4())
+    correlation = str(uuid.uuid4())
+    now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    return {
+        "specversion": "1.0",
+        "id": event_id,
+        "source": ORDER_SOURCE,
+        "type": EVENT_TYPE,
+        "subject": "order:" + order,
+        "time": now,
+        "datacontenttype": "application/json",
+        "dataschema": dataschema_for(EVENT_TYPE),
+        "baobabscope": "tenant",
+        "tenantid": state["tenant"],
+        "correlationid": correlation,
+        "idempotencykey": "dev11-erp-a:" + event_id,
+        # The source diagnostic context is synthetic here. A true end-to-end
+        # OpenTelemetry lineage needs the separate real Medusa source run.
+        "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        "data": {
+            "legal_entity_id": state["legal_entity"],
+            "commerce_order_id": order, "order_version": 1,
+            "customer_id": customer_key, "placed_at": now,
+            "currency": "USD",
+            "lines": [{
+                "line_id": "line_dev11_real",
+                "sku_id": sku, "quantity": {"value": "2", "unit": unit},
+                "unit_price": {"amount": "10.00", "currency": "USD"},
+                "line_total": {"amount": "20.00", "currency": "USD"},
+            }],
+            "totals": {
+                "subtotal": {"amount": "20.00", "currency": "USD"},
+                "discount": {"amount": "0.00", "currency": "USD"},
+                "quoted_tax": {"amount": "0.00", "currency": "USD"},
+                "grand_total": {"amount": "20.00", "currency": "USD"},
+            },
+        },
+    }
+
+
+def bind_native(db, state, *, customer_id, product_id, sku, customer_key):
+    with db.transaction():
+        db.execute(
+            """INSERT INTO baobab.tenant_mapping
+                    (tenant_id,entity_id,engine_instance_id,ad_client_id,ad_org_id,status)
+               VALUES (%s,%s,%s,11,11,'active')""",
+            (state["tenant"], state["legal_entity"], state["engine_instance"]))
+        for kind, canonical, native in (
+                ("business_partner", customer_key, customer_id),
+                ("product", sku, product_id)):
+            db.execute(
+                """INSERT INTO baobab.erp_master_data_mapping
+                   (engine_instance_id,legal_entity_id,resource_kind,
+                    canonical_id,native_id,desired_digest,source_version)
+                   VALUES (%s,%s,%s,%s,%s,'dev11-synthetic-fixture','dev11-integration-v1')""",
+                (state["engine_instance"],state["legal_entity"],kind,canonical,native))
+
+
+def operator_file(run, state, context_id, events):
+    entries = []
+    for event in events:
+        entries.append({
+            "event_id": event["id"], "source": event["source"],
+            "tenant_id": state["tenant"], "idempotency_key": event["idempotencykey"],
+            "commerce_order_id": event["data"]["commerce_order_id"],
+            "legal_entity_id": state["legal_entity"],
+            "context_id": context_id,
+            "operating_organisation_id": state["organisation"],
+            "market": state["market"], "activity": "SALES_ORDER_COMMITMENT",
+            # CP seed's actual baobab-erp scoped capability. No invented
+            # authority follows from this local registry or event.
+            "capability": "erp.erp-a",
+            "authority_reference": "synthetic:erp-a/dev11-native-order-v1",
+            "engine_instance_id": state["engine_instance"],
+            "ad_client_id": 11, "ad_org_id": 11,
+            "finance_baseline_version": 1,
+        })
+    path = run / "dev11-operator-authority.json"
+    fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    with os.fdopen(fd, "w") as stream:
+        json.dump({"schema": "baobab.erp.dev11.operator-authority.v1",
+                   "entries": entries}, stream)
+    return path
+
+
+def launch_consumer(base_env):
+    return subprocess.Popen(
+        [sys.executable, "-B", "-m", "application.amqp_consumer"],
+        env=base_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def send(channel, event, signing_key):
+    body = json.dumps(event, separators=(",", ":"), sort_keys=True).encode()
+    signature = "sha256=" + hmac.new(signing_key.encode(), body, hashlib.sha256).hexdigest()
+    channel.basic_publish(
+        exchange=EXCHANGE, routing_key=EVENT_TYPE, body=body, mandatory=True,
+        properties=pika.BasicProperties(
+            content_type="application/cloudevents+json", delivery_mode=2,
+            message_id=event["id"], type=EVENT_TYPE,
+            headers={"x-baobab-signature": signature}))
+
+
+def await_inbox(db, event_id):
+    for _ in range(100):
+        row = db.execute(
+            "SELECT status FROM baobab.event_inbox WHERE event_id=%s::uuid",
+            (event_id,)).fetchone()
+        if row:
+            return row[0]
+        time.sleep(.2)
+    raise RuntimeError("DEV11_REAL_RABBIT_ERP_INBOX_NOT_ADMITTED")
+
+
+_SAFE_AUTHORITY_STAGES = frozenset({
+    "CP_REQUEST", "CP_RESPONSE_RECEIVED",
+    "DOCUMENTARY_REQUEST", "DOCUMENTARY_RESPONSE_RECEIVED",
+    "NATIVE_PROVIDER_START", "NATIVE_PROVIDER_READY",
+    "CP_REQUEST_CONTRACT", "CP_TOKEN_REQUEST", "CP_HTTP_REQUEST",
+    "CP_RESPONSE_DECODE", "CP_RESPONSE_CONTRACT", "CP_RESPONSE_BINDING",
+    "CP_ASSESSMENT_UNAVAILABLE",
+}) | NATIVE_DIAGNOSTIC_STAGES
+
+
+def worker_once(env):
+    # Capture the private worker output in memory, but publish ONLY a bounded
+    # static marker vocabulary. Raw provider/HTTP data and bearer material may
+    # NEVER enter the job log, uploaded artifacts or a diagnostic exception.
+    completed = subprocess.run(
+        [sys.executable, "-B", "-m", "application.inbox_worker"],
+        env=env, capture_output=True,
+        timeout=240, check=False)
+    observed = []
+    for label in re.findall(
+            rb"DEV11_NATIVE_AUTHORITY_STAGE ([A-Z_]{3,40})",
+            completed.stdout[-65536:]):
+        stage = label.decode("ascii")
+        if stage in _SAFE_AUTHORITY_STAGES and stage not in observed:
+            observed.append(stage)
+    print("DEV11_NATIVE_AUTHORITY_PATH " +
+          json.dumps({"stages": observed}, sort_keys=True), flush=True)
+    demand(completed.returncode == 0, "DEV11_REAL_NATIVE_ERP_WORKER_FAILED")
+
+
+def inspect_outcome(db, event_id, *, allowed):
+    row = db.execute(
+        "SELECT status,outcome_code FROM baobab.event_inbox WHERE event_id=%s::uuid",
+        (event_id,)).fetchone()
+    demand(row is not None, "DEV11_NATIVE_INBOX_OUTCOME_UNOBSERVED")
+    status, code = row
+    # outcome_code is an engine-owned diagnostic category, never last_error,
+    # provider text, event identity or credentials. Bound it before logging.
+    observed_status = status if status in (
+        "received", "processing", "processed", "blocked", "retry", "dead_letter") else "OTHER"
+    observed_code = code if isinstance(code, str) and re.fullmatch(
+        r"[A-Z][A-Z0-9_]{0,95}", code) else "UNCLASSIFIED"
+    print("DEV11_NATIVE_OUTCOME " + json.dumps({
+        "status": observed_status, "code": observed_code}), flush=True)
+    if allowed:
+        demand(status == "processed" and code in ("EXECUTED", "ADOPTED_NATIVE_ORDER"),
+               "DEV11_REAL_NATIVE_ORDER_NOT_EXECUTED")
+    else:
+        demand(status in ("blocked","retry","dead_letter") and
+               code not in ("EXECUTED","ADOPTED_NATIVE_ORDER"),
+               "DEV11_REVOKED_ORDER_WAS_UNEXPECTEDLY_EXECUTED")
+    return code
+
+
+def main():
+    import argparse
+    parser=argparse.ArgumentParser()
+    parser.add_argument("--run",type=Path,required=True)
+    parser.add_argument("--out",type=Path,required=True)
+    parser.add_argument("--compose",required=True)
+    args=parser.parse_args()
+    if (os.environ.get("BAOBAB_ENVIRONMENT")!="integration"
+            or os.environ.get("DEV11_REAL_NATIVE_ACCEPTANCE")!="true"):
+        raise RuntimeError("DEV11_REAL_NATIVE_DISPOSABLE_PROFILE_REQUIRED")
+    run, out = args.run, args.out
+    demand((run/"gate-d"/"ready").exists(), "DEV11_IDEMPIERE_JVM_NOT_READY")
+    compose=Compose(args.compose)
+    # Verify the native veto marker inside the actual JVM, not a caller's
+    # environment variable. An unprotected JVM is NEVER qualifying.
+    compose.run("exec","-T","erp","test","-s",
+                "/opt/idempiere/.baobab/native-finance-veto-active")
+    evidence=Evidence(str(out))
+    cp,state=restore(args,compose,evidence)
+    demand(state["market"]=="US" and state["legal_entity"]=="LE-ERPAUS",
+           "DEV11_GARDENWORLD_FIXTURE_SCOPE_INVALID")
+    sales_mandate=cp.propose(
+        {"roles":["CONTRACTING_PARTY"],
+         "activities":["SALES_ORDER_COMMITMENT"]},
+        "erp-a/dev11-synthetic-sales-mandate")
+    cp.mandate=sales_mandate
+    secret=os.environ["ERP_WORKLOAD_SECRET"]
+    context_id=hydrate_context(state,secret)
+    erp_url="postgresql://adempiere:adempiere@127.0.0.1:55462/idempiere"
+    native_env={**os.environ,
+        "PYTHONPATH":PY_MODULES + os.pathsep
+                     + str(Path(__file__).resolve().parents[4] / "scripts"),
+        "DATABASE_URL":erp_url,
+        "ERP_DATABASE_URL":erp_url,
+        "ERP_NATIVE_DATABASE_URL":erp_url,
+        "CP_DATABASE_URL":"postgresql://controlplane:"
+            + os.environ["CPDB_PASSWORD"] + "@127.0.0.1:55463/controlplane",
+        "BAOBAB_ENVIRONMENT":"integration",
+        "BAOBAB_DEPLOYMENT_ENV":"integration",
+        "BAOBAB_ERP_INBOX_PROFILE":"dev11-order-placed",
+        "BAOBAB_ERP_ORDER_REFERENCE_PROFILE":"native-uuid-v1",
+        "BAOBAB_REQUIRE_LEGAL_ACTOR_GATE":"true",
+        "BAOBAB_DEV11_REAL_JVM_GATE_ENABLED":"true",
+        "BAOBAB_DEV11_GARDENWORLD_US_FIXTURE":"true",
+        "BAOBAB_DEV11_ENGINE_DRIVER_DIR":str(run/"gate-d"),
+        "BAOBAB_DEV11_ENGINE_NATIVE_DATABASE_URL":erp_url,
+        "BAOBAB_ERP_CP_URL":"http://localhost:18092",
+        "BAOBAB_ERP_CP_OAUTH_TOKEN_URL":"http://127.0.0.1:18015/oauth2/token",
+        "BAOBAB_ERP_CP_WORKLOAD_CLIENT_ID":HYDRA_CLIENT,
+        "BAOBAB_ERP_CP_WORKLOAD_SECRET_FILE":str(run/"erp-secret"/"workload-secret"),
+    }
+    with psycopg.connect(erp_url,autocommit=True) as db:
+        readiness = fixture_readiness(db)
+        (out/"dev11-native-fixture-readiness.json").write_text(json.dumps(readiness))
+        print("DEV11_NATIVE_FIXTURE_READINESS " + json.dumps(readiness), flush=True)
+        customer,product,unit=native_fixture(db)
+        customer_key="customer_dev11_synthetic"
+        sku="sku_dev11_synthetic"
+        bind_native(db,state,customer_id=customer,product_id=product,
+                    sku=sku,customer_key=customer_key)
+        trade=None
+        if os.environ.get("DEV11_TRADE_PERSISTED_REQUIRED")=="true":
+            sys.path.insert(0,str(Path(__file__).resolve().parents[4]/"scripts"))
+            from dev11_trade_persisted_jvm import PersistedTrade
+            os.environ["DEV11_TRADE_DB_PASSWORD"]=secrets.token_hex(24)
+            trade=PersistedTrade(run,state,compose,sku=sku,unit=unit,customer=customer_key)
+            positive=trade.events["positive"]
+            ambiguous=trade.events["ambiguous"]
+            denied=trade.events["denied"]
+            native_env["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"]="http://127.0.0.1:4318/v1/traces"
+            # Source migration/export can outlive an earlier context lease.
+            # Ask the real CP for a fresh context, never extend a local one.
+            context_id=hydrate_context(state,secret)
+        else:
+            positive=event_for(state,order=fixture_order_reference(),
+                               product_id=product,sku=sku,unit=unit,
+                               customer_key=customer_key)
+            ambiguous=event_for(state,order=fixture_order_reference(),
+                                product_id=product,sku=sku,unit=unit,
+                                customer_key=customer_key)
+            denied=event_for(state,order=fixture_order_reference(),
+                             product_id=product,sku=sku,unit=unit,
+                             customer_key=customer_key)
+        # Bind CP's live sales responsibility to the exact first positive
+        # order, without asserting that a Medusa buyer placed it.
+        require_current_cp_sales_preflight(
+            state, secret, context_id, positive["data"]["commerce_order_id"],
+            out/"dev11-cp-sales-preflight.json")
+        require_current_cp_documentary_preflight(
+            state, secret, context_id, positive["data"]["commerce_order_id"],
+            out/"dev11-cp-documentary-preflight.json")
+        registry=operator_file(run,state,context_id,(positive,ambiguous,denied))
+        native_env["BAOBAB_ERP_INBOX_AUTHORITY_REGISTRY_FILE"]=str(registry)
+
+        password=secrets.token_hex(20)
+        os.environ["DEV11_RABBIT_PASSWORD"]=password
+        compose.run("--profile","dev11","up","-d","--wait","rabbitmq")
+        url="amqp://dev11:"+quote(password,safe="")+"@127.0.0.1:15673/%2F"
+        native_env["BAOBAB_RABBITMQ_URL"]=url
+        native_env["BAOBAB_EVENT_SIGNING_SECRET"]=secrets.token_hex(32)
+        broker=pika.BlockingConnection(pika.URLParameters(url))
+        receiver=None
+        try:
+            channel=broker.channel()
+            channel.exchange_declare(exchange=EXCHANGE,exchange_type="topic",durable=True)
+            channel.exchange_declare(exchange=DLX,exchange_type="direct",durable=True)
+            channel.queue_declare(queue=QUEUE,durable=True,arguments={
+                "x-queue-type":"quorum","x-dead-letter-exchange":DLX,
+                "x-dead-letter-routing-key":"invalid"})
+            channel.queue_declare(queue=DEAD,durable=True,arguments={"x-queue-type":"quorum"})
+            channel.queue_bind(queue=QUEUE,exchange=EXCHANGE,routing_key=EVENT_TYPE)
+            channel.queue_bind(queue=DEAD,exchange=DLX,routing_key="invalid")
+            channel.confirm_delivery()
+            receiver=launch_consumer(native_env)
+            time.sleep(1)
+            demand(receiver.poll() is None,"DEV11_REAL_ERP_RABBIT_CONSUMER_STARTUP_FAILED")
+
+            if trade: trade.publish(positive,native_env)
+            else: send(channel,positive,native_env["BAOBAB_EVENT_SIGNING_SECRET"])
+            await_inbox(db,positive["id"])
+            worker_once(native_env)
+            inspect_outcome(db,positive["id"],allowed=True)
+            # Real independent processes re-read persisted native C_Order, CP
+            # immutable history and actual JVM attribution; neither script
+            # trusts this producer's success assertion.
+            common=[
+                "--tenant",state["tenant"],
+                "--legal-entity",state["legal_entity"],
+                "--ad-client","11","--ad-org","11","--mapped-native-reference"]
+            verify_native=[
+                sys.executable,"-B",
+                str(Path(__file__).resolve().parents[4] /
+                    "scripts/dev11_verify_native_idempiere_order.py"),
+                *common,"--event-id",positive["id"],
+                "--output",str(out/"dev11-native-effect.json")]
+            run_independent_observer(verify_native, env=native_env, stage="NATIVE")
+            verify_cp=[
+                sys.executable,"-B",
+                str(Path(__file__).resolve().parents[4] /
+                    "scripts/dev11_verify_cp_native_lineage.py"),
+                *common,"--commerce-order",positive["data"]["commerce_order_id"],
+                "--market",state["market"],
+                "--output",str(out/"dev11-cp-jvm-lineage.json")]
+            run_independent_observer(verify_cp, env=native_env, stage="CP_LINEAGE")
+
+            if trade:
+                trade.verify_effect_join(db,positive,out/"dev11-trade-jvm-joined.json")
+
+            # A signed broker redelivery is not a second native order.
+            send(channel,positive,native_env["BAOBAB_EVENT_SIGNING_SECRET"])
+            for _ in range(30):
+                if (channel.queue_declare(queue=QUEUE,passive=True)
+                           .method.message_count == 0):
+                    break
+                time.sleep(.2)
+            count=db.execute(
+                "SELECT count(*) FROM adempiere.c_order o JOIN baobab.order_native_reference r "
+                "ON o.c_order_uu::text=r.native_uuid::text WHERE r.tenant_id=%s AND r.commerce_order_id=%s",
+                (state["tenant"],positive["data"]["commerce_order_id"])).fetchone()[0]
+            demand(count==1,"DEV11_REAL_BROKER_REDELIVERY_CREATED_EXTRA_NATIVE_ORDER")
+
+            # Native unknown-outcome recovery: the REAL protected JVM
+            # commits a separate exact C_Order, but the ERP worker injects a
+            # loss of its own application result AFTER independent readback.
+            # Retry may ONLY adopt the same native order and immutable facts.
+            if trade: trade.publish(ambiguous,native_env)
+            else: send(channel,ambiguous,native_env["BAOBAB_EVENT_SIGNING_SECRET"])
+            await_inbox(db,ambiguous["id"])
+            worker_once({**native_env,
+                         "BAOBAB_DEV11_NATIVE_UNKNOWN_AFTER_COMMIT":"true"})
+            inspect_outcome(db,ambiguous["id"],allowed=False)
+            before_replay=db.execute(
+                "SELECT count(*) FROM adempiere.c_order o JOIN baobab.order_native_reference r "
+                "ON o.c_order_uu::text=r.native_uuid::text WHERE r.tenant_id=%s AND r.commerce_order_id=%s",
+                (state["tenant"],ambiguous["data"]["commerce_order_id"])).fetchone()[0]
+            demand(before_replay==1,"DEV11_REAL_JVM_UNKNOWN_COMMIT_NOT_OBSERVED")
+            ready=False
+            for _ in range(160):
+                row=db.execute(
+                    """SELECT status,next_attempt_at <= now()
+                       FROM baobab.event_inbox WHERE event_id=%s::uuid""",
+                    (ambiguous["id"],)).fetchone()
+                ready=bool(row and row[0]=="retry" and row[1])
+                if ready: break
+                time.sleep(.25)
+            demand(ready,"DEV11_NATIVE_UNKNOWN_OUTCOME_NOT_RETRYABLE")
+            worker_once(native_env)
+            recovered=inspect_outcome(db,ambiguous["id"],allowed=True)
+            demand(recovered=="ADOPTED_NATIVE_ORDER",
+                   "DEV11_REAL_JVM_UNKNOWN_OUTCOME_NOT_ADOPTED")
+            attempts=db.execute(
+                "SELECT attempts,claimed_by,lease_expires_at FROM baobab.event_inbox WHERE event_id=%s::uuid",
+                (ambiguous["id"],)).fetchall()
+            demand(attempts==[(2,None,None)],"DEV11_NATIVE_UNKNOWN_RECOVERY_ATTEMPTS_UNBOUNDED")
+            after_replay=db.execute(
+                "SELECT count(*) FROM adempiere.c_order o JOIN baobab.order_native_reference r "
+                "ON o.c_order_uu::text=r.native_uuid::text WHERE r.tenant_id=%s AND r.commerce_order_id=%s",
+                (state["tenant"],ambiguous["data"]["commerce_order_id"])).fetchone()[0]
+            demand(after_replay==1,"DEV11_NATIVE_UNKNOWN_RETRY_DUPLICATED_ORDER")
+            native_receipt=Path(__file__).resolve().parents[4] / (
+                "scripts/dev11_verify_native_idempiere_order.py")
+            run_independent_observer([
+                sys.executable,"-B",str(native_receipt),
+                *common,"--event-id",ambiguous["id"],
+                "--output",str(out/"dev11-native-unknown-adopted.json")],
+                env=native_env, stage="RECOVERY")
+
+            if trade:
+                trade.verify_effect_join(db,ambiguous,out/"dev11-trade-jvm-unknown-joined.json")
+
+            # LIVE CP revocation, not a Python boolean. Re-use the now-invalid
+            # CP-minted context to demonstrate it is not a permanent mandate.
+            cp.revoke(sales_mandate)
+            if trade: trade.publish(denied,native_env)
+            else: send(channel,denied,native_env["BAOBAB_EVENT_SIGNING_SECRET"])
+            await_inbox(db,denied["id"])
+            worker_once(native_env)
+            inspect_outcome(db,denied["id"],allowed=False)
+            no_order=db.execute(
+                "SELECT count(*) FROM adempiere.c_order o JOIN baobab.order_native_reference r "
+                "ON o.c_order_uu::text=r.native_uuid::text WHERE r.tenant_id=%s AND r.commerce_order_id=%s",
+                (state["tenant"],denied["data"]["commerce_order_id"])).fetchone()[0]
+            demand(no_order==0,"DEV11_REVOKED_REAL_NATIVE_ORDER_COMMITTED")
+            # A valid signature authenticates the producer, not the tenant
+            # placement. An otherwise valid signed order in a foreign tenant
+            # must reach durable admission and stop before native execution.
+            foreign=event_for({**state,"tenant":"tn_"+secrets.token_hex(10)},
+                order=fixture_order_reference(), product_id=product, sku=sku,
+                unit=unit, customer_key=customer_key)
+            before=db.execute("SELECT count(*) FROM adempiere.c_order").fetchone()[0]
+            send(channel,foreign,native_env["BAOBAB_EVENT_SIGNING_SECRET"])
+            await_inbox(db,foreign["id"])
+            worker_once(native_env)
+            demand(inspect_outcome(db,foreign["id"],allowed=False)=="TENANT_UNMAPPED",
+                   "DEV11_FOREIGN_TENANT_NOT_REFUSED_AT_PLACEMENT")
+            demand(db.execute("SELECT count(*) FROM adempiere.c_order").fetchone()[0]==before
+                   and db.execute("SELECT count(*) FROM baobab.order_execution WHERE source_event_id=%s::uuid",
+                                  (foreign["id"],)).fetchone()[0]==0,
+                   "DEV11_FOREIGN_TENANT_CREATED_NATIVE_EFFECT")
+            if trade:
+                trade.verify_exported_trace(positive,out/"dev11-trade-jvm-exported.json")
+            report={
+                "schema":"erp.dev11.real-hydra-cp-rabbit-jvm-engine-local.v1",
+                "source_pins":{
+                    "baobab-cp":os.environ["CP_COMMIT"],
+                    "baobab-iam":os.environ["IAM_COMMIT"],
+                    "baobab-erp":os.environ["ERP_COMMIT"]},
+                "real_hydra_workload_token_observed":True,
+                "real_cp_runtime_context_and_mandate_observed":True,
+                "real_rabbitmq_durable_signed_event_to_erp_inbox":True,
+                "real_cp_authorized_idempiere_jvm_sales_order":True,
+                "independent_native_order_and_cp_lineage_readback":True,
+                "real_live_cp_mandate_revocation_denied_next_order":True,
+                "real_broker_redelivery_one_native_order":True,
+                "real_jvm_committed_then_worker_outcome_lost_and_adopted":True,
+                "ambiguous_jvm_outcome_recovered_in_two_attempts":True,
+                "signed_foreign_tenant_denied_without_native_effect":True,
+                "synthetic_trade_origin_not_authorized_commitment":True,
+                "full_medusa_buyer_commitment_proven":False,
+                "lossless_native_uuid_reference_mapping":True,
+                # Preserve the original engine-local schema's full-lineage limit.
+                # The new three-service component graph has its own receipt;
+                # authenticated buyer/BFF/IAM/CP lineage remains unqualified.
+                "independent_exported_trace_graph_proven":False,
+                "exported_trade_publisher_erp_component_graph_proven":bool(trade),
+                "same_persisted_trade_event_to_native_jvm":bool(trade),
+                "l4_ops_01":"BLOCKED",
+                "protected_acceptance":False,
+                "staging_authorized":False,
+                "production_authorized":False}
+            (out/"dev11-engine-local.json").write_text(
+                json.dumps(report,sort_keys=True,indent=2)+"\n")
+            print("DEV11_REAL_IAM_CP_TO_IDEMPIERE_ENGINE_LOCAL_PASS; FULL_L4_BLOCKED")
+        finally:
+            if receiver is not None and receiver.poll() is None:
+                receiver.terminate()
+                try: receiver.wait(timeout=12)
+                except subprocess.TimeoutExpired:
+                    receiver.kill();receiver.wait(timeout=5)
+            if broker.is_open:
+                broker.close()
+            registry.unlink(missing_ok=True)
+
+
+if __name__=="__main__":
+    main()
