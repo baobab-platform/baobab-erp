@@ -150,6 +150,27 @@ log "Baobab migrations on iDempiere's database, then the ERP-owned placement and
 export DATABASE_URL="postgresql://adempiere:adempiere@127.0.0.1:55462/idempiere"
 "$REPO/db/migrate.sh" > "$OUT/erp-migrate.log"
 "$REPO/db/migrate-native.sh" >> "$OUT/erp-migrate.log"
+
+# BP-04 native-install qualification is an opt-in *schema-only* probe against
+# this actual iDempiere 13 PostgreSQL 17 database. Never activate People/HR,
+# import employee data, or create a financial document from this probe.
+if [[ "${BAOBAB_PEOPLE_EXPERIMENTAL_NATIVE:-0}" == "1" ]]; then
+  log "BP-04 non-activating People proposal-schema probe in native ERP PostgreSQL 17"
+  BAOBAB_PEOPLE_EXPERIMENTAL=1 BAOBAB_ENVIRONMENT=integration \
+    bash "$REPO/db/migrate-people-experimental.sh" >> "$OUT/erp-migrate.log"
+  check=$(psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -tAc "
+    SELECT to_regclass('baobab_people.employment_proposal') IS NOT NULL,
+           to_regclass('baobab_people.payroll_draft') IS NOT NULL,
+           (SELECT count(*) FROM baobab_people.employment_proposal),
+           (SELECT count(*) FROM baobab_people.payroll_draft);")
+  if [[ "$check" != "t|t|0|0" ]]; then
+    echo "BP-04 native-install probe FAILED: nonempty/missing proposal history" >&2
+    exit 1
+  fi
+  printf 'BP-04 native-install: PASS (schema-only, 0 workforce, 0 payroll, no posting)\n' \
+    >> "$OUT/erp-migrate.log"
+fi
+
 python3 "$HERE/driver/gate_d_erp_a.py" place --run "$RUN" --out "$OUT" --compose "$HERE/compose.yaml"
 python3 "$HERE/driver/independent_company.py" place --run "$RUN" --out "$OUT" --compose "$HERE/compose.yaml"
 python3 "$HERE/driver/independent_company.py" verify --run "$RUN" --out "$OUT" --compose "$HERE/compose.yaml"
