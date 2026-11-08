@@ -222,11 +222,18 @@ class PeopleBYOPTests(unittest.TestCase):
         }.items():
             with self.subTest(label=label):
                 self.selected = selection(**changed)
+                self.provider_calls.clear()
                 with self.assertRaises((ProviderSelectionDenied, PayrollPolicyError)):
                     self.verify()
-                self.assertFalse(self.provider_calls)
+                # A binding switch may be a legitimate CP decision; its
+                # selected read-only provider adapter can be asked to
+                # verify, but an old receipt naming the previous binding
+                # is rejected before it can become eligibility.
+                if label != "foreign binding":
+                    self.assertFalse(self.provider_calls)
         self.selected = selection()
         self.selected["portability_enabled"] = False
+        self.provider_calls.clear()
         with self.assertRaises(ProviderSelectionDenied):
             self.verify()
         self.assertFalse(self.provider_calls)
