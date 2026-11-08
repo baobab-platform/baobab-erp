@@ -1717,6 +1717,32 @@ class NativeFinancePostgresGateBTest {
     }
 
     @Test
+    void committedCompletedPostingCannotBeDowngradedByFailedForcedRepost() throws Exception {
+        int journal;
+        try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+            journal = newJournal(c);
+            authorise(c, factLine(journal, "gate-b-posted-status"), Instant.now().plusSeconds(25));
+            // This only tests immutable status guards with synthetic fixture
+            // rows; real accounting is separately demonstrated in Gate D.
+            stmt.execute("UPDATE adempiere.gl_journal SET docstatus='CO', posted='Y'"
+                    + " WHERE gl_journal_id = " + journal);
+            c.commit();
+        }
+        for (String downgraded : new String[] {"I", "N"}) {
+            try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+                SQLException denied = assertThrows(SQLException.class, () ->
+                        stmt.execute("UPDATE adempiere.gl_journal SET posted='" + downgraded
+                                + "' WHERE gl_journal_id = " + journal));
+                assertTrue(denied.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"),
+                        denied.getMessage());
+                c.rollback();
+            }
+        }
+        assertEquals(1, count("SELECT count(*) FROM adempiere.gl_journal"
+                + " WHERE gl_journal_id = " + journal + " AND docstatus='CO' AND posted='Y'"));
+    }
+
+    @Test
     void completedFinancialLinesCannotBeInsertedChangedOrDeleted() throws Exception {
         int journal;
         int line = IDS.incrementAndGet();
