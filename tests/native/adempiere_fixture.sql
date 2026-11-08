@@ -15,7 +15,7 @@ CREATE TABLE adempiere.c_acctschema (c_acctschema_id numeric(10) PRIMARY KEY, ad
 -- N0011: the native financial configuration families protected from direct
 -- SQL bypass in placed AD_Clients. These fixture rows precede placement and
 -- represent existing, Finance-governed configuration only.
-DO $
+DO $baobab_native_config$
 DECLARE config_table text;
 BEGIN
   FOREACH config_table IN ARRAY ARRAY['c_acctschema_default', 'c_acctschema_gl',
@@ -27,7 +27,7 @@ BEGIN
     EXECUTE format('INSERT INTO adempiere.%I (%I, ad_client_id) VALUES (111, 11)',
       config_table, config_table || '_id');
   END LOOP;
-END $;
+END $baobab_native_config$;
 CREATE TABLE adempiere.c_doctype (c_doctype_id numeric(10) PRIMARY KEY, docbasetype char(3) NOT NULL);
 CREATE TABLE adempiere.c_period (c_period_id numeric(10) PRIMARY KEY, ad_client_id numeric(10) NOT NULL,
   startdate date NOT NULL, enddate date NOT NULL);
