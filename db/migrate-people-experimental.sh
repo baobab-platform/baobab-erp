@@ -7,7 +7,7 @@ if [[ "${BAOBAB_PEOPLE_EXPERIMENTAL:-}" != "1" ]]; then
   echo "Refusing Baobab People experimental migration without explicit opt-in" >&2
   exit 1
 fi
-if [[ ! "${BAOBAB_ENVIRONMENT:-integration}" =~ ^(test|development|integration)$ ]]; then
+if [[ ! "${BAOBAB_ENVIRONMENT:-}" =~ ^(test|development|integration)$ ]]; then
   echo "Refusing Baobab People experimental migration in protected environment" >&2
   exit 1
 fi
