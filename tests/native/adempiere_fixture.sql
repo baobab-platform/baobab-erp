@@ -18,8 +18,10 @@ CREATE TABLE adempiere.c_acctschema (c_acctschema_id numeric(10) PRIMARY KEY, ad
 DO $
 DECLARE config_table text;
 BEGIN
-  FOREACH config_table IN ARRAY ARRAY['c_elementvalue', 'c_validcombination',
-                                     'c_tax', 'c_tax_acct', 'c_bankaccount'] LOOP
+  FOREACH config_table IN ARRAY ARRAY['c_acctschema_default', 'c_acctschema_gl',
+                                     'c_elementvalue', 'c_validcombination',
+                                     'c_tax', 'c_tax_acct', 'c_bankaccount',
+                                     'c_bankaccount_acct'] LOOP
     EXECUTE format('CREATE TABLE adempiere.%I (%I numeric(10) PRIMARY KEY,
       ad_client_id numeric(10) NOT NULL)', config_table, config_table || '_id');
     EXECUTE format('INSERT INTO adempiere.%I (%I, ad_client_id) VALUES (111, 11)',
