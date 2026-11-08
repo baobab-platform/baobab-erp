@@ -34,7 +34,7 @@ Evidence custody: each gate requires exact source tuple, actual iDempiere 13 + P
 
 ## Gate sequence (no synthetic substitution)
 
-1. **N0 — Native schema and history integrity.** Apply migrations 0001–0026 and N0001–N0012 to clean PostgreSQL 17; run PostgreSQL-backed finance Gate B including authorised posting, forbidden direct-SQL ledger edits/deletes, completed source/line changes, replay, wrong-client, expired decision, unplaced historical isolation. The *same exact versioned image* must complete the actual iDempiere Gate D test.
+1. **N0 — Native schema and history integrity.** Apply migrations 0001–0026 and N0001–N0013 to clean PostgreSQL 17; run PostgreSQL-backed finance Gate B including authorised posting, forbidden direct-SQL ledger edits/deletes, completed source/line changes, replay, wrong-client, expired decision, unplaced historical isolation. The *same exact versioned image* must complete the actual iDempiere Gate D test.
 2. **N1 — Genuine transaction.** Provision legal buyer, seller, membership/site, budget, approved price signer and CP authority through their owning services. Independently read one non-draft Medusa order, seller commitment, buyer spend and the original immutable outbox event at one Trade PostgreSQL XID. Do not count synthetic events.
 3. **N2 — Native ERP effect.** Dispatch original event by the existing RabbitMQ publisher; read it from the durable ERP inbox, CP decisions, genuine native C_Order, financial attribution and original unchanged event, including lost-result adoption without duplication.
 4. **N3 — Accounting.** Follow native iDempiere source document processing through balanced posted Fact_Acct, AP/AR/stock/cost effects, accounting periods, documented FX and native reversal/credit controls. Compare GL and Trade/evidence totals independently. An ERP Sales Order alone does **not** qualify posting.
@@ -43,11 +43,11 @@ Evidence custody: each gate requires exact source tuple, actual iDempiere 13 + P
 7. **N6 — Recovery/operations.** Run real PostgreSQL restore/failover, outbox/inbox replay, correlation/exported-trace join, rematerialisation and independent teardown; record exact run/source hashes.
 8. **N7 — Additional native capabilities.** Introduce manufacturing, bank/cash/reconciliation, native reversal, HR/payroll and other uncatalogued document families **only after** Shared erp/v2 operation classes and CP authority are accepted. The present explicit deny-by-name fences must remain intact meanwhile.
 
-## N0010–N0012 safety boundaries
+## N0010–N0013 safety boundaries
 
 The new forward-only native migrations protect **ledger history** (Fact_Acct UPDATE/DELETE), **completed document source fields and DocStatus**, and **completed commercial/financial line values** from direct SQL tampering for any historically placed AD_Client. Draft line editing remains permitted; legitimate post-completion operational progress counters are not frozen. A placed document may not be deleted, even after a placement closes.
 
-N0012 also refuses TRUNCATE at the PostgreSQL statement boundary on native legal/financial history, document/line/accounting tables and evidentiary records. Row-level DELETE triggers cannot make this guarantee. The refusal is unconditional; governed retention/decommissioning must never silently truncate immutable history.
+N0013 preserves historical AD_Client and AD_Org identities after the placement window closes. A closed placement may allow separate governed deactivation; it never permits deletion or reassignment of financial/actor identity or client IDs. New Gate B cases prove both closed-history refusal and open-placement deactivation refusal.\n\nN0012 also refuses TRUNCATE at the PostgreSQL statement boundary on native legal/financial history, document/line/accounting tables and evidentiary records. Row-level DELETE triggers cannot make this guarantee. The refusal is unconditional; governed retention/decommissioning must never silently truncate immutable history.
 
 N0011 independently denies direct SQL changes to unapproved accounting schemas, charts/accounts, tax configurations and bank accounts for historically placed clients, including cross-client reassignment. There is no new CP authority class, and iDempiere system-client configuration remains a separately governed release responsibility.
 
