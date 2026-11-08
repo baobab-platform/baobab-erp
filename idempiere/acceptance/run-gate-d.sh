@@ -166,7 +166,9 @@ prop() { grep -E "^$2=" "$WORK/gate-d/results/$1.properties" | head -1 | cut -d=
 posted_ok() { # journal_id: CO, posted, balanced ledger, attributed by a CP decision
   local id=$1
   [ "$(sql "SELECT docstatus || posted FROM gl_journal WHERE gl_journal_id = $id")" = "COY" ] &&
-  [ "$(sql "SELECT count(*) > 0 AND sum(amtacctdr) = sum(amtacctcr) FROM fact_acct WHERE ad_table_id = 224 AND record_id = $id")" = "t" ] &&
+  [ "$(sql "SELECT count(*) > 0 AND sum(amtacctdr) = sum(amtacctcr) AND sum(amtacctdr) > 0
+     AND bool_and(ad_client_id = 11 AND ad_org_id = 11)
+     FROM fact_acct WHERE ad_table_id = 224 AND record_id = $id")" = "t" ] &&
   [ "$(sql "SELECT count(*) > 0 FROM baobab_native.finance_authority_attribution WHERE source_table = 'GL_Journal' AND source_record_id = $id AND decision_id IS NOT NULL AND operation_class = 'erp.gl-journal.post' AND finance_baseline_version = 1")" = "t" ]
 }
 not_posted() { # journal_id: never completed and no ledger
@@ -182,6 +184,7 @@ run valid authorized action=journal complete=true post=true || true
 J1=$(prop valid journal_id)
 if [ -n "$J1" ] && posted_ok "$J1"; then pass "valid authority: CO, posted, balanced Fact_Acct, attributed (journal $J1)"
 else fail "valid authority" "journal ${J1:-none} not completed/posted/attributed"; fi
+if [ -n "${J1:-}" ]; then finance_witness GL_Journal 224 "$J1"; fi
 
 # 2. No current mandate: even the draft is refused; nothing completes.
 before=$(co_count)
@@ -312,12 +315,42 @@ drun() { local name=$1 mode=$2; shift 2; run "$name" "$mode" action=doc "$@"; }
 attributed() { # table id class
   [ "$(sql "SELECT count(*) > 0 FROM baobab_native.finance_authority_attribution WHERE lower(source_table) = lower('$1') AND source_record_id = $2 AND operation_class = '$3' AND decision_id IS NOT NULL")" = "t" ]
 }
-balanced() { # ad_table_id id
-  [ "$(sql "SELECT count(*) > 0 AND sum(amtacctdr) = sum(amtacctcr) FROM fact_acct WHERE ad_table_id = $1 AND record_id = $2")" = "t" ]
+balanced() { # ad_table_id id, verified by independent PostgreSQL connection
+  [ "$(sql "SELECT count(*) > 0 AND sum(amtacctdr) = sum(amtacctcr)
+    AND sum(amtacctdr) > 0
+    AND bool_and(ad_client_id = 11 AND ad_org_id = 11)
+    FROM fact_acct WHERE ad_table_id = $1 AND record_id = $2")" = "t" ] &&
+  [ "$(sql "SELECT count(*) = 0 FROM fact_acct f LEFT JOIN c_acctschema s
+     ON s.c_acctschema_id = f.c_acctschema_id
+     WHERE f.ad_table_id = $1 AND f.record_id = $2
+       AND (s.c_acctschema_id IS NULL OR s.ad_client_id <> 11)")" = "t" ]
 }
 doc_status() { sql "SELECT docstatus || posted FROM $1 WHERE $1_id = $2"; }
 doc_posted() { # relation table_id id class
   [ "$(doc_status "$1" "$3")" = "COY" ] && balanced "$2" "$3" && attributed "$1" "$3" "$4"
+}
+# Records independent, READ-ONLY PostgreSQL observations; the in-JVM actor
+# cannot supply this witness. No source amount, document status or CP
+# authority is inferred from a test driver's in-memory return value.
+finance_witness() { # native source table name, AD_Table_ID, native record id
+  local table=$1 table_id=$2 id=$3
+  local witness
+  witness=$(sql "SELECT jsonb_build_object(
+    'postgres_major', current_setting('server_version_num')::int / 10000,
+    'native_source', '$table',
+    'native_record_id', $id,
+    'native_fact_rows', count(*),
+    'native_account_ids', count(DISTINCT account_id),
+    'debits', coalesce(sum(amtacctdr), 0),
+    'credits', coalesce(sum(amtacctcr), 0),
+    'placed_client_scoped', coalesce(bool_and(ad_client_id = 11 AND ad_org_id = 11), false),
+    'immutable_fact_digest', md5(coalesce(string_agg(to_jsonb(f)::text, '|' ORDER BY f.fact_acct_id), '')),
+    'independent_cp_attributions', (
+       SELECT count(*) FROM baobab_native.finance_authority_attribution a
+        WHERE lower(a.source_table) = lower('$table') AND a.source_record_id = $id
+          AND a.decision_id IS NOT NULL
+    ))::text FROM fact_acct f WHERE f.ad_table_id = $table_id AND f.record_id = $id")
+  note "INDEPENDENT_PG17_FINANCIAL_READBACK $witness"
 }
 doc_refused() { # relation table_id id result-name
   [ "$(sql "SELECT count(*) FROM $1 WHERE $1_id = $3 AND docstatus IN ('CO','CL')")" = "0" ] &&
@@ -336,6 +369,7 @@ if [ -n "$O" ]; then
   if [ -n "$S" ] && doc_posted m_inout 319 "$S" erp.shipment.complete; then
     pass "shipment: CO, posted, balanced Fact_Acct, attributed (shipment $S)"
   else fail "shipment" "shipment ${S:-none} not completed/posted/attributed"; fi
+  if [ -n "${S:-}" ]; then finance_witness M_InOut 319 "$S"; fi
   if [ -n "$S" ] && [ "$(cost_details "$S")" -gt 0 ] && [ "$(derived_rows "$S")" -gt 0 ] \
      && [ "$(sql "SELECT count(*) FROM baobab_native.finance_authority_attribution WHERE native_table = 'M_CostDetail' AND NOT (operation_class = 'erp.shipment.complete' AND source_table = 'M_InOut' AND source_record_id = $S) AND source_record_id = $S")" = "0" ] \
      && [ "$(sql "SELECT count(*) FROM baobab_native.finance_authority_attribution WHERE operation_class NOT IN ('erp.gl-journal.post','erp.customer-invoice.issue','erp.payment.record','erp.allocation.record','erp.shipment.complete','erp.sales-order.complete')")" = "0" ]; then
@@ -345,11 +379,13 @@ if [ -n "$O" ]; then
   if [ -n "$I" ] && doc_posted c_invoice 318 "$I" erp.customer-invoice.issue; then
     pass "customer invoice: CO, posted, balanced Fact_Acct, attributed (invoice $I)"
   else fail "customer invoice" "invoice ${I:-none} not completed/posted/attributed"; fi
+  if [ -n "${I:-}" ]; then finance_witness C_Invoice 318 "$I"; fi
   if [ -n "$I" ]; then
     drun rcpt authorized kind=payment invoice_id="$I" || true; R=$(prop rcpt id)
     if [ -n "$R" ] && doc_posted c_payment 335 "$R" erp.payment.record; then
       pass "receipt: CO, posted, balanced Fact_Acct, attributed (payment $R)"
     else fail "receipt" "payment ${R:-none} not completed/posted/attributed"; fi
+    if [ -n "${R:-}" ]; then finance_witness C_Payment 335 "$R"; fi
     AH=$(sql "SELECT max(c_allocationhdr_id) FROM c_allocationline WHERE c_payment_id = ${R:-0}")
     if [ -n "$AH" ] && [ "$(sql "SELECT docstatus FROM c_allocationhdr WHERE c_allocationhdr_id = $AH")" = "CO" ] \
        && attributed C_AllocationHdr "$AH" erp.allocation.record && [ "$(sql "SELECT ispaid FROM c_invoice WHERE c_invoice_id = $I")" = "Y" ]; then
