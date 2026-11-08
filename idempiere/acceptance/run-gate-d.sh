@@ -36,6 +36,30 @@ pass() { note "PASS  $1"; }
 fail() { note "FAIL  $1: $2"; FAILURES=$((FAILURES + 1)); }
 sql() { psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAq -c "SET search_path = adempiere, public; $1" | tail -n 1; }
 
+# Records independent, READ-ONLY PostgreSQL observations; the in-JVM actor
+# cannot supply this witness. No source amount, document status or CP
+# authority is inferred from a test driver's in-memory return value.
+finance_witness() { # native source table name, AD_Table_ID, native record id
+  local table=$1 table_id=$2 id=$3
+  local witness
+  witness=$(sql "SELECT jsonb_build_object(
+    'postgres_major', current_setting('server_version_num')::int / 10000,
+    'native_source', '$table',
+    'native_record_id', $id,
+    'native_fact_rows', count(*),
+    'native_account_ids', count(DISTINCT account_id),
+    'debits', coalesce(sum(amtacctdr), 0),
+    'credits', coalesce(sum(amtacctcr), 0),
+    'placed_client_scoped', coalesce(bool_and(ad_client_id = 11 AND ad_org_id = 11), false),
+    'immutable_fact_digest', md5(coalesce(string_agg(to_jsonb(f)::text, '|' ORDER BY f.fact_acct_id), '')),
+    'independent_cp_attributions', (
+       SELECT count(*) FROM baobab_native.finance_authority_attribution a
+        WHERE lower(a.source_table) = lower('$table') AND a.source_record_id = $id
+          AND a.decision_id IS NOT NULL
+    ))::text FROM fact_acct f WHERE f.ad_table_id = $table_id AND f.record_id = $id")
+  note "INDEPENDENT_PG17_FINANCIAL_READBACK $witness"
+}
+
 # --- TLS: a CI-generated CA trusted only by this JVM ---------------------------------------------
 mkdir -p "$WORK/tls" "$WORK/state" "$WORK/gate-d/requests" "$WORK/gate-d/results"
 chmod -R 0777 "$WORK/state" "$WORK/gate-d"
@@ -329,29 +353,7 @@ doc_status() { sql "SELECT docstatus || posted FROM $1 WHERE $1_id = $2"; }
 doc_posted() { # relation table_id id class
   [ "$(doc_status "$1" "$3")" = "COY" ] && balanced "$2" "$3" && attributed "$1" "$3" "$4"
 }
-# Records independent, READ-ONLY PostgreSQL observations; the in-JVM actor
-# cannot supply this witness. No source amount, document status or CP
-# authority is inferred from a test driver's in-memory return value.
-finance_witness() { # native source table name, AD_Table_ID, native record id
-  local table=$1 table_id=$2 id=$3
-  local witness
-  witness=$(sql "SELECT jsonb_build_object(
-    'postgres_major', current_setting('server_version_num')::int / 10000,
-    'native_source', '$table',
-    'native_record_id', $id,
-    'native_fact_rows', count(*),
-    'native_account_ids', count(DISTINCT account_id),
-    'debits', coalesce(sum(amtacctdr), 0),
-    'credits', coalesce(sum(amtacctcr), 0),
-    'placed_client_scoped', coalesce(bool_and(ad_client_id = 11 AND ad_org_id = 11), false),
-    'immutable_fact_digest', md5(coalesce(string_agg(to_jsonb(f)::text, '|' ORDER BY f.fact_acct_id), '')),
-    'independent_cp_attributions', (
-       SELECT count(*) FROM baobab_native.finance_authority_attribution a
-        WHERE lower(a.source_table) = lower('$table') AND a.source_record_id = $id
-          AND a.decision_id IS NOT NULL
-    ))::text FROM fact_acct f WHERE f.ad_table_id = $table_id AND f.record_id = $id")
-  note "INDEPENDENT_PG17_FINANCIAL_READBACK $witness"
-}
+
 doc_refused() { # relation table_id id result-name
   [ "$(sql "SELECT count(*) FROM $1 WHERE $1_id = $3 AND docstatus IN ('CO','CL')")" = "0" ] &&
   [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = $2 AND record_id = $3")" = "0" ] && baobab_denied "$4"
