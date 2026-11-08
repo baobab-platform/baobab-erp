@@ -12,6 +12,20 @@ CREATE TABLE adempiere.ad_org (ad_org_id numeric(10) PRIMARY KEY,
 CREATE TABLE adempiere.ad_table (ad_table_id numeric(10) PRIMARY KEY, tablename text NOT NULL);
 CREATE TABLE adempiere.c_acctschema (c_acctschema_id numeric(10) PRIMARY KEY, ad_client_id numeric(10) NOT NULL,
   isactive char(1) NOT NULL DEFAULT 'Y');
+-- N0011: the native financial configuration families protected from direct
+-- SQL bypass in placed AD_Clients. These fixture rows precede placement and
+-- represent existing, Finance-governed configuration only.
+DO $
+DECLARE config_table text;
+BEGIN
+  FOREACH config_table IN ARRAY ARRAY['c_elementvalue', 'c_validcombination',
+                                     'c_tax', 'c_taxacct', 'c_bankaccount'] LOOP
+    EXECUTE format('CREATE TABLE adempiere.%I (%I numeric(10) PRIMARY KEY,
+      ad_client_id numeric(10) NOT NULL)', config_table, config_table || '_id');
+    EXECUTE format('INSERT INTO adempiere.%I (%I, ad_client_id) VALUES (111, 11)',
+      config_table, config_table || '_id');
+  END LOOP;
+END $;
 CREATE TABLE adempiere.c_doctype (c_doctype_id numeric(10) PRIMARY KEY, docbasetype char(3) NOT NULL);
 CREATE TABLE adempiere.c_period (c_period_id numeric(10) PRIMARY KEY, ad_client_id numeric(10) NOT NULL,
   startdate date NOT NULL, enddate date NOT NULL);
