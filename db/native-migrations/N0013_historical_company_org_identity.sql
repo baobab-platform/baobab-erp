@@ -22,11 +22,12 @@ BEGIN
     END IF;
     RETURN OLD;
   END IF;
-  IF NEW.ad_client_id IS DISTINCT FROM OLD.ad_client_id
+  IF (NEW.ad_client_id, NEW.ad_org_id)
+       IS DISTINCT FROM (OLD.ad_client_id, OLD.ad_org_id)
      AND EXISTS (SELECT 1 FROM baobab_native.native_placement p
                   WHERE p.ad_org_id = OLD.ad_org_id
                     AND p.ad_client_id = OLD.ad_client_id) THEN
-    RAISE EXCEPTION 'BAOBAB_NATIVE_FINANCE_DENIED: historical AD_Org company cannot be reassigned'
+    RAISE EXCEPTION 'BAOBAB_NATIVE_FINANCE_DENIED: historical AD_Org ID or company cannot be reassigned'
       USING ERRCODE = '42501';
   END IF;
   IF NEW.isactive IS DISTINCT FROM OLD.isactive
@@ -67,8 +68,13 @@ BEGIN
   RETURN NEW;
 END $$;
 
--- N0009 already registered the org guard; CREATE OR REPLACE above makes its
--- historical scope stronger without dropping/recreating its live trigger.
+-- N0009 already registered the org guard on company/status updates.
+-- Keep it in place; add a separate key-update path because PostgreSQL
+-- UPDATE OF trigger columns do not include AD_Org_ID in that old trigger.
+CREATE TRIGGER baobab_placed_ad_org_key_history_guard
+  BEFORE UPDATE OF ad_org_id ON adempiere.ad_org
+  FOR EACH ROW EXECUTE FUNCTION baobab_native.placed_ad_org_change_guard();
+
 CREATE TRIGGER baobab_placed_ad_client_history_guard
   BEFORE UPDATE OF ad_client_id, isactive OR DELETE ON adempiere.ad_client
   FOR EACH ROW EXECUTE FUNCTION baobab_native.placed_ad_client_change_guard();
