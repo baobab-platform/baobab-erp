@@ -31,6 +31,11 @@ class StatutoryQualificationAuthority(Protocol):
         """Read a current independent reviewer/signature; no provider self-approval."""
 
 
+class PayrollDraftReader(Protocol):
+    def latest(self, *, tenant_id: str, employer_id: str,
+               run_ref: str) -> PayrollDraft | None: ...
+
+
 class EvidenceSource(Protocol):
     def read(self, *, selected: ProviderSelection, draft: PayrollDraft,
              evidence_ref: str, now: datetime) -> dict: ...
@@ -100,18 +105,29 @@ class SelectedCalculationVerifier:
     """
 
     def __init__(self, selector: CPProviderSelector, adapters: dict[str, EvidenceSource],
-                 statutory: StatutoryQualificationAuthority, *, context_id: str,
-                 correlation_id: str, clock):
+                 statutory: StatutoryQualificationAuthority, *, draft_reader: PayrollDraftReader,
+                 context_id: str, correlation_id: str, clock):
         self._selector = selector
         self._adapters = dict(adapters)
         self._statutory = statutory
+        self._draft_reader = draft_reader
         self._context_id = context_id
         self._correlation_id = correlation_id
         self._clock = clock
 
     def verify(self, *, evidence_ref: str, tenant_id: str, employer_id: str,
                run_ref: str, version: int) -> VerifiedCalculation:
-        raise PayrollPolicyError("Load immutable employer-scoped payroll draft before verification")
+        """Implement the existing PayrollEligibilityGate verifier port."""
+        if type(version) is not int or version < 1:
+            raise PayrollPolicyError("Invalid payroll draft version")
+        draft = self._draft_reader.latest(
+            tenant_id=tenant_id, employer_id=employer_id, run_ref=run_ref,
+        )
+        if (not isinstance(draft, PayrollDraft)
+                or draft.version != version or draft.tenant_id != tenant_id
+                or draft.legal_employer_id != employer_id or draft.run_ref != run_ref):
+            raise PayrollPolicyError("Exact immutable employer payroll draft missing")
+        return self.verify_draft(draft, evidence_ref=evidence_ref)
 
     def verify_draft(self, draft: PayrollDraft, *, evidence_ref: str) -> VerifiedCalculation:
         now = self._clock()

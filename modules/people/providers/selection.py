@@ -7,7 +7,7 @@ never finalises payroll, sends employee records, posts GL or releases payments.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import json
 import re
 import ssl
@@ -189,8 +189,8 @@ class CPProviderSelector:
                 or not _PROVIDER.fullmatch(fields["provider_id"])
                 or not _REF.fullmatch(fields["qualification_receipt_ref"])
                 or not _REF.fullmatch(result["decision_ref"])
-                or now < start or not observed <= now < expiry or now - observed > __import__("datetime").timedelta(seconds=30)
-                or expiry - observed > __import__("datetime").timedelta(seconds=30)
+                or now < start or not observed <= now < expiry or now - observed > timedelta(seconds=30)
+                or expiry - observed > timedelta(seconds=30)
                 or until is not None and not now < until):
             raise ProviderSelectionDenied("Selected provider not currently authorised")
         return ProviderSelection(
