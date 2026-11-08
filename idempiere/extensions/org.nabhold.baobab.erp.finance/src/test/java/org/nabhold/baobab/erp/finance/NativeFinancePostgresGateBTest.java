@@ -864,12 +864,17 @@ class NativeFinancePostgresGateBTest {
             sql(c, "UPDATE adempiere.c_allocationhdr SET docstatus = 'CO' WHERE c_allocationhdr_id = " + allocation);
             c.commit();
         }
-        // Bypass: direct SQL adding a sales line to the completed payables allocation is refused at COMMIT.
+        // Bypass: adding a sales line to the COMPLETED payables allocation
+        // now fails even at statement time (the existing COMMIT fence still
+        // protects incomplete allocations and races).
         try (Connection c = transaction()) {
-            sql(c, "INSERT INTO adempiere.c_allocationline (c_allocationline_id, c_allocationhdr_id, c_invoice_id, "
-                    + "ad_client_id, ad_org_id) VALUES (" + IDS.incrementAndGet() + ", " + allocation + ", "
-                    + salesInvoice + ", 11, 11)");
-            denied(c);
+            SQLException refused = assertThrows(SQLException.class, () ->
+                    sql(c, "INSERT INTO adempiere.c_allocationline "
+                            + "(c_allocationline_id, c_allocationhdr_id, c_invoice_id, ad_client_id, ad_org_id) "
+                            + "VALUES (" + IDS.incrementAndGet() + ", " + allocation + ", "
+                            + salesInvoice + ", 11, 11)"));
+            assertTrue(refused.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"), refused.getMessage());
+            c.rollback();
         }
         assertEquals(NativeOperation.PAYABLES_ALLOCATION, storedClass("C_AllocationHdr", allocation));
     }
@@ -1398,13 +1403,17 @@ class NativeFinancePostgresGateBTest {
             assertNull(storedClass_on(c, "C_Payment", again));
             c.rollback();
         }
-        // A bound payment whose values drift from its evidence loses its class (direct SQL included).
+        // An already completed, evidence-bound payment cannot have its
+        // amount rewritten even transiently by direct SQL; no mutation may
+        // create a momentary alternative accounting/evidence fact.
         try (Connection c = transaction()) {
-            sql(c, "UPDATE adempiere.c_payment SET payamt = 310 WHERE c_payment_id = " + paid);
-            assertNull(storedClass_on(c, "C_Payment", paid), "a changed amount no longer matches the evidence");
-            assertNull(new NativeOperationResolver(trx -> c).classify(payment(paid, invoice, "310.00", "IsOnline", "N")));
+            SQLException refused = assertThrows(SQLException.class, () ->
+                    sql(c, "UPDATE adempiere.c_payment SET payamt = 310 WHERE c_payment_id = " + paid));
+            assertTrue(refused.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"), refused.getMessage());
             c.rollback();
         }
+        assertEquals(NativeOperation.VENDOR_PAYMENT, storedClass("C_Payment", paid),
+                "the original payment and evidence binding must survive the refused rewrite");
         // Ambiguity denies: two unbound records for the same values bind neither.
         ingestEvidence(invoice, "77.00", PARTNER, CURRENCY, "UGX");
         ingestEvidence(invoice, "77.00", PARTNER, CURRENCY, "UGX");
