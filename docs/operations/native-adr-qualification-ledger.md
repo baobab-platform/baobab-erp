@@ -1,7 +1,7 @@
 # ERP native ADR implementation and qualification ledger
 
 Status: **engineering work in progress; no full native ADR acceptance or protected activation**.
-Governing baseline: Accepted ERP ADR-001–020 and 022–023; ADR-021 remains **Proposed**. EA v2.3 / EA-DEV DEV-07/09/11/12/14.
+Governing baseline: Accepted ERP ADR-001–020 and 022–023; ADR-021 design acceptance is recorded in ERP PR #133 (**Accepted**), not yet presumed merged into `main`; production incorporation/Finance/CP gates stay independent. EA v2.3 / EA-DEV DEV-07/09/11/12/14.
 Evidence custody: each gate requires exact source tuple, actual iDempiere 13 + PostgreSQL 17, native JVM/OSGi activation, positive AND negative cases and read-only independent database observations. Source tests are not substituted for business proof.
 
 ## Native capability inventory
@@ -28,7 +28,7 @@ Evidence custody: each gate requires exact source tuple, actual iDempiere 13 + P
 | 018 | Canonical event/projection abstractions | Governed financial reporting extracts with independently reconciled trial balances, tenant-filtered analytics, erasure |
 | 019 | CP-directed provisioning worker and idempotent commands | Real native onboarding/credential issuance/deactivation, migration, rehome and revocation proof |
 | 020 | Readiness evaluation with explicit fail-closed gates | Independent release evidence for each mandatory capability, full multi-company real golden paths |
-| 021 | Proposed separate UG/ZA ZuriBeans AD_Client placement | **Governance decision**, verified legal actors, approved finance baseline and CP identifiers; no synthetic activation |
+| 021 | Pattern B UG/ZA ZuriBeans two-client design approved in ERP #133 (pending merge); both ZuriBeans incorporations remain in progress | Verified incorporation and legal actors, Finance baseline, CP identifiers and independent native clients; no synthetic activation |
 | 022 | Native placement, provenance, class catalogue, PostgreSQL COMMIT fences, N0010 history and N0011 configuration controls | Qualified reversal/bank/cash/manufacturing catalogue extensions only after Shared CP policy revision; do not widen classes locally |
 | 023 | Baobab People/CDSoftware candidate on ERP #126 | Licence and compatibility audit, native OSGi/2Pack, statutory ZA/UG parallel payroll, approved posting and HR isolation |
 
@@ -49,7 +49,7 @@ The new forward-only native migrations protect **ledger history** (Fact_Acct UPD
 
 N0013 preserves historical AD_Client and AD_Org identities after the placement window closes. A closed placement may allow separate governed deactivation; it never permits deletion or reassignment of financial/actor identity or client IDs. New Gate B cases prove both closed-history refusal and open-placement deactivation refusal.\n\nN0012 also refuses TRUNCATE at the PostgreSQL statement boundary on native legal/financial history, document/line/accounting tables and evidentiary records. Row-level DELETE triggers cannot make this guarantee. The refusal is unconditional; governed retention/decommissioning must never silently truncate immutable history.
 
-N0011 independently denies direct SQL changes to unapproved accounting schemas, charts/accounts, tax configurations and bank accounts for historically placed clients, including cross-client reassignment. There is no new CP authority class, and iDempiere system-client configuration remains a separately governed release responsibility.
+N0011 independently denies direct SQL changes to unapproved accounting schemas, schema GL/default accounts (`C_AcctSchema_GL` / `C_AcctSchema_Default`), charts/accounts, tax configuration and `C_Tax_Acct`, bank accounts and bank-account posting defaults (`C_BankAccount_Acct`) for historically placed clients, including cross-client reassignment. The iDempiere 13 exact native name is `C_Tax_Acct`, not `C_TaxAcct`; earlier real-JVM acceptance refused the bad identifier and drove this correction. There is no new CP authority class, and iDempiere system-client configuration remains a separately governed release responsibility.
 
 This is deliberately *not* a replacement for the native OSGi financial veto, CP posting-authority assessment, N0003/N0006 deferrable insertion/completion fences, the legal-actor approval process or a financial reversal operation. There is no arbitrary raw-SQL posting pathway or new authority grant.
 
