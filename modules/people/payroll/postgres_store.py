@@ -28,7 +28,7 @@ class PostgresPayrollDraftStore:
         with self._connection.cursor() as cursor:
             cursor.execute(
                 """SELECT pg_advisory_xact_lock(hashtextextended(
-                     jsonb_build_array('people-draft', %s, %s, %s)::text, 0))""",
+                     jsonb_build_array('people-draft', %s::text, %s::text, %s::text)::text, 0))""",
                 (draft.tenant_id, draft.legal_employer_id, draft.run_ref),
             )
             cursor.execute(
