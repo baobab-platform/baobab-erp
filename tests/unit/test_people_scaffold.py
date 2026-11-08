@@ -96,9 +96,7 @@ class WorkforceTests(unittest.TestCase):
 
     def test_invalid_versions_and_effective_window_denied(self):
         for changes in (
-            {"version": True}, {"correction_of_run_ref": ""},
-            {"run_ref": "bad run with spaces"},
-            {"period_from": datetime(2026, 11, 1, tzinfo=timezone.utc)}, {"version": 0},
+            {"version": True}, {"version": 0},
             {"effective_until": date(2026, 11, 1)},
             {"tax_jurisdiction": "za"}, {"pay_currency": "zar"},
             {"state": "ACTIVE"}, {"contract_evidence_ref": "bad evidence ref"},
@@ -119,7 +117,8 @@ class WorkforceTests(unittest.TestCase):
             with self.subTest(changes=changes), self.assertRaises(PeopleDomainError):
                 svc.propose(workforce_record(**changes), authority_proof="attested-employer")
         with self.assertRaises(PeopleDomainError):
-            store.append_if_version(workforce_record(version=2, effective_from=date(2026, 12, 1)), previous_version=None)
+            store.append_if_version(workforce_record(version=2, effective_from=date(2026, 12, 1)),
+                                    previous_version=None, principal_ref="principal_hr_1")
 
 
 class PayrollGateTests(unittest.TestCase):
@@ -162,6 +161,9 @@ class PayrollGateTests(unittest.TestCase):
             {"rule_pack_sha256": "unknown"},
             {"statutory_jurisdiction": "ZAF"},
             {"correction_of_run_ref": "payrun_2026_11"},
+            {"correction_of_run_ref": ""},
+            {"run_ref": "bad run with spaces"},
+            {"period_from": datetime(2026, 11, 1, tzinfo=timezone.utc)},
             {"version": True},
         ):
             with self.subTest(changes=changes), self.assertRaises(PayrollPolicyError):
