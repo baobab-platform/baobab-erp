@@ -1831,4 +1831,32 @@ class NativeFinancePostgresGateBTest {
                     "native history guard must be installed AND enabled on " + table);
         }
     }
+
+    @Test
+    void truncateCannotBypassRowLevelNativeFinancialHistoryGuards() throws Exception {
+        // PostgreSQL TRUNCATE never invokes DELETE triggers. Every critical
+        // protected source and evidence table therefore has an explicit
+        // statement-level refusal; neither empty nor non-empty is an excuse.
+        for (String relation : new String[] {
+                "adempiere.fact_acct", "adempiere.gl_journal",
+                "adempiere.c_tax", "baobab_native.document_provenance",
+                "baobab_native.finance_authority_attribution"
+        }) {
+            try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+                SQLException denied = assertThrows(SQLException.class,
+                        () -> stmt.execute("TRUNCATE TABLE " + relation), relation);
+                assertTrue(denied.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"),
+                        relation + " " + denied.getMessage());
+                c.rollback();
+            }
+            int idx = relation.indexOf('.');
+            String schema = relation.substring(0, idx);
+            String table = relation.substring(idx + 1);
+            assertEquals(1, count("SELECT count(*) FROM pg_trigger t JOIN pg_class rel ON rel.oid=t.tgrelid "
+                    + "JOIN pg_namespace n ON n.oid=rel.relnamespace "
+                    + "WHERE n.nspname='" + schema + "' AND rel.relname='" + table
+                    + "' AND t.tgname='baobab_immutable_history_no_truncate' AND t.tgenabled='O'"),
+                    "native TRUNCATE guard must be installed AND enabled: " + relation);
+        }
+    }
 }
