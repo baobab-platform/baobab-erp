@@ -1661,6 +1661,35 @@ class NativeFinancePostgresGateBTest {
     }
 
     @Test
+    void onlySameTransactionUncommittedLedgerRowsMayBeReplacedDuringNativePosting() throws Exception {
+        // Real iDempiere Doc.post() clears provisional Fact_Acct during the
+        // original document transaction before re-deriving the final lines.
+        // PostgreSQL xmin distinguishes that provisional state from committed
+        // accounting history. The existing committed-history refusal test
+        // above still denies identical SQL in any subsequent transaction.
+        int journal;
+        try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+            journal = newJournal(c);
+            authorise(c, factLine(journal, "gate-b-uncommitted-native-rebuild"),
+                    Instant.now().plusSeconds(25));
+            insertFact(c, journal);
+            try (java.sql.ResultSet rows = stmt.executeQuery(
+                    "SELECT count(*) FROM adempiere.fact_acct WHERE record_id = " + journal)) {
+                assertTrue(rows.next());
+                assertEquals(1, rows.getInt(1), "original uncommitted native fact must exist");
+            }
+            assertEquals(1, stmt.executeUpdate(
+                    "DELETE FROM adempiere.fact_acct WHERE record_id = " + journal),
+                    "same-transaction provisional native posting may replace its own fact");
+            // Roll back the whole synthetic operation: no direct SQL mutation
+            // can create an authorised, committed financial consequence.
+            c.rollback();
+        }
+        assertEquals(0, count("SELECT count(*) FROM adempiere.fact_acct WHERE record_id = " + journal));
+        assertEquals(0, count("SELECT count(*) FROM adempiere.gl_journal WHERE gl_journal_id = " + journal));
+    }
+
+    @Test
     void historicalPlacementRemainsImmutableAfterAnAuthorityLeaseLapses() throws Exception {
         int journal;
         try (Connection c = transaction()) {
