@@ -13,6 +13,8 @@
 -- release/configuration controls remain owned by the privileged deployment
 -- process and must be independently qualified at the release gate.
 --
+-- iDempiere's real tax-account assignment table is C_Tax_Acct (c_tax_acct),
+-- NOT c_taxacct. Keep this exact real-native table name in schema checks.
 -- Deliberately do not cover C_Period / C_PeriodControl here: closing and
 -- reopening a financial period require an explicit, auditable lifecycle and
 -- are a separate ERP-008/022 acceptance item.
@@ -35,7 +37,7 @@ DECLARE
 BEGIN
   FOREACH config_table IN ARRAY ARRAY[
     'c_acctschema', 'c_elementvalue', 'c_validcombination',
-    'c_tax', 'c_taxacct', 'c_bankaccount'
+    'c_tax', 'c_tax_acct', 'c_bankaccount'
   ] LOOP
     IF to_regclass('adempiere.' || config_table) IS NULL THEN
       RAISE EXCEPTION 'N0011 requires real iDempiere accounting configuration table: %',
