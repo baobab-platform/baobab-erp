@@ -155,7 +155,7 @@ jobs:
           -Dtest=NativeFinancePostgresGateBTest -Dsurefire.failIfNoSpecifiedTests=false
       - name: Gate B must have run, not skipped
         run: >-
-          grep -q 'tests="39"[^>]*skipped="0"'
+          python3 -c 'import xml.etree.ElementTree as ET,sys; x=ET.parse(sys.argv[1]).getroot(); assert int(x.attrib["tests"]) == 51 and all(int(x.attrib[k]) == 0 for k in ("failures", "errors", "skipped")), x.attrib'
           idempiere/extensions/org.nabhold.baobab.erp.finance/target/surefire-reports/TEST-org.nabhold.baobab.erp.finance.NativeFinancePostgresGateBTest.xml
 
   build-image:
