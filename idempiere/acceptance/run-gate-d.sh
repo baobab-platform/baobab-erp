@@ -232,18 +232,29 @@ if [ -n "${J1:-}" ]; then
     && pass "retry after commit: Fact_Acct unchanged ($facts rows)" || fail "retry after commit" "ledger duplicated"
 fi
 
-# 7b. Background/batch posting: a forced repost runs in iDempiere's own posting transaction (the
-#     accounting-processor path). Under current authority the ledger is rebuilt, balanced and
-#     attributed afresh; once authority is revoked the repost is refused and the committed ledger
-#     is left exactly as it was (no partial delete).
+# 7b. Real iDempiere Doc.post(force=true) attempts to DELETE and rebuild
+#     committed Fact_Acct history. N0010 makes that unlawful even under a
+#     fresh CP posting mandate: historical reversal needs its own qualified
+#     operation. Replays must instead adopt the existing immutable result.
+#     Observe full persisted row hashes, not merely equal counts/sums.
 if [ -n "${J1:-}" ]; then
   ledger() { sql "SELECT count(*) || ':' || sum(amtacctdr) || ':' || sum(amtacctcr) FROM fact_acct WHERE ad_table_id = 224 AND record_id = $J1"; }
   attributions() { sql "SELECT count(DISTINCT txid) FROM baobab_native.finance_authority_attribution WHERE source_table = 'GL_Journal' AND source_record_id = $J1"; }
   before=$(ledger); txids=$(attributions)
+  ledger_hash() { sql "SELECT md5(coalesce(string_agg(to_jsonb(f)::text, '|' ORDER BY f.fact_acct_id), '')) FROM fact_acct f WHERE ad_table_id = 224 AND record_id = $J1"; }
+  attribution_hash() { sql "SELECT md5(coalesce(string_agg(to_jsonb(a)::text, '|' ORDER BY a.attribution_id), '')) FROM baobab_native.finance_authority_attribution a WHERE lower(source_table) = 'gl_journal' AND source_record_id = $J1"; }
+  # The hash uses the entire persisted financial fact; an equal balance cannot
+  # hide rewritten ledger IDs, accounts, currency, source or attribution.
+  history_before=$(ledger_hash)
+  authority_before=$(attribution_hash)
   run batch_repost authorized action=repost journal_id="$J1" force=true || true
-  if [ "$(ledger)" = "$before" ] && posted_ok "$J1" && [ "$(attributions)" -gt "$txids" ]; then
-    pass "background forced repost under authority: ledger rebuilt ($before), newly attributed"
-  else fail "background forced repost" "ledger $(ledger) vs $before, attributions $(attributions) vs $txids"; fi
+  if [ "$(ledger)" = "$before" ] && posted_ok "$J1" \
+     && [ "$(attributions)" = "$txids" ] \
+     && [ "$(ledger_hash)" = "$history_before" ] \
+     && [ "$(attribution_hash)" = "$authority_before" ] \
+     && [ "$(prop batch_repost post_error)" != "null" ]; then
+    pass "forced repost refused: immutable posted Fact_Acct and CP attribution independently unchanged ($before)"
+  else fail "forced repost" "immutable ledger or attribution changed or refusal missing"; fi
   run batch_repost_revoked revoked action=repost journal_id="$J1" force=true || true
   if [ "$(ledger)" = "$before" ] && [ "$(prop batch_repost_revoked post_error)" != "null" ]; then
     pass "background forced repost after revocation: refused, committed ledger intact"
@@ -252,6 +263,16 @@ fi
 
 # 8. Direct SQL bypass of the JVM: refused at COMMIT by the database fence. Each statement
 #    must really change one row before COMMIT, so a vacuous no-op can never pass.
+fenced_at_statement() { # label sql; N0010 intercepts the mutation itself
+  local out
+  out=$(psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -c "BEGIN" -c "$2" -c "COMMIT" 2>&1 || true)
+  echo "$out" | sed 's/^/    /' >> "$REPORT"
+  if echo "$out" | grep -q "ERROR:.*BAOBAB_NATIVE_FINANCE_DENIED"; then
+    pass "$1: denied by native PostgreSQL BEFORE trigger"
+  else
+    fail "$1" "not refused by the native PostgreSQL history guard"
+  fi
+}
 fenced() { # label sql expected-tag
   local out
   out=$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "BEGIN" -c "$2" -c "COMMIT" 2>&1 || true)
@@ -372,10 +393,11 @@ if [ -n "${S:-}" ]; then
   [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $S")" = "$F0" ] && [ "$(cost_details "$S")" = "$C0" ] \
     && pass "shipment retry after commit: ledger ($F0) and costing ($C0) unchanged" || fail "shipment retry" "duplicated"
   run shp_force authorized action=repostDoc table=M_InOut id="$S" force=true || true
-  if [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $S")" = "$F0" ] && balanced 319 "$S" \
-     && [ "$(cost_details "$S")" = "$C0" ]; then
-    pass "background forced shipment repost under authority: ledger rebuilt ($F0), cost detail not duplicated"
-  else fail "background forced shipment repost" "facts/costs changed ($(prop shp_force post_error))"; fi
+  if [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $S")" = "$F0" ] \
+     && [ "$(cost_details "$S")" = "$C0" ] && [ "$(derived_rows "$S")" = "$D0" ] \
+     && [ "$(prop shp_force post_error)" != "null" ]; then
+    pass "forced shipment repost refused: native ledger and cost facts unchanged"
+  else fail "forced shipment repost" "ledger/cost changed or refusal missing ($(prop shp_force post_error))"; fi
   run shp_force_rev revoked action=repostDoc table=M_InOut id="$S" force=true || true
   [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $S")" = "$F0" ] && [ "$(cost_details "$S")" = "$C0" ] \
     && [ "$(prop shp_force_rev post_error)" != "null" ] \
@@ -437,10 +459,14 @@ if [ -n "${S:-}" ]; then
        WHERE l.m_inout_id = $S AND c.ad_client_id = 11 LIMIT 1)" "DELETE 1"
 fi
 if [ -n "${A:-}" ] && [ -n "${VI:-}" ]; then
-  fenced "direct SQL re-point of a completed allocation to a vendor invoice" "INSERT INTO adempiere.c_allocationline
+  allocation_before=$(sql "SELECT count(*) FROM c_allocationline WHERE c_allocationhdr_id = $A")
+  fenced_at_statement "direct SQL re-point of a completed allocation to a vendor invoice" "INSERT INTO adempiere.c_allocationline
       SELECT (jsonb_populate_record(al, jsonb_build_object('c_allocationline_id', (SELECT max(c_allocationline_id) + 1
         FROM adempiere.c_allocationline), 'c_allocationline_uu', gen_random_uuid()::text, 'c_invoice_id', $VI))).*
-        FROM adempiere.c_allocationline al WHERE al.c_allocationhdr_id = $A LIMIT 1" "INSERT 0 1"
+        FROM adempiere.c_allocationline al WHERE al.c_allocationhdr_id = $A LIMIT 1"
+  [ "$(sql "SELECT count(*) FROM c_allocationline WHERE c_allocationhdr_id = $A")" = "$allocation_before" ] \
+    && pass "forbidden allocation re-point preserves native source rows" \
+    || fail "forbidden allocation re-point" "source history mutated"
 fi
 
 note "Gate D failures: $FAILURES"
