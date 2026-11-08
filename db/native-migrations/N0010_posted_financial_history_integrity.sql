@@ -14,8 +14,20 @@
 -- This migration does not supply a financial posting engine or a new CP grant.
 
 CREATE FUNCTION baobab_native.forbid_placed_ledger_rewrite()
-RETURNS trigger LANGUAGE plpgsql AS $$
+RETURNS trigger LANGUAGE plpgsql AS $
 BEGIN
+  -- iDempiere's real Doc.post() can replace an accounting row that it JUST
+  -- inserted in the SAME still-open PostgreSQL transaction (not durable
+  -- financial history). DELETE of that uncommitted row is legal only within
+  -- its inserting transaction, before any independent observer can read it.
+  -- Keep UPDATE denied and every previously committed row immutable, even
+  -- after the CP lease or the placement closes. xmin is a 32-bit XID, whereas
+  -- pg_current_xact_id() is xid8: compare the low 32 bits deliberately.
+  -- The independent N0003/N0006 deferred COMMIT authority fences stay active.
+  IF TG_OP = 'DELETE'
+     AND OLD.xmin::text::bigint = (pg_current_xact_id()::text::bigint % 4294967296) THEN
+    RETURN OLD;
+  END IF;
   IF baobab_native.client_is_placed(OLD.ad_client_id::integer)
      OR (TG_OP = 'UPDATE' AND baobab_native.client_is_placed(NEW.ad_client_id::integer)) THEN
     RAISE EXCEPTION 'BAOBAB_NATIVE_FINANCE_DENIED: immutable posted ledger; use an authorised reversal'
