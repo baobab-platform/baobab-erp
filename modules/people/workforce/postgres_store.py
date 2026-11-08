@@ -41,7 +41,7 @@ class PostgresEmploymentProposalStore:
         with self._connection.cursor() as cursor:
             cursor.execute(
                 """SELECT pg_advisory_xact_lock(hashtextextended(
-                     jsonb_build_array('people-employment', %s, %s, %s)::text, 0))""",
+                     jsonb_build_array('people-employment', %s::text, %s::text, %s::text)::text, 0))""",
                 (record.tenant_id, record.legal_employer_id, record.person_ref),
             )
             cursor.execute(
