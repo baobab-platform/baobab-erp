@@ -29,6 +29,14 @@ BEGIN
 END $$;
 CREATE TABLE adempiere.gl_journalline (gl_journalline_id numeric(10) PRIMARY KEY, gl_journal_id numeric(10) NOT NULL,
   ad_client_id numeric(10) NOT NULL, ad_org_id numeric(10) NOT NULL);
+-- Accounting source totals and monetary line columns needed to verify that
+-- N0010 fences actual financial values, not only client/org identifiers.
+ALTER TABLE adempiere.gl_journal ADD COLUMN totaldr numeric NOT NULL DEFAULT 0,
+  ADD COLUMN totalcr numeric NOT NULL DEFAULT 0;
+ALTER TABLE adempiere.gl_journalline ADD COLUMN amtacctdr numeric NOT NULL DEFAULT 0,
+  ADD COLUMN amtacctcr numeric NOT NULL DEFAULT 0,
+  ADD COLUMN amtsourcedr numeric NOT NULL DEFAULT 0,
+  ADD COLUMN amtsourcecr numeric NOT NULL DEFAULT 0;
 CREATE TABLE adempiere.c_invoiceline (c_invoiceline_id numeric(10) PRIMARY KEY, c_invoice_id numeric(10) NOT NULL,
   ad_client_id numeric(10) NOT NULL, ad_org_id numeric(10) NOT NULL);
 -- N0010: financial line integrity uses the same parent/status vocabulary as
