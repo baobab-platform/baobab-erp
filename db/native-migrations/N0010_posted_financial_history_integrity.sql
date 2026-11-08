@@ -14,7 +14,7 @@
 -- This migration does not supply a financial posting engine or a new CP grant.
 
 CREATE FUNCTION baobab_native.forbid_placed_ledger_rewrite()
-RETURNS trigger LANGUAGE plpgsql AS $
+RETURNS trigger LANGUAGE plpgsql AS $baobab_fact_xmin$
 BEGIN
   -- iDempiere's real Doc.post() can replace an accounting row that it JUST
   -- inserted in the SAME still-open PostgreSQL transaction (not durable
@@ -35,7 +35,7 @@ BEGIN
   END IF;
   IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
   RETURN NEW;
-END $$;
+END $baobab_fact_xmin$;
 
 -- The existing INSERT COMMIT fence remains unchanged and mandatory.
 CREATE TRIGGER baobab_ledger_immutable_history
