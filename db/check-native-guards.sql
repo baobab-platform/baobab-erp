@@ -47,11 +47,14 @@ required_triggers(schema_name, relation_name, trigger_name) AS (
     ('adempiere', 'm_inoutline', 'baobab_protect_completed_financial_line'),
     ('adempiere', 'c_allocationline', 'baobab_protect_completed_financial_line'),
     ('adempiere', 'c_acctschema', 'baobab_uncatalogued_finance_configuration'),
+    ('adempiere', 'c_acctschema_default', 'baobab_uncatalogued_finance_configuration'),
+    ('adempiere', 'c_acctschema_gl', 'baobab_uncatalogued_finance_configuration'),
     ('adempiere', 'c_elementvalue', 'baobab_uncatalogued_finance_configuration'),
     ('adempiere', 'c_validcombination', 'baobab_uncatalogued_finance_configuration'),
     ('adempiere', 'c_tax', 'baobab_uncatalogued_finance_configuration'),
     ('adempiere', 'c_tax_acct', 'baobab_uncatalogued_finance_configuration'),
     ('adempiere', 'c_bankaccount', 'baobab_uncatalogued_finance_configuration'),
+    ('adempiere', 'c_bankaccount_acct', 'baobab_uncatalogued_finance_configuration'),
     ('adempiere', 'fact_acct', 'baobab_immutable_history_no_truncate'),
     ('adempiere', 'gl_journal', 'baobab_immutable_history_no_truncate'),
     ('adempiere', 'gl_journalline', 'baobab_immutable_history_no_truncate'),
@@ -76,11 +79,14 @@ required_triggers(schema_name, relation_name, trigger_name) AS (
     ('adempiere', 'c_payselectionline', 'baobab_immutable_history_no_truncate'),
     ('adempiere', 'c_payselectioncheck', 'baobab_immutable_history_no_truncate'),
     ('adempiere', 'c_acctschema', 'baobab_immutable_history_no_truncate'),
+    ('adempiere', 'c_acctschema_default', 'baobab_immutable_history_no_truncate'),
+    ('adempiere', 'c_acctschema_gl', 'baobab_immutable_history_no_truncate'),
     ('adempiere', 'c_elementvalue', 'baobab_immutable_history_no_truncate'),
     ('adempiere', 'c_validcombination', 'baobab_immutable_history_no_truncate'),
     ('adempiere', 'c_tax', 'baobab_immutable_history_no_truncate'),
     ('adempiere', 'c_tax_acct', 'baobab_immutable_history_no_truncate'),
-    ('adempiere', 'c_bankaccount', 'baobab_immutable_history_no_truncate')
+    ('adempiere', 'c_bankaccount', 'baobab_immutable_history_no_truncate'),
+    ('adempiere', 'c_bankaccount_acct', 'baobab_immutable_history_no_truncate')
 ),
 missing_migrations AS (
   SELECT m.filename FROM required_migrations m
