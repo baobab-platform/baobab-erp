@@ -39,7 +39,7 @@ BEGIN
   FOREACH t IN ARRAY ARRAY['gl_journal','c_invoice','c_payment','c_allocationhdr','m_inout','c_order',
                            'c_bankstatement','c_cash'] LOOP
     EXECUTE format('CREATE TABLE adempiere.%I (%I numeric(10) PRIMARY KEY, ad_client_id numeric(10) NOT NULL,
-      ad_org_id numeric(10) NOT NULL, docstatus char(2) NOT NULL DEFAULT ''DR'', issotrx char(1) NOT NULL DEFAULT ''Y'',
+      ad_org_id numeric(10) NOT NULL, docstatus char(2) NOT NULL DEFAULT ''DR'', posted char(1) NOT NULL DEFAULT ''N'', issotrx char(1) NOT NULL DEFAULT ''Y'',
       c_doctype_id numeric(10), dateacct date NOT NULL DEFAULT current_date)', t, t || '_id');
   END LOOP;
 END $$;
