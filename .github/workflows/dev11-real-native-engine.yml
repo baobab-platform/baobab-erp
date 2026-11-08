@@ -109,7 +109,7 @@ jobs:
         working-directory: trade-source
         run: npm ci
       - name: Set up Python 3.14 for isolated native ERP worker and audit
-        uses: actions/setup-python@06da6279cdbca41027908073e81a4544dc79c06b # v6
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v6
         with:
           python-version: "3.14"
       - name: Set up CP's exact Go major and minor from pinned go.mod
