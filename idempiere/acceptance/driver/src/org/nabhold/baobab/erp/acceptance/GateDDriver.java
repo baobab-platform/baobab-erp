@@ -241,7 +241,7 @@ public final class GateDDriver implements BundleActivator, Runnable {
             } else {
                 out.setProperty(prefix + "committed", String.valueOf(trx.commit(true)));
                 if (complete && post) {
-                    String err = DocumentEngine.postImmediate(ctx, client, GL_JOURNAL_TABLE, id, false, null);
+                    String err = NativePostReadback.postIfNeeded(ctx, client, "GL_Journal", GL_JOURNAL_TABLE, id);
                     out.setProperty(prefix + "post_error", String.valueOf(err));
                 }
             }
@@ -271,7 +271,7 @@ public final class GateDDriver implements BundleActivator, Runnable {
             out.setProperty("committed", String.valueOf(trx.commit(true)));
             if (ok) {
                 out.setProperty("post_error", String.valueOf(
-                        DocumentEngine.postImmediate(ctx, CLIENT, GL_JOURNAL_TABLE, id, false, null)));
+                        NativePostReadback.postIfNeeded(ctx, CLIENT, "GL_Journal", GL_JOURNAL_TABLE, id)));
             }
         } catch (Exception failed) {
             trx.rollback();
@@ -295,7 +295,9 @@ public final class GateDDriver implements BundleActivator, Runnable {
         Properties ctx = context(11);
         try {
             out.setProperty("post_error", String.valueOf(
-                    DocumentEngine.postImmediate(ctx, CLIENT, GL_JOURNAL_TABLE, id, force, null)));
+                    force
+                        ? DocumentEngine.postImmediate(ctx, CLIENT, GL_JOURNAL_TABLE, id, true, null)
+                        : NativePostReadback.postIfNeeded(ctx, CLIENT, "GL_Journal", GL_JOURNAL_TABLE, id)));
         } catch (Exception failed) {
             out.setProperty("error", String.valueOf(failed.getMessage()));
         } finally {
