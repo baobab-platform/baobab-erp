@@ -1696,6 +1696,8 @@ class NativeFinancePostgresGateBTest {
                 "UPDATE adempiere.gl_journal SET docstatus = 'DR' WHERE gl_journal_id = " + journal,
                 "UPDATE adempiere.gl_journal SET docstatus = 'CL' WHERE gl_journal_id = " + journal,
                 "UPDATE adempiere.gl_journal SET c_doctype_id = 202 WHERE gl_journal_id = " + journal,
+                "UPDATE adempiere.gl_journal SET totaldr = totaldr + 10 WHERE gl_journal_id = " + journal,
+                "UPDATE adempiere.gl_journal SET totalcr = totalcr + 10 WHERE gl_journal_id = " + journal,
                 "DELETE FROM adempiere.gl_journal WHERE gl_journal_id = " + journal
         }) {
             try (Connection c = transaction(); Statement s = c.createStatement()) {
@@ -1732,6 +1734,8 @@ class NativeFinancePostgresGateBTest {
         int second = IDS.incrementAndGet();
         for (String mutation : new String[] {
                 "UPDATE adempiere.gl_journalline SET ad_org_id = 12 WHERE gl_journalline_id = " + line,
+                "UPDATE adempiere.gl_journalline SET amtacctdr = 99 WHERE gl_journalline_id = " + line,
+                "UPDATE adempiere.gl_journalline SET amtsourcecr = 99 WHERE gl_journalline_id = " + line,
                 "DELETE FROM adempiere.gl_journalline WHERE gl_journalline_id = " + line,
                 "INSERT INTO adempiere.gl_journalline "
                         + "(gl_journalline_id, gl_journal_id, ad_client_id, ad_org_id) VALUES ("
