@@ -256,6 +256,7 @@ jobs:
       - name: ERP-A scenarios
         env:
           BAOBAB_ENVIRONMENT: integration
+          BAOBAB_PEOPLE_EXPERIMENTAL_NATIVE: "1" # Schema-only native BP-04 proof; never production activation
           ERP_IMAGE: baobab-erp:gate-d
           CP_SRC: ${{ github.workspace }}/.erp-a/cp
           IAM_SRC: ${{ github.workspace }}/.erp-a/iam
