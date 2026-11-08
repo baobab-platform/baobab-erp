@@ -82,7 +82,7 @@ jobs:
 
   java21-native-finance:
     # Java 21 JDK + Maven 3.10 + source-target Java21 classfiles.
-    # The OSGi reactor's 39 JDBC Gate B tests intentionally skip without
+    # The OSGi reactor's 51 JDBC Gate B tests intentionally skip without
     # BAOBAB_NATIVE_TEST_JDBC_URL. Do not call the Java21 compatibility
     # proof complete based solely on the non-database build job above.
     # This is the REAL PostgreSQL 17 provider/COMMIT-fence fixture, not
@@ -147,7 +147,7 @@ jobs:
           mvn --batch-mode --no-transfer-progress -f idempiere/extensions
           -pl org.nabhold.baobab.erp.finance -am test
           -Dtest=NativeFinancePostgresGateBTest -Dsurefire.failIfNoSpecifiedTests=false -Dmaven.compiler.release=21
-      - name: Require all 39 native JDBC tests to execute, none skipped
+      - name: Require all 51 native JDBC tests to execute, none skipped
         run: >-
-          grep -q 'tests="39"[^>]*skipped="0"'
+          python3 -c 'import xml.etree.ElementTree as ET,sys; x=ET.parse(sys.argv[1]).getroot(); assert int(x.attrib["tests"]) == 51 and all(int(x.attrib[k]) == 0 for k in ("failures", "errors", "skipped")), x.attrib'
           idempiere/extensions/org.nabhold.baobab.erp.finance/target/surefire-reports/TEST-org.nabhold.baobab.erp.finance.NativeFinancePostgresGateBTest.xml
