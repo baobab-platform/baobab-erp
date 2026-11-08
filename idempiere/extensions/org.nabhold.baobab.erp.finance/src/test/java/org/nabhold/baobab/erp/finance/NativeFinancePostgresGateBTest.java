@@ -1859,4 +1859,80 @@ class NativeFinancePostgresGateBTest {
                     "native TRUNCATE guard must be installed AND enabled: " + relation);
         }
     }
+
+    @Test
+    void historicalNativeCompanyAndOrgIdentifiersCannotBeRecycledAfterClosure() throws Exception {
+        int company = IDS.incrementAndGet();
+        int org = IDS.incrementAndGet();
+        String placement = UUID.randomUUID().toString();
+        try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+            stmt.execute("INSERT INTO adempiere.ad_client (ad_client_id, isactive) VALUES (" + company + ", 'Y')");
+            stmt.execute("INSERT INTO adempiere.ad_org (ad_org_id, ad_client_id, isactive) VALUES ("
+                    + org + ", " + company + ", 'Y')");
+            stmt.execute("""
+                    INSERT INTO baobab_native.native_placement
+                      (placement_id,version,tenant_id,engine_instance_id,operating_organisation_id,
+                       legal_entity_id,market,ad_client_id,ad_org_id,effective_from,
+                       approved_by,checked_by,evidence_reference,erp_assignment_reference)
+                    VALUES ('%s',1,'tn_history01','ei_history01',
+                      '29e7e63e-78c2-4d49-94b8-2c8951bb8003',
+                      'LE-HISTORY01','UG',%d,%d,clock_timestamp()-interval '1 day',
+                      'History Maker','History Checker','synthetic:gate-b/history','synthetic:plan/history')
+                    """.formatted(placement, company, org));
+            // A one-time closure is allowed (ERP-owned legal-actor history);
+            // it must NOT permit reusing the original native identifiers.
+            stmt.execute("UPDATE baobab_native.native_placement SET effective_to = "
+                    + "clock_timestamp() + interval '1 second' WHERE placement_id = '" + placement + "'");
+            c.commit();
+        }
+        for (String mutation : new String[] {
+                "DELETE FROM adempiere.ad_org WHERE ad_org_id = " + org,
+                "UPDATE adempiere.ad_org SET ad_client_id = 97 WHERE ad_org_id = " + org,
+                "UPDATE adempiere.ad_org SET ad_org_id = " + IDS.incrementAndGet()
+                        + " WHERE ad_org_id = " + org,
+                "DELETE FROM adempiere.ad_client WHERE ad_client_id = " + company,
+                "UPDATE adempiere.ad_client SET ad_client_id = " + IDS.incrementAndGet()
+                        + " WHERE ad_client_id = " + company
+        }) {
+            try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+                SQLException refused = assertThrows(SQLException.class, () -> stmt.execute(mutation));
+                assertTrue(refused.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"),
+                        refused.getMessage());
+                c.rollback();
+            }
+        }
+        assertEquals(1, count("SELECT count(*) FROM baobab_native.native_placement "
+                + "WHERE placement_id='" + placement + "' AND effective_to IS NOT NULL"));
+        assertEquals(1, count("SELECT count(*) FROM adempiere.ad_client "
+                + "WHERE ad_client_id = " + company));
+        assertEquals(1, count("SELECT count(*) FROM adempiere.ad_org "
+                + "WHERE ad_org_id = " + org + " AND ad_client_id = " + company));
+        // Closed placement permits a separately governed deactivation, not
+        // historical identity recycling.
+        try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+            stmt.execute("UPDATE adempiere.ad_org SET isactive = 'N' WHERE ad_org_id = " + org);
+            stmt.execute("UPDATE adempiere.ad_client SET isactive = 'N' WHERE ad_client_id = " + company);
+            c.commit();
+        }
+        assertEquals(1, count("SELECT count(*) FROM adempiere.ad_client WHERE "
+                + "ad_client_id = " + company + " AND isactive = 'N'"));
+    }
+
+    @Test
+    void currentNativeCompanyCannotBeDeactivatedBehindOpenPlacement() throws Exception {
+        for (String mutation : new String[] {
+                "UPDATE adempiere.ad_org SET isactive='N' WHERE ad_org_id = 11",
+                "UPDATE adempiere.ad_client SET isactive='N' WHERE ad_client_id = 11"
+        }) {
+            try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+                SQLException denied = assertThrows(SQLException.class, () -> stmt.execute(mutation));
+                assertTrue(denied.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"), denied.getMessage());
+                c.rollback();
+            }
+        }
+        assertEquals(1, count("SELECT count(*) FROM adempiere.ad_org "
+                + "WHERE ad_org_id=11 AND ad_client_id=11 AND isactive='Y'"));
+        assertEquals(1, count("SELECT count(*) FROM adempiere.ad_client "
+                + "WHERE ad_client_id=11 AND isactive='Y'"));
+    }
 }
