@@ -44,6 +44,12 @@ class EvidenceSource(Protocol):
 @dataclass(frozen=True, slots=True)
 class ExternalEvidenceAdapter:
     """One privately configured provider endpoint and trusted signing key."""
+    # One adapter instance is bound to ONE employer account. The provider
+    # credential source must independently be configured for that account;
+    # a globally reusable vendor bearer is not employer authorisation.
+    tenant_id: str
+    legal_employer_id: str
+    jurisdiction: str
     provider_id: str
     endpoint: str
     key_id: str
@@ -58,9 +64,20 @@ class ExternalEvidenceAdapter:
 
     def read(self, *, selected: ProviderSelection, draft: PayrollDraft,
              evidence_ref: str, now: datetime) -> dict:
-        if selected.provider_id != self.provider_id or selected.source_of_record != "EXTERNAL":
+        if (selected.provider_id != self.provider_id or selected.source_of_record != "EXTERNAL"
+                or selected.tenant_id != self.tenant_id
+                or selected.legal_employer_id != self.legal_employer_id
+                or selected.jurisdiction != self.jurisdiction
+                or draft.tenant_id != self.tenant_id
+                or draft.legal_employer_id != self.legal_employer_id
+                or draft.statutory_jurisdiction != self.jurisdiction):
             raise ProviderSelectionDenied("Selected provider adapter mismatch")
         data = json.dumps({
+            "tenant_id": selected.tenant_id,
+            "legal_employer_id": selected.legal_employer_id,
+            "jurisdiction": selected.jurisdiction,
+            "binding_id": selected.binding_id,
+            "binding_revision": selected.binding_revision,
             "run_ref": draft.run_ref, "run_version": draft.version,
             "evidence_ref": evidence_ref,
         }, separators=(",", ":")).encode()
@@ -104,7 +121,8 @@ class SelectedCalculationVerifier:
     approval or payroll payment authority. It checks CP again on each call.
     """
 
-    def __init__(self, selector: CPProviderSelector, adapters: dict[str, EvidenceSource],
+    def __init__(self, selector: CPProviderSelector,
+                 adapters: dict[tuple[str, str, str, str], EvidenceSource],
                  statutory: StatutoryQualificationAuthority, *, draft_reader: PayrollDraftReader,
                  context_id: str, correlation_id: str, clock):
         self._selector = selector
@@ -140,7 +158,10 @@ class SelectedCalculationVerifier:
             legal_employer_id=draft.legal_employer_id,
             jurisdiction=draft.statutory_jurisdiction, now=now,
         )
-        adapter = self._adapters.get(selected.provider_id)
+        adapter = self._adapters.get((
+            selected.tenant_id, selected.legal_employer_id,
+            selected.jurisdiction, selected.provider_id,
+        ))
         if adapter is None:
             raise PayrollPolicyError("Selected payroll provider has no qualified adapter")
         received = adapter.read(selected=selected, draft=draft, evidence_ref=evidence_ref, now=now)

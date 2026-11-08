@@ -166,12 +166,14 @@ class PeopleBYOPTests(unittest.TestCase):
             "https://cp.example.test", self.tokens, self.cp_transport,
         )
         provider = source if source is not None else ExternalEvidenceAdapter(
+            "tn_synthetic01", "SYNTHETIC-EMPLOYER", "ZA",
             "provider_synthetic01", "https://hris.example.test",
             "provider-public-key-1", self.public, self.tokens,
             self.provider_transport,
         )
         return SelectedCalculationVerifier(
-            selector, {"provider_synthetic01": provider},
+            selector, {("tn_synthetic01", "SYNTHETIC-EMPLOYER",
+                        "ZA", "provider_synthetic01"): provider},
             witness if witness is not None else self.witness,
             draft_reader=self.store,
             context_id="ctx_synthetic01", correlation_id=CORRELATION,
@@ -194,6 +196,9 @@ class PeopleBYOPTests(unittest.TestCase):
         self.assertEqual(len(self.cp_calls), 1)
         self.assertEqual(self.cp_calls[0]["capability_key"], "payroll.evidence.attest")
         self.assertEqual(self.provider_calls[0], {
+            "tenant_id": "tn_synthetic01", "legal_employer_id": "SYNTHETIC-EMPLOYER",
+            "jurisdiction": "ZA", "binding_id": "bind_synthetic01",
+            "binding_revision": 3,
             "run_ref": "run_synthetic01", "run_version": 1, "evidence_ref": RECEIPT,
         })
         self.assertFalse(hasattr(result, "payment_authorization"))
@@ -275,6 +280,21 @@ class PeopleBYOPTests(unittest.TestCase):
             self.verify(self.adapter(witness=QualificationRegister()))
         with self.assertRaises(ProviderSelectionDenied):
             self.verify(self.adapter(source=NativeDraftOnlyAdapter()))
+
+    def test_external_adapter_is_employer_bound_even_when_provider_id_matches(self):
+        verifier = self.adapter()
+        adapter = verifier._adapters[(
+            "tn_synthetic01", "SYNTHETIC-EMPLOYER", "ZA", "provider_synthetic01",
+        )]
+        from people.providers.selection import ProviderSelection
+        selection = ProviderSelection(
+            "tn_other", "SYNTHETIC-EMPLOYER", "ZA", "payroll.evidence.attest",
+            "bind_synthetic01", "provider_synthetic01", 3, "EXTERNAL",
+            "qualification_synthetic01", NOW, NOW + timedelta(seconds=10),
+        )
+        with self.assertRaises(ProviderSelectionDenied):
+            adapter.read(selected=selection, draft=draft(), evidence_ref=RECEIPT, now=NOW)
+        self.assertEqual(self.provider_calls, [])
 
     def test_exact_draft_version_and_employer_required_before_cp(self):
         with self.assertRaises(PayrollPolicyError):
