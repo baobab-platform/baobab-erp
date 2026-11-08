@@ -34,7 +34,7 @@ BEGIN
      AND EXISTS (SELECT 1 FROM baobab_native.native_placement p
                   WHERE p.ad_org_id = OLD.ad_org_id
                     AND p.ad_client_id = OLD.ad_client_id
-                    AND p.effective_to IS NULL) THEN
+                    AND (p.effective_to IS NULL OR p.effective_to > clock_timestamp())) THEN
     RAISE EXCEPTION 'BAOBAB_NATIVE_FINANCE_DENIED: close native placement before deactivating AD_Org'
       USING ERRCODE = '42501';
   END IF;
@@ -61,7 +61,7 @@ BEGIN
   IF NEW.isactive IS DISTINCT FROM OLD.isactive
      AND EXISTS (SELECT 1 FROM baobab_native.native_placement p
                   WHERE p.ad_client_id = OLD.ad_client_id
-                    AND p.effective_to IS NULL) THEN
+                    AND (p.effective_to IS NULL OR p.effective_to > clock_timestamp())) THEN
     RAISE EXCEPTION 'BAOBAB_NATIVE_FINANCE_DENIED: close all native placements before deactivating AD_Client'
       USING ERRCODE = '42501';
   END IF;
@@ -78,3 +78,13 @@ CREATE TRIGGER baobab_placed_ad_org_key_history_guard
 CREATE TRIGGER baobab_placed_ad_client_history_guard
   BEFORE UPDATE OF ad_client_id, isactive OR DELETE ON adempiere.ad_client
   FOR EACH ROW EXECUTE FUNCTION baobab_native.placed_ad_client_change_guard();
+
+-- PostgreSQL TRUNCATE bypasses every row-level deletion guard. Reuse
+-- N0012's unconditional immutable-history refusal for native identity
+-- catalogues. This must cover CASCADE as well as ordinary TRUNCATE.
+CREATE TRIGGER baobab_native_company_no_truncate
+  BEFORE TRUNCATE ON adempiere.ad_client
+  FOR EACH STATEMENT EXECUTE FUNCTION baobab_native.forbid_history_truncate();
+CREATE TRIGGER baobab_native_org_no_truncate
+  BEFORE TRUNCATE ON adempiere.ad_org
+  FOR EACH STATEMENT EXECUTE FUNCTION baobab_native.forbid_history_truncate();
