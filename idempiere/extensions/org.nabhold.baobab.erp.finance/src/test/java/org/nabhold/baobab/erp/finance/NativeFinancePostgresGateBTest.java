@@ -1882,7 +1882,7 @@ class NativeFinancePostgresGateBTest {
             // A one-time closure is allowed (ERP-owned legal-actor history);
             // it must NOT permit reusing the original native identifiers.
             stmt.execute("UPDATE baobab_native.native_placement SET effective_to = "
-                    + "clock_timestamp() + interval '1 second' WHERE placement_id = '" + placement + "'");
+                    + "clock_timestamp() WHERE placement_id = '" + placement + "'");
             c.commit();
         }
         for (String mutation : new String[] {
@@ -1934,5 +1934,46 @@ class NativeFinancePostgresGateBTest {
                 + "WHERE ad_org_id=11 AND ad_client_id=11 AND isactive='Y'"));
         assertEquals(1, count("SELECT count(*) FROM adempiere.ad_client "
                 + "WHERE ad_client_id=11 AND isactive='Y'"));
+    }
+
+    @Test
+    void plannedFuturePlacementClosureCannotDisableCurrentNativeCompany() throws Exception {
+        // A placement window with a future effective_to is STILL ACTIVE.
+        // Closure scheduling must never create an early-deactivation gap.
+        try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+            stmt.execute("UPDATE baobab_native.native_placement SET effective_to = "
+                    + "clock_timestamp() + interval '1 hour' "
+                    + "WHERE ad_client_id = 11 AND ad_org_id = 11 AND effective_to IS NULL");
+            for (String mutation : new String[] {
+                    "UPDATE adempiere.ad_org SET isactive='N' WHERE ad_org_id = 11",
+                    "UPDATE adempiere.ad_client SET isactive='N' WHERE ad_client_id = 11"
+            }) {
+                // Isolate each expected denial with JDBC savepoints; a refusal
+                // aborts only the savepoint, not the outer test transaction.
+                var savepoint = c.setSavepoint();
+                SQLException denied = assertThrows(SQLException.class, () -> stmt.execute(mutation));
+                assertTrue(denied.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"));
+                c.rollback(savepoint);
+            }
+            c.rollback(); // Keep the shared fixture's original open placement.
+        }
+        assertEquals(1, count("SELECT count(*) FROM baobab_native.native_placement "
+                + "WHERE ad_client_id=11 AND ad_org_id=11 AND effective_to IS NULL"));
+    }
+
+    @Test
+    void nativeCompanyAndOrgCannotBeTruncatedWithoutHistoricalCustody() throws Exception {
+        for (String relation : new String[] {"adempiere.ad_client", "adempiere.ad_org"}) {
+            try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+                SQLException denied = assertThrows(SQLException.class,
+                        () -> stmt.execute("TRUNCATE TABLE " + relation), relation);
+                assertTrue(denied.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"));
+                c.rollback();
+            }
+        }
+        assertEquals(1, count("SELECT count(*) FROM pg_trigger "
+                + "WHERE tgname='baobab_native_company_no_truncate' AND tgenabled='O'"));
+        assertEquals(1, count("SELECT count(*) FROM pg_trigger "
+                + "WHERE tgname='baobab_native_org_no_truncate' AND tgenabled='O'"));
     }
 }
