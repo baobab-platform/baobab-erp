@@ -9,6 +9,9 @@
 -- This does NOT mint an erp/v2 class for accounting configuration. Managed
 -- chart/tax/bank configuration must be performed BEFORE a legal client is
 -- placed, or after a separately reviewed Shared/CP-native governance change.
+-- Include the real finance default assignment tables C_AcctSchema_Default,
+-- C_AcctSchema_GL and C_BankAccount_Acct. Guarding only their parent
+-- C_AcctSchema/C_BankAccount permits changing the posting defaults via SQL.
 -- Historical placement closure does not create a backdoor. System client 0
 -- release/configuration controls remain owned by the privileged deployment
 -- process and must be independently qualified at the release gate.
@@ -36,8 +39,9 @@ DECLARE
   config_table text;
 BEGIN
   FOREACH config_table IN ARRAY ARRAY[
-    'c_acctschema', 'c_elementvalue', 'c_validcombination',
-    'c_tax', 'c_tax_acct', 'c_bankaccount'
+    'c_acctschema', 'c_acctschema_default', 'c_acctschema_gl',
+    'c_elementvalue', 'c_validcombination',
+    'c_tax', 'c_tax_acct', 'c_bankaccount', 'c_bankaccount_acct'
   ] LOOP
     IF to_regclass('adempiere.' || config_table) IS NULL THEN
       RAISE EXCEPTION 'N0011 requires real iDempiere accounting configuration table: %',
