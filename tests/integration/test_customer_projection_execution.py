@@ -136,8 +136,14 @@ class CustomerProjectionTests(_Base):
 
         self.assertEqual((report["pass"], report["codes"]), ({"processed": 1}, {"CREATED": 1}))
         [(native_id, fields)] = self.partner_records().items()
+        from customers.payload import native_search_key, parse_customer_projected
+
         self.assertEqual({k: fields[k] for k in ("Name", "Value", "IsCustomer", "IsActive", "C_BP_Group_ID")},
-                         {"Name": "Example Importer", "Value": self.customer, "IsCustomer": True, "IsActive": True, "C_BP_Group_ID": 9})
+                         {"Name": "Example Importer",
+                          "Value": native_search_key(self.tenant, parse_customer_projected(self.projected()["data"])),
+                          "IsCustomer": True, "IsActive": True, "C_BP_Group_ID": 9})
+        self.assertEqual(len(fields["Value"]), 40)
+        self.assertNotEqual(fields["Value"], self.customer)
         self.assertIn(self.tenant, fields["Description"])  # the marker that makes an uncertain create recoverable
         native, digest, version = self.mapping()
         self.assertEqual((native, version), (native_id, "1"))
