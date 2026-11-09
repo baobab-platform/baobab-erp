@@ -41,6 +41,8 @@ class PostgresInventoryMappings:
                 "SELECT w.legal_entity_id, w.native_id FROM baobab.erp_warehouse w "
                 "JOIN baobab.tenant_mapping tm ON tm.tenant_id = w.tenant_id AND tm.entity_id = w.legal_entity_id "
                 "AND tm.status = 'active' AND tm.engine_instance_id = w.engine_instance_id "
+                "AND tm.effective_from <= CURRENT_TIMESTAMP "
+                "AND (tm.effective_to IS NULL OR tm.effective_to > CURRENT_TIMESTAMP) "
                 "WHERE w.tenant_id = %s AND w.erp_resource_id = %s AND w.status = 'active' AND w.native_id IS NOT NULL",
                 (tenant_id, erp_warehouse_id))
             row = cursor.fetchone()
@@ -50,7 +52,10 @@ class PostgresInventoryMappings:
         with self._connection.cursor() as cursor:
             cursor.execute(
                 "SELECT ad_client_id, engine_instance_id FROM baobab.tenant_mapping "
-                "WHERE tenant_id = %s AND entity_id = %s AND status = 'active'", (tenant_id, legal_entity_id))
+                "WHERE tenant_id = %s AND entity_id = %s AND status = 'active' "
+                "AND effective_from <= CURRENT_TIMESTAMP "
+                "AND (effective_to IS NULL OR effective_to > CURRENT_TIMESTAMP) "
+                "AND ad_client_id > 0", (tenant_id, legal_entity_id))
             tenant = cursor.fetchone()
             if tenant is None or tenant[1] is None:
                 return None
