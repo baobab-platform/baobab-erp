@@ -1,15 +1,17 @@
 # ADR-ERP-024 — Baobab WMS and 3PL Provider-Neutral Capability Architecture
 
-**Status:** Proposed for Platform Owner ratification; normative SHALL requirements upon acceptance; **not an implementation or activation approval**  
+**Status:** **Accepted — authoritative ERP-local WMS/3PL capability architecture**, approved by the Baobab Platform Owner on 2026-11-09. Shared contracts, provider qualification, native implementation, regulated operating approval and staging/production activation remain separately governed and pending.  
 **Date:** 2026-11-09  
 **Repository:** baobab-platform/baobab-erp  
 **Capability name:** baobab-wms  
 **Decision class:** ERP / Warehouse Execution / Third-Party Logistics / Provider Neutrality / Inventory Custody / Cross-Engine Integration / Quality Assurance  
 **Decision owner:** Baobab Platform Enterprise Architecture / Platform Owner  
+**Approval record:** Explicit Platform Owner direction, 2026-11-09, amending and accepting ADR-ERP-024 within baobab-erp PR #152.  
+**Architectural precedent:** Accepted ADR-ERP-023 (Baobab People) establishes ERP-local, first-party capability ownership, selective native/adapted implementation, independent jurisdiction qualification and a provider-first contingency; this ADR applies the same provider-neutral engineering principle to the distinct WMS/3PL domain.  
 **Primary consumers:** Nabhold Group operating entities, ZuriBeans, Thamani, independent Baobab tenants, authorised warehouse operators, depositor customers and logistics partners  
 **Governing baseline:** Accepted EA v2.3, EA-DEV, ADR-ERP-001–023 (notably 002/003/004/005/006/007/008/010/011/012/014/015/016/017/019/020/021/022); accepted TMS-0001/0002/0017/0020/0021; Shared canonical, context, inventory-ownership, provider, event and cross-engine-reference governance; IAM-0033 and accepted CP/IAM controls  
 **Decisions reserved:** Native WMS technology selection; certified default runtime; provider adoption; WMS-specific Shared operation keys and wire schemas; any new native financial-posting classes; vendor licences; regulated market release; staging/production activation  
-**Implementation baseline:** Design decision only. No new provider or warehouse capability is certified, no real client is onboarded, and no additional warehouse accounting authority is created by publishing this ADR.
+**Implementation baseline:** Accepted design decision, not a certification or deployment record. At acceptance, no WMS runtime, incumbent adapter, market-localisation package, real operator or financial posting path is qualified by this ADR. Any technical implementation requires witnessed evidence under Sections 17–19 and ERP-020.
 
 ---
 
@@ -29,7 +31,11 @@ The capability SHALL combine:
 6. Internationally interoperable identification, tracking, EDI, auditability and quality-assurance practices, activated per certified capability; and
 7. PostgreSQL 17-backed canonical operational state, durable event custody, reconciliation, independent evidence and service-level qualification where Baobab owns the corresponding execution component.
 
-**The technology used to execute Baobab-managed WMS operations is deliberately undecided.** A dedicated follow-up architecture and engineering assessment SHALL compare an iDempiere-native/custom extension against suitable independently deployable open-source warehouse runtimes. No external product, native engine or architectural option shall be silently declared the default before that selection and a witnessed certification. Keeping the capability within baobab-erp does not require every WMS worker to execute inside the iDempiere JVM.
+**Provider-neutrality is binding, not a migration aspiration.** Consistent with the approved Baobab People architectural pattern (ADR-ERP-023), Baobab-wms SHALL be a first-party, ERP-owned product capability rather than a vendor-defined product or a compulsory replacement for tenants' existing systems. Tenants operating an acceptable incumbent WMS SHALL be able to retain that product and connect it to Baobab ERP through Baobab-wms's certified integration contracts, scoped provider adapters and reconciliation controls, without purchasing or installing a second warehouse execution engine. No incumbent product receives Baobab ERP accounting authority merely by connection.
+
+For tenants without an adequate existing WMS, Baobab SHALL offer a first-party, Baobab-managed **headless WMS execution option once independently qualified**. Its implementation SHALL be chosen by a dedicated comparative technical assessment of (a) configuring and extending iDempiere's native warehouse/inventory facilities and (b) implementing a Baobab-owned headless WMS component or selecting a sufficiently capable open-source warehouse execution runtime behind the same contracts. These are research alternatives, **not a selection or a declaration of existing functionality**. The iDempiere-native option is an extension candidate because the accepted ERP architecture already owns mapped warehouse, locator, inventory and material accounting records; those accounting facilities do not establish the completeness of advanced WMS or multi-client 3PL execution. Any selected option SHALL respect ADR-ERP-004's no-iDempiere-core-fork policy, source/licence obligations and independently proven compatibility. Hosting the capability in baobab-erp does not require each WMS executor or worker to run inside the iDempiere JVM.
+
+**Market and jurisdiction neutrality is equally binding.** Core warehouse semantics, provider ports, object identity and event contracts SHALL remain jurisdiction-independent. Country/market-specific requirements SHALL be delivered as separately governed, versioned and effective-dated localisation policies and capability packs, backed by qualified local legal and operational evidence, rather than per-tenant forks or blanket claims of Africa-wide regulatory compliance.
 
 **Quality rule:** Baobab SHALL establish measured functional, security, reliability, operational and interoperability parity with leading relevant international warehouse/3PL systems for every capability it claims to offer, and SHALL seek demonstrable superiority where it can be measured. Marketing claims of parity or superiority without representative, reproducible comparative evidence are PROHIBITED.
 
@@ -40,6 +46,8 @@ Accepted ADR-ERP-015 recognises iDempiere as authoritative for financially conse
 These decisions require a coherent WMS boundary, but do not themselves deliver a full enterprise warehouse/3PL runtime. Without one, the platform risks presenting iDempiere warehouse configuration, Trade availability, TMS carrier status and a third-party warehouse's operational records as if they were the same stock truth.
 
 Baobab also serves distinct business models: owner-operated storage, outsourced fulfilment, a warehouse operator holding another company's goods, multiple depositor customers in one facility, group subsidiaries with separate legal ownership, and independent external tenants retaining preferred incumbent systems. Any architecture that assumes one tenant equals one warehouse, owner, operator, market, provider or ledger is unacceptable.
+
+ADR-ERP-023 supplies a proven **governance design precedent**, not warehouse software evidence: People keeps canonical product ownership inside baobab-erp, evaluates candidate component reuse independently, preserves qualified third-party providers and qualifies jurisdictional rules separately. Baobab-wms SHALL use that same architectural discipline without importing payroll-specific functionality or asserting that a suitable WMS executor has already been found.
 
 The objective is not a cosmetic inventory dashboard. It is verified execution of complex physical work with lawful financial consequences, customer isolation, real contractual 3PL services and high-confidence reconciliation.
 
@@ -152,11 +160,19 @@ A native execution binding SHALL contain, at minimum:
 - provenance, terms/licence status, policy and certification evidence;
 - owner of native operational data, recovery support and exit/export capability.
 
-Selection SHALL be deterministic and **per operation, facility, customer/owner scope and capability**, not an unconditional one-provider-per-tenant setting. Prefer the tenant's verified incumbent binding; otherwise offer a separately qualified Baobab-managed native option. If no option qualifies, return **NO_CERTIFIED_PROVIDER**; do not choose an untested fallback.
+Selection SHALL be deterministic and **per operation, facility, customer/owner scope and capability**, not an unconditional one-provider-per-tenant setting. An already selected and verified tenant incumbent SHALL remain eligible without a compulsory product migration. Where the tenant has no suitable incumbent, offer the **independently certified Baobab-managed option** after its selection and qualification. If no option qualifies, return **NO_CERTIFIED_PROVIDER**; do not choose an untested native ERP feature, simulated provider, unverified adapter or automatic replacement.
 
 No committed work order may switch execution provider merely because the selected provider times out. Provider suspension requires fencing new commands, preserving history, reconciled in-flight ownership and an approved cutover plan. A provider's local user, account, organisation or warehouse is not a Baobab Tenant, Principal, LegalEntity or financial AD_Client.
 
-**Native technology selection is postponed.** It SHALL be the subject of a later independent alternatives assessment with capability-fit, licence, security, maintainability, upgrade, total-cost, iDempiere 13 compatibility, PostgreSQL 17 compatibility, runtime isolation and operational acceptance evidence. This ADR selects the **portable boundary**, not the implementation product.
+**Native technology selection is reserved.** A follow-up, separately reviewed selection record SHALL compare iDempiere configuration/extension, first-party custom headless development and suitable independently deployable open-source WMS software. Evaluation SHALL use a common evidence matrix: receiving, storage, RF/mobile scanning, lot/serial, FEFO, inventory accuracy, pick/pack/ship, shared-facility 3PL, billing events, technical architecture, licences, maintainers, security, operability, upgrade strategy, total cost, iDempiere 13 integration, PostgreSQL 17 where applicable, provider isolation, export and recovery. Each option SHALL be evaluated on demonstrated capabilities and unsupported gaps, not feature labels. Where third-party source code is reused, teams SHALL maintain an **adopt / adapt / replace / independently develop** component decision register with licence, upstream commit, provenance, patch ownership and retirement criteria. This ADR selects the **portable WMS boundary and qualification framework**, not the executor. An iDempiere internal WMS facility or a product's own installation is not automatic proof of an enterprise WMS or 3PL service.
+
+### 9.1 Per-market localisation without product fragmentation
+
+Localisation SHALL be scoped by jurisdiction, market, legal entity and the operation actually regulated; a Baobab Market identifier by itself is not proof of the applicable warehouse law, customs regime, dangerous-goods restrictions or contractual service rules. Approved rule packs MAY configure warehouse-document obligations, bonded or customs-controlled release restrictions, accepted measurement/UOM formats, traceability and product-quality regimes, labelling, warehouse-service taxation, retention/residency constraints, and regional interoperability profiles. Software-defined policy SHALL preserve the source authority, effective period, version, approval and applicable facility/contract. A private customer configuration SHALL NOT purport to override law or create regulatory approval.
+
+**Initial jurisdictions:** Uganda and South Africa are the starting integration/qualification contexts, not a presumption that every warehouse operation is lawful or identical in both. Each regulated WMS action and localisation pack SHALL be separately qualified using current primary legal sources, verified professional interpretation where necessary, and test fixtures covering the correct historical and current periods. For example, a bonded release in one jurisdiction must not gain authority because a non-bonded warehouse workflow was certified in another. Unqualified markets or regulated operations SHALL fail closed while ordinary permitted capability remains available under a valid scope.
+
+**No vendor-specific localisation lock-in:** Canonical API and event semantics SHALL be stable across native and incumbent providers. Provider-specific field/EDI translations belong in the adapter; legally meaningful differences belong in the approved rule pack. Extension or replacement of a provider SHALL NOT require rewriting a market's legal rule definition or a depositor's financial identity.
 
 ## 10. Three-party legal and 3PL accounting model
 
@@ -301,9 +317,9 @@ The programme SHALL distinguish architectural approval from engineering completi
 | Gate | Required independent proof |
 | --- | --- |
 | **WMS-00 Architecture** | Approved ADR, ownership/authority matrix, Shared changes, CP/IAM entitlement and identified legal/service relationships |
-| **WMS-01 Native options research** | Independent iDempiere extension versus open-source runtime fit-gap, licence, security, ecosystem, maintenance, upgrades and witnessed prototype; **no predetermined winner** |
+| **WMS-01 Native options research** | Explicit three-path comparative decision: iDempiere configuration/extension, Baobab-owned custom headless WMS, and suitable open-source WMS runtimes. Execute a common functional/3PL/technical scorecard, licence/security/maintenance/upgrade review and witnessed integration prototype. Record component adopt/adapt/replace decision, **without a predetermined winner** |
 | **WMS-02 Canonical domain and identity** | PostgreSQL 17 migrations; owner/operator/customer/facility semantics; correct UOM/lot/SSCC and ambiguous/expired mapping refusals |
-| **WMS-03 Provider neutrality** | At least two interchangeably exercised provider adapters (one may be a controlled test provider), incumbent-preservation case, scoped credentials, revocation, binding pinning, failover UNKNOWN and migration/export |
+| **WMS-03 Provider neutrality** | Demonstrate a tenant keeping an existing WMS unchanged at its execution core and linking through a certified adapter; compare with the Baobab-managed option behind the same canonical contract. Exercise at least two adapter implementations (one may be a controlled test provider for development, but it cannot certify a real incumbent), scoped credentials, revocation, binding pinning, failover UNKNOWN and migration/export |
 | **WMS-04 Inbound and storage** | ASN → arrival → partial/damaged receipt → QC hold → bin putaway; independent stock/handling-unit readback and wrong-owner negatives |
 | **WMS-05 Outbound and returns** | Authorised pick → pack → load/handoff; shortage, quarantine, FEFO/lot, cancel, returns, disputed handoff and no duplicate dispatch |
 | **WMS-06 Inventory reconciliation** | Independently compare provider observations, warehouse ledger, native ERP posting, Trade reservation and physical-count variance; block unsafe availability |
@@ -322,11 +338,11 @@ No test harness, synthetic credential or generated account may be represented as
 
 ## 19. Implementation waves and cross-repository dependencies
 
-**Wave A — Normative specification:** accept this ADR and reconcile explicit amendments with ERP-014/015, TMS-0017/0020/0021, Shared warehouse and inventory-ownership contracts, CP provider/isolation/binding controls and IAM. Publish a capability/operation catalogue proposal; do not activate unapproved keys.
+**Wave A — Accepted architecture reconciliation:** implement this accepted ADR's consequential changes through explicitly governed companion work in ERP-014/015, TMS-0017/0020/0021, Shared warehouse/inventory-ownership contracts, CP provider/isolation/binding controls and IAM. Publish proposed capability/operation keys through Shared; do not activate unapproved keys. Maintain the distinction between accepting this decision and qualifying its implementation.
 
 **Wave B — Technology-neutral kernel:** implement WMS domain, PostgreSQL schema, canonical API/event surface, state machine, immutable source observations, operational role matrix and integration test harness inside baobab-erp.
 
-**Wave C — Native-executor research and bounded prototype:** evaluate the iDempiere-native extension option and competing open-source warehouse runtime options with the same feature and isolation test suite; make a separate recorded decision choosing the initial certified Baobab-managed execution solution. Do not let the first prototype dictate Shared contracts.
+**Wave C — Executor selection and bounded prototype:** compare the iDempiere configuration/native extension route, a Baobab-owned headless implementation and credible open-source WMS runtime candidates under the same warehouse/3PL, integration, localisation, cost, legal/licence, security, recovery and isolation scorecard. Record the selected implementation as a separate decision only on independently inspected evidence. No candidate, including native iDempiere facilities, SHALL dictate the Shared domain or bypass certification.
 
 **Wave D — Real inbound/outbound and incumbent adapter:** qualify at least one real warehouse execution path and a provider-neutral alternative; prove tenant retaining an incumbent without replacing its system of record.
 
@@ -345,7 +361,9 @@ Provider export SHALL be available in documented canonical forms, subject to con
 ## 21. Rejected alternatives and shortcuts
 
 - A new **independent Baobab WMS platform repository/engine**: rejected for this decision. The WMS capability belongs under baobab-erp, even when its execution process or external provider is independently deployed.
-- A single mandatory warehouse vendor for all tenants: rejected; provider eligibility and tenant choice are governed.
+- A single mandatory warehouse vendor for all tenants, or forcing existing customer WMS migrations to activate Baobab ERP: rejected; provider eligibility, canonical integration and tenant choice are governed.
+- Declaring iDempiere's inventory and warehouse tables to be a complete international-grade WMS/3PL execution solution without native workflow and multi-customer operational proof: rejected.
+- Preselecting a custom build or an open-source WMS executor before comparative assessment: rejected.
 - Treating a warehouse provider's customer/organisation identity as a Baobab Tenant or LegalEntity: rejected.
 - Treating WMS on-hand or provider inventory as iDempiere financially posted inventory: rejected.
 - Treating a TMS delivery milestone as a bin transaction or a warehouse scan as legal title transfer: rejected.
@@ -371,8 +389,8 @@ The choice to remain within baobab-erp is a governance and repository ownership 
 This ADR's implementation SHALL be considered **engineering-complete** only after:
 
 1. Accepted ownership, legal/custody and provider-neutrality contracts exist and are enforced;
-2. The selected Baobab-managed runtime has passed separate technology-selection and operation-certification gates;
-3. Tenant/incumbent providers can be onboarded, scoped, queried, suspended and exited without identity or ownership corruption;
+2. A separate independently reviewed technology decision has assessed iDempiere extension, custom headless implementation and viable open-source alternatives, and the selected Baobab-managed runtime has passed operation-certification gates;
+3. Tenants with qualified incumbent providers can retain and integrate those systems without compelled migration; provider bindings can be onboarded, scoped, queried, suspended, revoked and exited without identity, ownership or warehouse-operation corruption;
 4. Native ERP/WMS/Trade/TMS boundaries demonstrate no unauthorised financial/stock/carrier effects;
 5. Receiving, QC, bin, pick, pack, dispatch, count and exception scenarios have durable independent readback;
 6. Two unrelated 3PL customers/stock owners are isolated within a real shared-operator test and service billing is reconciled;
@@ -385,7 +403,7 @@ This ADR's implementation SHALL be considered **engineering-complete** only afte
 
 ## 24. Governing statement
 
-> **Baobab-wms SHALL be an internationally competitive, provider-neutral warehouse and 3PL execution capability housed within baobab-erp. It SHALL turn verified physical warehouse activity into traceable, legally scoped business evidence; it SHALL neither replace the financial truth of iDempiere nor the commercial truth of Trade, transport truth of TMS, or legal authority of CP and responsible parties. A customer's existing capable warehouse provider is an integration choice—not a defect to be designed away.**
+> **Baobab-wms SHALL be an internationally competitive, first-party, provider-neutral and market-extensible warehouse and 3PL capability housed within baobab-erp. It SHALL provide one canonical enterprise contract across independently certified Baobab-managed warehouse execution and customer-retained incumbent WMS providers. No Baobab-managed executor is preselected: extending iDempiere warehouse capabilities, building a headless component and qualifying open-source WMS runtimes remain subject to dedicated comparative research. It SHALL turn verified physical warehouse activity into traceable, legally scoped business evidence without replacing the financial truth of iDempiere, the commercial truth of Trade, the transport truth of TMS, or the legal authority of CP and responsible parties. A customer's competent existing warehouse provider is a supported integration choice—not a migration target by default.**
 
 Quality is demonstrated through complete execution, verified isolation, accounting integrity, interoperable identifiers, lawful custody, measurable performance and independently repeatable evidence.
 
@@ -393,7 +411,7 @@ Quality is demonstrated through complete execution, verified isolation, accounti
 
 **Baobab architecture**
 
-- ERP-014: Master-data and attribute authority; ERP-015: Warehouse/inventory/3PL architecture; ERP-008/022: Financial and posting authority; ERP-020: Conformance/evidence.
+- ERP-014: Master-data and attribute authority; ERP-015: Warehouse/inventory/3PL architecture; ERP-008/022: Financial and posting authority; ERP-020: Conformance/evidence; ERP-023: ERP-local first-party capability, provider-neutrality and market-specific qualification precedent.
 - TMS-0017: Cargo custody and warehouse handoff; TMS-0020/0021: Hybrid provider adoption and provider lifecycle.
 - Shared contracts: inventory-ownership/v1, erp/v1 warehouse and inventory availability, CP context, canonical events, capability provider and cross-engine references. These are existing contracts, not automatically revised by this ADR.
 
@@ -403,7 +421,7 @@ Quality is demonstrated through complete execution, verified isolation, accounti
 - GS1 EPCIS 2.0.1 — https://ref.gs1.org/standards/epcis/2.0.1/
 - GS1 CBV 2.0 — https://ref.gs1.org/standards/cbv/2.0.0/
 - ASC X12 transaction catalogue — https://x12.org/products/transaction-sets
-- ISO 9001:2026 — https://committee.iso.org/standard/9001
+- ISO 9001:2026 (published 2026-09-16; official edition-status record) — https://www.iso.org/standard/9001
 - ISO/IEC 27001:2022; ISO 28000:2022; ISO 22301:2019; ISO 45001:2018 — https://www.iso.org/management-system-standards-list.html
 - OWASP API Security Top 10 — https://owasp.org/API-Security/
 
@@ -411,4 +429,4 @@ Quality is demonstrated through complete execution, verified isolation, accounti
 
 ---
 
-**Disposition:** Proposed for architecture owner acceptance. No native technology selected, no WMS provider certified, no Shared operation key activated, no protected release approved.
+**Disposition:** **ACCEPTED — Platform Owner, 2026-11-09.** This ADR is binding ERP-local architecture. The technology selection, production-capable WMS implementation, provider-by-provider certification, Shared capability/operation registration, jurisdictional release and staging/production activation remain **PENDING** and must be authorised and evidenced independently.
