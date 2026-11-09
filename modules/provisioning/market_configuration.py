@@ -57,6 +57,16 @@ def parse_deployment_configuration(document: Any) -> DeploymentConfiguration:
     environment = document.get("target_environment")
     if not isinstance(environment, str) or not environment.strip() or environment.startswith(_PLACEHOLDER):
         raise MarketConfigurationError("target_environment must be set (no placeholder)")
+    environment = environment.strip()
+    # A DRAFT template with every REQUIRED_* string replaced is still DRAFT.
+    # A self-reported "approved" string is never sufficient business authority:
+    # CP plan authority, verified Finance baseline and independent localisation
+    # certification remain separate mandatory runtime checks.
+    status = document.get("status")
+    if not isinstance(status, str) or status not in {"approved", "draft-not-approved"}:
+        raise MarketConfigurationError("deployment configuration status must be explicit and recognised")
+    if environment in {"staging", "production"} and status != "approved":
+        raise MarketConfigurationError("protected ERP deployment configuration is not approved")
     placements = document.get("native_placements", {})
     if not isinstance(placements, Mapping):
         raise MarketConfigurationError("native_placements must be an object keyed by canonical legal entity id")
