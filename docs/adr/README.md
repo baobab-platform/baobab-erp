@@ -40,3 +40,7 @@ engine. Kept for history; do not follow them for new work.
 - [ADR-ERP-023: Baobab People — African workforce, payroll, CDSoftware re-engineering and PostgreSQL 17](ADR-ERP-023%20%E2%80%94%20Baobab%20People%20African%20Workforce%2C%20Payroll%2C%20CDSoftware%20Re-engineering%20and%20PostgreSQL%2017.md)
 
 See `architecture/conformance.yaml` for how far each of these is actually implemented.
+
+## Proposed — awaiting Platform Owner ratification
+
+- [ADR-ERP-024: Baobab WMS and 3PL provider-neutral capability architecture](ADR-ERP-024%20%E2%80%94%20Baobab%20WMS%20and%203PL%20Provider-Neutral%20Capability%20Architecture.md) — first-class baobab-wms capability within baobab-erp; native runtime selection, provider certification, cross-engine Shared contracts and protected release remain separate gates. Not accepted or implemented merely by publication.
