@@ -67,7 +67,11 @@ class PostgresMappingStoreTests(unittest.TestCase):
         self.assertNotIn(self.canonical_id, store.active_canonical_ids(self.tenant_id, "Party"))
         historical = store.get_mapping(self.tenant_id, mapping_id)
         self.assertIsNotNone(historical)
-        self.assertEqual(historical.canonical_reference.resource_id, self.canonical_id)
+        # Legacy ERP projection does not invent a canonical_owner. Its
+        # historical row identity and validity must nevertheless remain readable.
+        self.assertEqual(historical.mapping_id, mapping_id)
+        self.assertIsNone(historical.canonical_reference)
+        self.assertIsNotNone(historical.effective_to)
 
     def test_future_mapping_is_not_current_and_bounded_present_is_current(self):
         self._insert_mapping()
