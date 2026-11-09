@@ -154,9 +154,19 @@ def _load_idempiere_credentials() -> dict[int, IdempiereCredentials]:
     raw = os.environ.get("IDEMPIERE_CLIENT_CREDENTIALS_JSON")
     if not raw:
         return {}
+    declared = json.loads(raw)
+    if not isinstance(declared, dict):
+        raise RuntimeError("native iDempiere credentials must be keyed by AD_Client_ID")
     parsed: dict[int, IdempiereCredentials] = {}
-    for ad_client_id, fields in json.loads(raw).items():
-        parsed[int(ad_client_id)] = IdempiereCredentials(
+    for raw_client_id, fields in declared.items():
+        if not isinstance(raw_client_id, str) or not raw_client_id.isascii() or not raw_client_id.isdecimal():
+            raise RuntimeError("native credential keys must be positive decimal AD_Client_IDs")
+        ad_client_id = int(raw_client_id)
+        if ad_client_id <= 0 or str(ad_client_id) != raw_client_id or ad_client_id in parsed:
+            raise RuntimeError("native credential client key is invalid or ambiguous")
+        if not isinstance(fields, dict) or int(fields["client_id"]) != ad_client_id:
+            raise RuntimeError("native credential AD_Client_ID must equal the configured lookup key")
+        parsed[ad_client_id] = IdempiereCredentials(
             base_url=fields["base_url"],
             username=fields["username"],
             password=fields["password"],
@@ -641,10 +651,19 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                 return False
             return True
 
-        def _build_idempiere_client(self, ad_client_id: int):
+        def _build_idempiere_client(self, ad_client_id: int, ad_org_id: int):
+            """Never let a configured service login widen the resolved ERP company/org scope.
+
+            AD_Client key equality is checked at configuration load and checked
+            again here for programmatic/injected configurations. AD_Org=0 is
+            native client-level scope, *not* permission for another legal entity.
+            """
             credentials = config.idempiere_credentials_by_ad_client.get(ad_client_id)
-            if credentials is None:
-                return UnconfiguredIdempiereClient(IdempiereEndpoint(base_url="(unconfigured)", ad_client_id=ad_client_id, ad_org_id=0))
+            if (credentials is None or ad_client_id <= 0 or ad_org_id < 0
+                    or credentials.client_id != ad_client_id or credentials.organization_id != ad_org_id):
+                return UnconfiguredIdempiereClient(
+                    IdempiereEndpoint(base_url="(unconfigured native context)",
+                                      ad_client_id=ad_client_id, ad_org_id=ad_org_id))
             return RestIdempiereClient(credentials)
 
         def _process_ids_or_503(self):
@@ -683,7 +702,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                     scope = self._resolve_tenant_scope(connection, body)
                     if scope is None:
                         return
-                    idempiere = self._build_idempiere_client(scope.ad_client_id)
+                    idempiere = self._build_idempiere_client(scope.ad_client_id, scope.ad_org_id)
                     mappings = PostgresCanonicalMappingStore(connection)
                     ref = order_to_cash.create_sales_order(
                         scope=scope,
@@ -729,7 +748,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                     scope = self._resolve_tenant_scope(connection, body)
                     if scope is None:
                         return
-                    idempiere = self._build_idempiere_client(scope.ad_client_id)
+                    idempiere = self._build_idempiere_client(scope.ad_client_id, scope.ad_org_id)
                     mappings = PostgresCanonicalMappingStore(connection)
                     ref = order_to_cash.create_shipment(
                         scope=scope, shipment_canonical_id=body["shipment_canonical_id"],
@@ -769,7 +788,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                     scope = self._resolve_tenant_scope(connection, body)
                     if scope is None:
                         return
-                    idempiere = self._build_idempiere_client(scope.ad_client_id)
+                    idempiere = self._build_idempiere_client(scope.ad_client_id, scope.ad_org_id)
                     mappings = PostgresCanonicalMappingStore(connection)
                     ref = order_to_cash.create_customer_invoice(
                         scope=scope, commerce_order_canonical_id=body["commerce_order_canonical_id"],
@@ -810,7 +829,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                     scope = self._resolve_tenant_scope(connection, body)
                     if scope is None:
                         return
-                    idempiere = self._build_idempiere_client(scope.ad_client_id)
+                    idempiere = self._build_idempiere_client(scope.ad_client_id, scope.ad_org_id)
                     mappings = PostgresCanonicalMappingStore(connection)
                     ref = order_to_cash.create_payment(
                         scope=scope, payment_canonical_id=body["payment_canonical_id"],
@@ -852,7 +871,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                     scope = self._resolve_tenant_scope(connection, body)
                     if scope is None:
                         return
-                    idempiere = self._build_idempiere_client(scope.ad_client_id)
+                    idempiere = self._build_idempiere_client(scope.ad_client_id, scope.ad_org_id)
                     mappings = PostgresCanonicalMappingStore(connection)
                     outbox = PostgresOutboxStore(connection)
                     order_to_cash.allocate_payment(
@@ -892,7 +911,7 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
                     scope = self._resolve_tenant_scope(connection, body)
                     if scope is None:
                         return
-                    idempiere = self._build_idempiere_client(scope.ad_client_id)
+                    idempiere = self._build_idempiere_client(scope.ad_client_id, scope.ad_org_id)
                     mappings = PostgresCanonicalMappingStore(connection)
                     outbox = PostgresOutboxStore(connection)
                     run(scope, idempiere, mappings, outbox, process_ids, correlation_id, PostgresOrderConsequenceStore(connection),
