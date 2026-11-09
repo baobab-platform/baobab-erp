@@ -448,8 +448,14 @@ def make_handler(config: Config, key_resolver: SigningKeyResolver | None = None)
             self._error(404, "not found")
 
         def _query_param(self, query: dict, name: str) -> str | None:
+            """Refuse ambiguous identity and native-routing query parameters.
+
+            Repeating a parameter (even with identical values) is never a
+            valid authority-bearing context. Fail closed rather than adopting
+            the first value, whose interpretation may differ at another hop.
+            """
             values = query.get(name)
-            return values[0] if values else None
+            return values[0] if values and len(values) == 1 else None
 
         def _handle_context_resolve(self, query: dict) -> None:
             tenant_id = self._query_param(query, "tenant_id")
