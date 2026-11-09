@@ -293,13 +293,52 @@ VALUES (gen_random_uuid(), 'SYNTHETIC_ENGINE_LOCAL', '{PLACEMENT}', 1, '{self.st
                     bool(al) and self.q(f"SELECT docstatus FROM c_allocationhdr WHERE c_allocationhdr_id = {al}") == "CO"
                     and self.cp_backed("C_AllocationHdr", al, PA), json.dumps(r))
 
-        # S07: retry after commit and a forced background repost under authority: no duplicate ledger or costing.
-        f0, c0 = self.facts(T_INOUT, rc or 0), self.cost_rows(lines)
-        self.repost("M_InOut", rc)
-        rf = self.repost("M_InOut", rc, force=True)
-        ev.scenario("S07", "receipt retry and forced repost: ledger rebuilt balanced, costing not duplicated",
-                    bool(rc) and self.facts(T_INOUT, rc) == f0 and self.balanced(T_INOUT, rc) and self.cost_rows(lines) == c0,
-                    json.dumps(rf))
+        # S07: an already committed receipt must be adopted on non-forced
+        # replay, without a new posting attempt. A forced destructive Doc.post()
+        # is NOT a lawful correction and must be refused by N0010. Row counts
+        # alone cannot distinguish ledger replacement from immutable history.
+        def committed_receipt_snapshot():
+            return {
+                "state": self.status("m_inout", rc),
+                "facts": self.q(
+                    f"SELECT md5(coalesce(string_agg(to_jsonb(f)::text, '|' "
+                    f"ORDER BY f.fact_acct_id), '')) FROM fact_acct f "
+                    f"WHERE f.ad_table_id={T_INOUT} AND f.record_id={rc}"),
+                "cost": self.q(
+                    "SELECT md5(coalesce(string_agg(to_jsonb(cd)::text, '|' "
+                    "ORDER BY cd.m_costdetail_id), '')) FROM m_costdetail cd "
+                    f"WHERE cd.c_orderline_id IN ({lines}) "
+                    "AND coalesce(cd.m_inoutline_id, 0)=0 "
+                    "AND coalesce(cd.c_invoiceline_id, 0)=0"),
+                "authority": self.q(
+                    "SELECT md5(coalesce(string_agg(to_jsonb(a)::text, '|' "
+                    "ORDER BY to_jsonb(a)::text), '')) "
+                    "FROM baobab_native.finance_authority_attribution a "
+                    f"WHERE lower(a.source_table)='m_inout' AND a.source_record_id={rc}"),
+                "derived": self.q(
+                    "SELECT md5(coalesce(string_agg(to_jsonb(a)::text, '|' "
+                    "ORDER BY to_jsonb(a)::text), '')) "
+                    "FROM baobab_native.derived_write_attribution a "
+                    f"WHERE lower(a.root_table)='m_inout' AND a.root_record_id={rc}"),
+            }
+        original = committed_receipt_snapshot() if rc else None
+        replay = self.repost("M_InOut", rc) if rc else {}
+        after_replay = committed_receipt_snapshot() if rc else None
+        forced = self.repost("M_InOut", rc, force=True) if rc else {}
+        after_forced = committed_receipt_snapshot() if rc else None
+        replay_success = (replay.get("post_error") in (None, "", "null") and not replay.get("error"))
+        forced_refused = (forced.get("post_error") not in (None, "", "null") or bool(forced.get("error")))
+        ev.scenario(
+            "S07", "committed receipt replay is idempotent; destructive repost refused without source, ledger or cost mutation",
+            bool(rc) and original is not None and original["state"] == "COY"
+            and replay_success and forced_refused
+            and original == after_replay == after_forced
+            and self.balanced(T_INOUT, rc),
+            json.dumps({"replay_success": replay_success, "destructive_repost_refused": forced_refused,
+                        "before_after_replay_equal": original == after_replay,
+                        "before_after_forced_equal": original == after_forced,
+                        "posted_state_unchanged": (after_forced or {}).get("state") == "COY"}),
+        )
 
         # S08-S12: routes CP can never authorise (deny-by-name, ADR-SHARED-037 §3): refused natively.
         r = self.doc("vreturn", order_id=po)
