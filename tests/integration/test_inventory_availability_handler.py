@@ -91,7 +91,6 @@ class InventoryAvailabilityTests(unittest.TestCase):
         self.assertEqual(self.requested, [])
 
     def test_future_legal_entity_placement_cannot_expose_stock(self):
-        from datetime import timedelta
 
         with self.connection.cursor() as cursor:
             # The database clock, not the caller-supplied as_of clock, governs
