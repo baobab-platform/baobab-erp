@@ -164,7 +164,12 @@ def _load_idempiere_credentials() -> dict[int, IdempiereCredentials]:
         ad_client_id = int(raw_client_id)
         if ad_client_id <= 0 or str(ad_client_id) != raw_client_id or ad_client_id in parsed:
             raise RuntimeError("native credential client key is invalid or ambiguous")
-        if not isinstance(fields, dict) or int(fields["client_id"]) != ad_client_id:
+        if not isinstance(fields, dict):
+            raise RuntimeError("native credential client entry must be an object")
+        required = ("base_url", "username", "password", "client_id", "role_id", "organization_id")
+        if any(name not in fields for name in required):
+            raise RuntimeError("native credential client entry is incomplete")
+        if int(fields["client_id"]) != ad_client_id:
             raise RuntimeError("native credential AD_Client_ID must equal the configured lookup key")
         parsed[ad_client_id] = IdempiereCredentials(
             base_url=fields["base_url"],
