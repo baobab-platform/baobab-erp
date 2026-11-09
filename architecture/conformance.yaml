@@ -15,8 +15,25 @@ adrs:
     evidence:
       - idempiere/Dockerfile
       - compose.yaml
+      - upstream.lock.yaml
       - idempiere/extensions/
-    gap: No production EngineInstance exists; no application-service HTTP layer yet.
+      - tests/architecture/test_adr_erp_001_private_boundary.py
+      - docs/assessments/adr-erp-001-native-engine-conformance-2026-11-09.md
+    gap: >
+      2026-11-09 audit: real JVM/order/outbox/replay implementation now exists,
+      including the bounded synthetic-origin same-event qualification merged in
+      ERP #125, so the original 'no application-service HTTP layer yet' wording
+      is obsolete. The ADR-001 development gate remains OPEN: no independently
+      qualified full two-company native financial/core proof, complete CP
+      EngineInstance/IsolationProfile registration and negative isolation readback,
+      immutable upstream artifact digest and protected runtime/network/restore
+      evidence are established here. Default Compose published ports for native
+      iDempiere HTTPS and the ERP facade are now literal host-loopback only,
+      regression-tested with Docker's interpolated model where available.
+      This closes a source-configuration exposure defect but does not certify
+      remote gateways, cloud ingress, production networks, or release readiness.
+      ERP #132 accounting-integrity migrations and ERP #126 People are still
+      drafts, not accepted mainline functionality.
 
   - id: ADR-ERP-002
     title: ERP tenant, client and organization mapping
