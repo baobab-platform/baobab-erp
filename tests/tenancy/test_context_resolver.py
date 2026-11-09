@@ -47,6 +47,19 @@ class ContextResolverTests(unittest.TestCase):
         context = resolve_tenant(1000, 1, self.store)
         self.assertEqual(context, TenantContext("nabhold", "nabhold-legal", 1000, 1))
 
+    def test_system_client_cannot_be_claimed_as_an_erp_tenant(self):
+        store = FakeMappingStore({("tenant", "entity"): (0, 0)})
+        with self.assertRaises(ContextResolutionError):
+            resolve_context("tenant", "entity", store)
+        with self.assertRaises(ContextResolutionError):
+            resolve_tenant(0, 0, store)
+
+    def test_negative_native_identifiers_are_not_authority(self):
+        with self.assertRaises(ContextResolutionError):
+            resolve_tenant(-1, 5, self.store)
+        with self.assertRaises(ContextResolutionError):
+            resolve_tenant(1000, -1, self.store)
+
     def test_unmapped_native_ids_fail_closed(self):
         with self.assertRaises(ContextResolutionError):
             resolve_tenant(9999, 9, self.store)
