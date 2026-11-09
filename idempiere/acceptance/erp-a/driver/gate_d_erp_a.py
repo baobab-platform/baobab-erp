@@ -257,8 +257,21 @@ VALUES (gen_random_uuid(), 'SYNTHETIC_ENGINE_LOCAL', '{PLACEMENT}', 1, '{self.st
                     f"ON il.c_invoiceline_id = mi.c_invoiceline_id WHERE il.c_invoice_id = {inv or 0}")
         ev.scenario("S04", "vendor invoice: CO, posted, balanced, CP-backed; matched to the receipt",
                     self.posted("c_invoice", "C_Invoice", T_INVOICE, inv, VI) and bool(mi), json.dumps(r))
-        if mi and self.q(f"SELECT posted FROM m_matchinv WHERE m_matchinv_id = {mi}") != "Y":
-            self.repost("M_MatchInv", mi)
+        # Capture a privacy-safe classification of the genuine JVM posting
+        # result, including whether the failure existed before the retry.
+        # Balanced facts with Posted=E are NOT an accepted invoice match.
+        match_status_before = self.q(f"SELECT posted FROM m_matchinv WHERE m_matchinv_id = {mi or 0}")
+        match_facts_before = self.facts(T_MATCHINV, mi or 0)
+        match_attempt = {}
+        if mi and match_status_before != "Y":
+            match_attempt = self.repost("M_MatchInv", mi)
+        native_result = json.dumps(match_attempt)
+        match_error_class = (
+            "BAOBAB_NATIVE_FINANCE_DENIED" if DENIED in native_result
+            else "NATIVE_POST_ERROR" if match_attempt.get("post_error") not in (None, "", "null")
+            else "NATIVE_EXCEPTION" if match_attempt.get("error")
+            else "NO_ERROR_RETURNED"
+        )
         inv_costs = self.q(f"SELECT count(*) FROM m_costdetail cd JOIN c_invoiceline il ON il.c_invoiceline_id = cd.c_invoiceline_id "
                            f"WHERE il.c_invoice_id = {inv or 0} AND coalesce(cd.m_inoutline_id, 0) = 0")
         inv_derived = self.q(f"SELECT count(*) FROM baobab_native.derived_write_attribution "
@@ -269,8 +282,10 @@ VALUES (gen_random_uuid(), 'SYNTHETIC_ENGINE_LOCAL', '{PLACEMENT}', 1, '{self.st
         ev.scenario("S04b", "invoice match: MatchInv posted and balanced, invoice-line cost detail derived from the vendor invoice",
                     bool(mi) and match_posted == "Y" and match_balanced
                     and int(inv_costs or 0) > 0 and int(inv_derived or 0) > 0,
-                    f"matchinv={mi} posted={match_posted} balanced={match_balanced} "
-                    f"fact_rows={match_facts} costs={inv_costs} derived={inv_derived}")
+                    f"matchinv={mi} posted_before={match_status_before} posted_after={match_posted} "
+                    f"facts_before={match_facts_before} facts_after={match_facts} "
+                    f"balanced={match_balanced} costs={inv_costs} derived={inv_derived} "
+                    f"posting_attempted={bool(match_attempt)} native_error_class={match_error_class}")
         self.evidence(inv)
         r = self.doc("vpayment", invoice_id=inv)
         pay = r.get("id", "")
