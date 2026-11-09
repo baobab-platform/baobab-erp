@@ -93,6 +93,19 @@ included in, nor a condition for misrepresenting, a working financial
 ERP core. Real cross-engine integration, staging and production releases
 remain separate later gates.
 
+## ADR family governance finding
+
+The accepted ADR directory contains all **23** `ADR-ERP-001` through
+`ADR-ERP-023` documents, but the current `architecture/conformance.yaml`
+has only **21** top-level ADR entries: **ADR-ERP-022 and ADR-ERP-023 are
+missing**. Its global `updated` value is also 2026-10-08 even though
+substantial native ERP #125 and draft #132/#126 work followed that date.
+This PR only corrects ADR-ERP-001's demonstrably stale entry. A separate
+ADR-ERP-020 governance/conformance increment must reconcile all 23 entries
+against current main, independently read the drafts without accepting their
+contents, and add machine-readable coverage checks. Merely adding two rows
+does not prove those ADRs implemented.
+
 ## Change / ownership boundaries
 
 - ERP #132 owns N0010–N0013 native accounting-integrity guards and remains
