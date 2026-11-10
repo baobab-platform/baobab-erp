@@ -21,3 +21,7 @@ The read fails closed on absent/mismatched current permit, wrong tenant/legal en
 ## Next connected increment
 
 Implement a purpose-specific, current CP finance read decision that attests tenant/legal entity/book/market and delegated principal, with a distinct accepted IAM resource-server scope. Bind a canonical F1 request adapter to this component, with server-created scope and immutable response/snapshot semantics; run real JVM + PG17 on actual native iDempiere; qualify finance approval and F1-P01…F1-P11 before marking a provider IMPLEMENTED. Staging/production and CP bindings remain blocked pending their independent gates.
+
+## PostgreSQL Gate B evidence extension
+
+The existing historical 39 native JDBC test cases remain intact. The F1 readback adds **one** synthetic PostgreSQL regression, bringing this JVM class to **40 executed cases** in CI on both Java 17 and Java 21. CI's explicit surefire count checks now assert 40; this does not reclassify the former 39-case DEV-09 evidence or qualify an IAM/CP finance grant, operational F1 feature, or protected environment.
