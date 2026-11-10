@@ -41,12 +41,20 @@ class PostgresTenantMappingStore:
             )
 
     def find_active_mapping(self, tenant_id: str, entity_id: str) -> tuple[int, int] | None:
+        """Only currently effective active projections may authorise native routing.
+
+        An "active" status alone is insufficient: future or ended periods must
+        not remain routable. CURRENT_TIMESTAMP is evaluated by PostgreSQL in
+        the same statement, including for transaction-level consistency.
+        """
         with self._connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT ad_client_id, ad_org_id
                 FROM baobab.tenant_mapping
                 WHERE tenant_id = %s AND entity_id = %s AND status = 'active'
+                  AND effective_from <= CURRENT_TIMESTAMP
+                  AND (effective_to IS NULL OR effective_to > CURRENT_TIMESTAMP)
                 """,
                 (tenant_id, entity_id),
             )
@@ -54,12 +62,17 @@ class PostgresTenantMappingStore:
         return (row[0], row[1]) if row else None
 
     def find_by_native(self, ad_client_id: int, ad_org_id: int) -> tuple[str, str] | None:
+        """Apply the same temporal fence to native-to-canonical event resolution."""
+        if ad_client_id <= 0 or ad_org_id < 0:
+            return None  # iDempiere System Client and invalid org are never business tenants.
         with self._connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT tenant_id, entity_id
                 FROM baobab.tenant_mapping
                 WHERE ad_client_id = %s AND ad_org_id = %s AND status = 'active'
+                  AND effective_from <= CURRENT_TIMESTAMP
+                  AND (effective_to IS NULL OR effective_to > CURRENT_TIMESTAMP)
                 """,
                 (ad_client_id, ad_org_id),
             )

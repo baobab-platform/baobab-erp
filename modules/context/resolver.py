@@ -32,6 +32,8 @@ def resolve_context(
         )
 
     ad_client_id, ad_org_id = mapping
+    if ad_client_id <= 0 or ad_org_id < 0:
+        raise ContextResolutionError("system/invalid native ERP context is not a business tenant")
     return TenantContext(tenant_id=tenant_id, entity_id=entity_id, ad_client_id=ad_client_id, ad_org_id=ad_org_id)
 
 
@@ -48,6 +50,8 @@ def resolve_tenant(
     inside that runtime cannot assume a single tenant for the whole process and must
     derive it per record from the record's own AD_Client_ID/AD_Org_ID.
     """
+    if ad_client_id <= 0 or ad_org_id < 0:
+        raise ContextResolutionError("system/invalid native ERP context is not a business tenant")
     mapping = store.find_by_native(ad_client_id, ad_org_id)
     if mapping is None:
         raise ContextResolutionError(
