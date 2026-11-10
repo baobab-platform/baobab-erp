@@ -1,0 +1,40 @@
+name: Native messaging dependency compatibility inventory
+
+# Public vendor metadata only; never an L4/native business acceptance receipt.
+on:
+  pull_request:
+    paths:
+      - idempiere/Dockerfile
+      - scripts/audit-idempiere-native-messaging.py
+      - .github/workflows/erp-native-messaging-inventory.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@06da6279cdbca41027908073e81a4544dc79c06b # v6
+        with:
+          python-version: '3.14'
+      - name: Inspect native public bundles and verify candidate vendor checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=$(mktemp -d)
+          image=idempiereofficial/idempiere:13-release
+          docker pull "$image"
+          docker image inspect --format '{{json .RepoDigests}}' "$image"
+          container=$(docker create "$image")
+          trap 'docker rm -v "$container" >/dev/null; rm -rf "$root"' EXIT
+          docker cp "$container:/opt/idempiere/plugins" "$root/plugins"
+          docker cp "$container:/opt/idempiere/configuration/org.eclipse.equinox.simpleconfigurator/bundles.info" "$root/bundles.info"
+          python -B scripts/audit-idempiere-native-messaging.py \
+            --plugins "$root/plugins" --bundles-info "$root/bundles.info"

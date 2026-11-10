@@ -6,25 +6,28 @@ cd "${repo_root}"
 
 python -m compileall -q modules tests
 
-# tests/security/test_workload_auth.py (Gate IAM-10) is the first test outside
-# tests/integration to need a third-party dependency (PyJWT, for real RS256
-# verification against a generated keypair rather than a hand-rolled check).
-# Installing modules/ itself (as ci.yml's core-module-integration job does) is
-# unnecessary here and doesn't work: this job's container bind-mounts the
-# workspace owned by the host runner's UID, and an editable install needs to
-# write an .egg-info directory into that mounted source tree. PYTHONPATH=modules
-# already makes modules/'s own packages importable with no install step (every
-# existing suite here already relies on exactly that) -- only the third-party
-# dependency itself needs installing, from PyPI, and --target a scratch
-# directory under /tmp sidesteps needing to know whether this container's user
-# can write to its own site-packages, same as it can't write to the mount.
-pip install --break-system-packages -q --target /tmp/py-deps "PyJWT[crypto]>=2.8,<3" "jsonschema[format-nongpl]>=4.21,<5" "referencing>=0.35,<1"
+# Unit tests import the actual native inbox/AMQP/OTel modules. Install their
+# declared runtime dependencies, rather than a stale hand-maintained subset.
+# A private temporary target works with the non-root, read-only source mount
+# without writing editable-install metadata or modifying the shared dev image.
+deps_dir="$(mktemp -d)"
+trap 'rm -rf "$deps_dir"' EXIT
+python - "$deps_dir" <<'PY'
+from pathlib import Path
+import subprocess
+import sys
+import tomllib
 
-PYTHONPATH=modules:/tmp/py-deps python -m unittest discover -s tests/unit -p 'test_*.py'
-PYTHONPATH=modules:/tmp/py-deps python -m unittest discover -s tests/security -p 'test_*.py'
-PYTHONPATH=modules:/tmp/py-deps python -m unittest discover -s tests/tenancy -p 'test_*.py'
-PYTHONPATH=modules:/tmp/py-deps python -m unittest discover -s tests/architecture -p 'test_*.py'
-PYTHONPATH=modules:/tmp/py-deps python -m unittest discover -s tests/golden -p 'test_*.py'
+requirements = tomllib.loads(Path("modules/pyproject.toml").read_text())["project"]["dependencies"]
+subprocess.run([sys.executable, "-m", "pip", "install", "--disable-pip-version-check",
+                "-q", "--target", sys.argv[1], *requirements], check=True)
+PY
+
+PYTHONPATH="modules:$deps_dir" python -m unittest discover -s tests/unit -p 'test_*.py'
+PYTHONPATH="modules:$deps_dir" python -m unittest discover -s tests/security -p 'test_*.py'
+PYTHONPATH="modules:$deps_dir" python -m unittest discover -s tests/tenancy -p 'test_*.py'
+PYTHONPATH="modules:$deps_dir" python -m unittest discover -s tests/architecture -p 'test_*.py'
+PYTHONPATH="modules:$deps_dir" python -m unittest discover -s tests/golden -p 'test_*.py'
 
 python - <<'PY'
 import json
