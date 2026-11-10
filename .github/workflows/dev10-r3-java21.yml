@@ -147,7 +147,7 @@ jobs:
           mvn --batch-mode --no-transfer-progress -f idempiere/extensions
           -pl org.nabhold.baobab.erp.finance -am test
           -Dtest=NativeFinancePostgresGateBTest -Dsurefire.failIfNoSpecifiedTests=false -Dmaven.compiler.release=21
-      - name: Require all 39 native JDBC tests to execute, none skipped
+      - name: Require all 40 native JDBC tests to execute, none skipped
         run: >-
           grep -q 'tests="40"[^>]*skipped="0"'
           idempiere/extensions/org.nabhold.baobab.erp.finance/target/surefire-reports/TEST-org.nabhold.baobab.erp.finance.NativeFinancePostgresGateBTest.xml

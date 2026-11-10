@@ -1,7 +1,7 @@
 # ADR-SHARED-033 F1 — native ledger fact readback increment
 
 **Status:** ENGINEERING PARTIAL / not a capability-provider declaration.
-**Architecture acceptance:** Shared PR #450 (proposed merge). **Shared F1 wire:** DRAFT/EXPERIMENTAL.
+**Architecture acceptance:** Accepted ADR-SHARED-033, Shared PR #450 merged 2026-11-10. **Shared F1 wire:** DRAFT/EXPERIMENTAL.
 **Component:** `idempiere/extensions/org.nabhold.baobab.erp.finance/.../NativeLedgerFacts.java`.
 
 ## What this implements
