@@ -46,3 +46,9 @@ c9fe1c689c35e4a029d4765482d394f04c2306d0:tests/unit/test_dev11_amqp_consumer.py:
 # digest. Current source separates the public digest from that name. Keep
 # full-history scanning and every rule; no credential or future match is waived.
 b42e6b29fe955e3e43254c99778ebc1805b0031f:idempiere/dependency-overrides/PrepareNativeMessaging.java:generic-api-key:31
+
+# ERP #126: historical general-language qualification checklist item, not an
+# issued API key or credential. Source wording is now clearer, but Gitleaks
+# intentionally scans the full pushed history. This exact commit/path/rule/line
+# was independently inspected. Do not broaden or disable the detector.
+41b15cb38f6c02982ba8632613a816a3c405aef0:docs/people/qualification-status-2026-11-08.md:generic-api-key:26
