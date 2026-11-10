@@ -198,6 +198,20 @@ class HttpServerIntegrationTests(unittest.TestCase):
                     cursor.execute("DELETE FROM baobab.tenant_mapping WHERE tenant_id = %s", (tenant_id,))
                 connection.commit()
 
+    def test_repeated_context_parameters_are_rejected_before_resolution(self):
+        cases = (
+            "/context/resolve?tenant_id=tn_a&tenant_id=tn_b&entity_id=E",
+            "/context/resolve?tenant_id=tn_a&entity_id=E&entity_id=E",
+            "/context/resolve-tenant?ad_client_id=11&ad_client_id=12&ad_org_id=1",
+            "/context/resolve-tenant?ad_client_id=11&ad_org_id=1&ad_org_id=1",
+            "/mapping/resolve?tenant_id=tn_a&tenant_id=tn_b&canonical_type=Party&canonical_id=x",
+            "/mapping/resolve-canonical?tenant_id=tn_a&tenant_id=tn_b&table=C_BPartner&record_id=1",
+        )
+        for url in cases:
+            with self.subTest(url=url):
+                status, _ = self._get_as_workload(url)
+                self.assertEqual(status, 400)
+
     def test_context_resolve_tenant_end_to_end(self):
         tenant_id = f"test-tenant-{uuid.uuid4()}"
         entity_id = f"test-entity-{uuid.uuid4()}"
