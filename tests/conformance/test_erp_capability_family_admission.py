@@ -1,7 +1,7 @@
 """ERP capability admission guard: planning must not become CP provider support.
 
 Accepted ADR-SHARED-033 F1 keys and ADR-SHARED-045 People keys are
-canonical but NOT implemented in this engine. WMS #452 is CONTRACTING;
+canonical but NOT implemented in this engine. WMS #452 is merged and CONTRACTED;
 F2/F3 are accepted planning inventory only. Source-only tests do not confer
 EA-09 certification or accountant/market approvals.
 """
@@ -39,7 +39,8 @@ class CapabilityAdmissionTests(unittest.TestCase):
             self.assertEqual(plans[key]["proposal_status"], "PROPOSED")
             self.assertEqual(plans[key]["proposed_key"], key)
         for key in WMS:
-            self.assertEqual(plans[key]["proposal_status"], "CONTRACTING")
+            self.assertEqual(plans[key]["proposal_status"], "CONTRACTED")
+            self.assertEqual(plans[key]["capability_key"], key)
             self.assertNotIn("target_provider_key", plans[key], "WMS technology was not selected")
 
     def test_no_cross_domain_finance_overlap_or_native_placement_authority(self):
