@@ -116,12 +116,21 @@ LABEL org.opencontainers.image.source="https://github.com/baobab-platform/baobab
 # behind on (e.g. openssl). This patches OS packages only; it does not touch
 # iDempiere or its bundled plugin jars, so it isn't a fork under ADR-ERP-004.
 USER root
-# USN-8996-1: disable download retries until the patched APT is installed.
-# Check both binary packages against Ubuntu Noble's fixed floor. A stale
-# mirror or an incompatible base image must fail before further APT use.
+# USN-8996-1 / CVE-2026-109518: APT before the security fix is
+# vulnerable to on-path HTTP manipulation during download retries. Canonical
+# identifies HTTPS transport as a mitigation. Require HTTPS for EVERY configured
+# source before using bounded APT retries; do not weaken the fixed-version floor.
+# A stale mirror, insecure source or incompatible base image fails closed.
 RUN set -eu; \
-    apt-get -o Acquire::Retries=0 update; \
-    apt-get -o Acquire::Retries=0 upgrade -y; \
+    for source in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do \
+      [ -f "$source" ] || continue; \
+      sed -i 's#http://#https://#g' "$source"; \
+      if grep -q 'http://' "$source"; then \
+        echo "APT source remains on insecure HTTP: $source" >&2; exit 1; \
+      fi; \
+    done; \
+    apt-get -o Acquire::Retries=3 -o Acquire::https::Timeout=45 update; \
+    apt-get -o Acquire::Retries=3 -o Acquire::https::Timeout=45 upgrade -y; \
     for package in apt libapt-pkg6.0t64; do \
       version=$(dpkg-query -W -f='${Version}' "$package"); \
       if ! dpkg --compare-versions "$version" ge 2.8.4ubuntu0.1; then \

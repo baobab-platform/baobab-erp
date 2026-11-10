@@ -25,3 +25,7 @@ Implement a purpose-specific, current CP finance read decision that attests tena
 ## PostgreSQL Gate B evidence extension
 
 The existing historical 39 native JDBC test cases remain intact. The F1 readback adds **one** synthetic PostgreSQL regression, bringing this JVM class to **40 executed cases** in CI on both Java 17 and Java 21. CI's explicit surefire count checks now assert 40; this does not reclassify the former 39-case DEV-09 evidence or qualify an IAM/CP finance grant, operational F1 feature, or protected environment.
+
+## Image-build security correction (2026-11-10)
+
+A final-head image-build workflow failed because the Ubuntu Noble `base-files` archive download timed out (an external mirror availability failure; not a native ledger-test failure). The upstream Dockerfile deliberately had `Acquire::Retries=0` as mitigation for [USN-8996-1](https://ubuntu.com/security/notices/USN-8996-1) / CVE-2026-109518: enabling retries on insecure APT HTTP before patched APT risks unverified package installation. Rather than bypassing that control, all configured APT source files are upgraded from HTTP to HTTPS **before** bounded retries; an insecure residual source fails the build. APT's patched `apt` and `libapt-pkg6.0t64` versions are still mandatory before any later APT actions. This change is build reliability/security hygiene, not a financial capability qualification.
