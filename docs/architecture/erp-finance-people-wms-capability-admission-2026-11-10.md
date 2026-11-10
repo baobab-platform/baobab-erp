@@ -9,8 +9,8 @@ Governing documents: accepted Shared ADR-SHARED-017, ADR-SHARED-033 (F1/F2/F3), 
 | Capability group | Canonical contract | ERP declaration | CP action now |
 | --- | --- | --- | --- |
 | Finance F1 (ledger, journal, statement) | Shared finance/v1 DRAFT/EXPERIMENTAL | CONTRACTED planning only; **no** native finance provider support | Catalogue the keys but refuse tenant binding/route without independent F1-P01–P11, IAM/CP book grant, accountant approval and EA-09 |
-| Finance F2 six keys | ADR-033 approved census, no contracts | PROPOSED; no provider | Do not catalogue as capabilities or grant |
-| Finance F3 three keys | ADR-033 approved census, no contracts | PROPOSED; no provider | Do not catalogue as capabilities or grant; consolidation accountant policy mandatory |
+| Finance F2 six keys | Shared #453 canonical DRAFT wire v1 | CONTRACTED planning; no provider support | Catalogue DRAFT, no binding or route |
+| Finance F3 three keys | Shared #453 canonical DRAFT wire v1 | CONTRACTED planning; no provider support | Catalogue DRAFT; accountant-approved group model and independent binding required |
 | People four workforce/payroll keys | Shared people/v1 DRAFT/EXPERIMENTAL | CONTRACTED; BYOP independent; **no** provider | Catalogue only, protect employer-specific provider selection, legal/employer/statutory qualification |
 | WMS two custody/warehouse-operation keys | Shared #452 merged (`1004d390`): DRAFT/EXPERIMENTAL canonical v1 | CONTRACTED planned only; no executor preselected | CP catalogue sync registers DRAFT vocabulary; WMS-00…WMS-12 and independent provider admission before binding |
 | Existing inventory availability | Shared ERP v1 | IMPLEMENTED on source axis | Existing CP governed activation remains independent |

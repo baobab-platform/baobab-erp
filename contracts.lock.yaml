@@ -12,7 +12,7 @@ schema: baobab-contract-consumer-lock
 version: "1.0"
 source:
   repository: baobab-platform/shared
-  commit: 1004d39056569bd7e4516dd53a913dfeae72f050
+  commit: 584d7f3cd8426ffd3d1dc9f068f0b444dc74346e
 contracts:
   # Transitive closure of the actual ERP assignment and authority consumers.
   - contracts/evidence/v1/domain.schema.json
@@ -54,6 +54,25 @@ contracts:
   - contracts/capability/v1/registration.schema.json
   - contracts/finance/v1/capabilities.yaml
   - contracts/finance/v1/domain.schema.json
+  - contracts/finance/v1/f2-f3-domain.schema.json
+  - contracts/finance/v1/payable-manage-request.schema.json
+  - contracts/finance/v1/payable-manage-response.schema.json
+  - contracts/finance/v1/receivable-manage-request.schema.json
+  - contracts/finance/v1/receivable-manage-response.schema.json
+  - contracts/finance/v1/bank-reconciliation-manage-request.schema.json
+  - contracts/finance/v1/bank-reconciliation-manage-response.schema.json
+  - contracts/finance/v1/cash-position-read-request.schema.json
+  - contracts/finance/v1/cash-position-read-response.schema.json
+  - contracts/finance/v1/expense-manage-request.schema.json
+  - contracts/finance/v1/expense-manage-response.schema.json
+  - contracts/finance/v1/budget-manage-request.schema.json
+  - contracts/finance/v1/budget-manage-response.schema.json
+  - contracts/finance/v1/reporting-export-create-request.schema.json
+  - contracts/finance/v1/reporting-export-create-response.schema.json
+  - contracts/finance/v1/project-cost-read-request.schema.json
+  - contracts/finance/v1/project-cost-read-response.schema.json
+  - contracts/finance/v1/consolidation-run-request.schema.json
+  - contracts/finance/v1/consolidation-run-response.schema.json
   - contracts/finance/v1/ledger-read-request.schema.json
   - contracts/finance/v1/ledger-read-response.schema.json
   - contracts/finance/v1/journal-manage-request.schema.json

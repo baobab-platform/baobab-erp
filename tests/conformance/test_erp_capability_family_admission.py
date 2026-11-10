@@ -2,7 +2,7 @@
 
 Accepted ADR-SHARED-033 F1 keys and ADR-SHARED-045 People keys are
 canonical but NOT implemented in this engine. WMS #452 is merged and CONTRACTED;
-F2/F3 are accepted planning inventory only. Source-only tests do not confer
+F2/F3 are CONTRACTED canonical DRAFT planning, without provider support. Source-only tests do not confer
 EA-09 certification or accountant/market approvals.
 """
 from pathlib import Path
@@ -33,11 +33,11 @@ class CapabilityAdmissionTests(unittest.TestCase):
             self.assertEqual(plans[key]["proposal_status"], "CONTRACTED")
             self.assertEqual(plans[key]["capability_key"], key)
 
-    def test_f2_f3_census_and_wms_stay_nonrunnable(self):
+    def test_f2_f3_contracted_and_wms_stay_nonrunnable(self):
         plans = {x.get("capability_key", x.get("proposed_key")): x for x in DECLARATION["planned_capabilities"]}
         for key in F2 | F3:
-            self.assertEqual(plans[key]["proposal_status"], "PROPOSED")
-            self.assertEqual(plans[key]["proposed_key"], key)
+            self.assertEqual(plans[key]["proposal_status"], "CONTRACTED")
+            self.assertEqual(plans[key]["capability_key"], key)
         for key in WMS:
             self.assertEqual(plans[key]["proposal_status"], "CONTRACTED")
             self.assertEqual(plans[key]["capability_key"], key)

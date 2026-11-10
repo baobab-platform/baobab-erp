@@ -164,8 +164,8 @@ providers:
 
 # ADR-SHARED-017 separates intent from runnable provider support.
 # CONTRACTED is canonical in Shared but not implemented; no CP registry support.
-# F2/F3 and WMS are not in the pinned canonical catalogue at this branch:
-# F2/F3 are accepted ADR-033 census names, WMS has Shared draft PR #452.
+# Shared #453 merged F2/F3 as canonical DRAFT only; F1, People and WMS also remain
+# CONTRACTED planning. No new runnable ERP support or CP binding is declared.
 planned_capabilities:
   - capability_key: finance.journal.manage
     proposal_status: CONTRACTED
@@ -219,65 +219,65 @@ planned_capabilities:
       authority:
         repository: baobab-platform/shared
         decision: ADR-SHARED-045
-  - proposed_key: finance.payable.manage
-    proposal_status: PROPOSED
-    description: "Accepted ADR-SHARED-033 F2 census only; no canonical request/response contract or ERP posting scope."
+  - capability_key: finance.payable.manage
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-033 F2 canonical v1 DRAFT source contracts exist; no native ERP implementation, finance posting scope or EA-09 proof."
     provenance:
       authority:
         repository: baobab-platform/shared
         decision: ADR-SHARED-033
-  - proposed_key: finance.receivable.manage
-    proposal_status: PROPOSED
-    description: "Accepted ADR-SHARED-033 F2 census only; no canonical request/response contract or ERP posting scope."
+  - capability_key: finance.receivable.manage
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-033 F2 canonical v1 DRAFT source contracts exist; no native ERP implementation, finance posting scope or EA-09 proof."
     provenance:
       authority:
         repository: baobab-platform/shared
         decision: ADR-SHARED-033
-  - proposed_key: finance.bank-reconciliation.manage
-    proposal_status: PROPOSED
-    description: "Accepted ADR-SHARED-033 F2 census only; no canonical request/response contract or ERP posting scope."
+  - capability_key: finance.bank-reconciliation.manage
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-033 F2 canonical v1 DRAFT source contracts exist; no native ERP implementation, finance posting scope or EA-09 proof."
     provenance:
       authority:
         repository: baobab-platform/shared
         decision: ADR-SHARED-033
-  - proposed_key: finance.cash-position.read
-    proposal_status: PROPOSED
-    description: "Accepted ADR-SHARED-033 F2 census only; no canonical request/response contract or ERP posting scope."
+  - capability_key: finance.cash-position.read
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-033 F2 canonical v1 DRAFT source contracts exist; no native ERP implementation, finance posting scope or EA-09 proof."
     provenance:
       authority:
         repository: baobab-platform/shared
         decision: ADR-SHARED-033
-  - proposed_key: finance.expense.manage
-    proposal_status: PROPOSED
-    description: "Accepted ADR-SHARED-033 F2 census only; no canonical request/response contract or ERP posting scope."
+  - capability_key: finance.expense.manage
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-033 F2 canonical v1 DRAFT source contracts exist; no native ERP implementation, finance posting scope or EA-09 proof."
     provenance:
       authority:
         repository: baobab-platform/shared
         decision: ADR-SHARED-033
-  - proposed_key: finance.budget.manage
-    proposal_status: PROPOSED
-    description: "Accepted ADR-SHARED-033 F2 census only; no canonical request/response contract or ERP posting scope."
+  - capability_key: finance.budget.manage
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-033 F2 canonical v1 DRAFT source contracts exist; no native ERP implementation, finance posting scope or EA-09 proof."
     provenance:
       authority:
         repository: baobab-platform/shared
         decision: ADR-SHARED-033
-  - proposed_key: finance.reporting-export.create
-    proposal_status: PROPOSED
-    description: "Accepted ADR-SHARED-033 F3 census only; dependent finance policy/consolidation approval and source contracts absent."
+  - capability_key: finance.reporting-export.create
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-033 F3 canonical v1 DRAFT source contracts exist; approved accountant policy, native implementation and EA-09 proof remain absent."
     provenance:
       authority:
         repository: baobab-platform/shared
         decision: ADR-SHARED-033
-  - proposed_key: finance.project-cost.read
-    proposal_status: PROPOSED
-    description: "Accepted ADR-SHARED-033 F3 census only; dependent finance policy/consolidation approval and source contracts absent."
+  - capability_key: finance.project-cost.read
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-033 F3 canonical v1 DRAFT source contracts exist; approved accountant policy, native implementation and EA-09 proof remain absent."
     provenance:
       authority:
         repository: baobab-platform/shared
         decision: ADR-SHARED-033
-  - proposed_key: finance.consolidation.run
-    proposal_status: PROPOSED
-    description: "Accepted ADR-SHARED-033 F3 census only; dependent finance policy/consolidation approval and source contracts absent."
+  - capability_key: finance.consolidation.run
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-033 F3 canonical v1 DRAFT source contracts exist; approved accountant policy, native implementation and EA-09 proof remain absent."
     provenance:
       authority:
         repository: baobab-platform/shared
