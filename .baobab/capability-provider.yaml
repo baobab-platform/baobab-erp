@@ -282,16 +282,16 @@ planned_capabilities:
       authority:
         repository: baobab-platform/shared
         decision: ADR-SHARED-033
-  - proposed_key: inventory.custody.read
-    proposal_status: CONTRACTING
-    description: "WMS contract candidate in Shared #452; ADR-ERP-024 accepted but executor/BYOP binding and WMS-00..12 are not qualified."
+  - capability_key: inventory.custody.read
+    proposal_status: CONTRACTED
+    description: "Shared WMS v1 canonical DRAFT; ADR-ERP-024 accepted but executor/BYOP binding and WMS-00..12 are not qualified."
     provenance:
       authority:
         repository: baobab-platform/baobab-erp
         decision: ADR-ERP-024
-  - proposed_key: inventory.warehouse-operation.manage
-    proposal_status: CONTRACTING
-    description: "WMS contract candidate in Shared #452; ADR-ERP-024 accepted but executor/BYOP binding and WMS-00..12 are not qualified."
+  - capability_key: inventory.warehouse-operation.manage
+    proposal_status: CONTRACTED
+    description: "Shared WMS v1 canonical DRAFT; ADR-ERP-024 accepted but executor/BYOP binding and WMS-00..12 are not qualified."
     provenance:
       authority:
         repository: baobab-platform/baobab-erp
