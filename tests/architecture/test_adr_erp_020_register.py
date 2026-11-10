@@ -24,10 +24,12 @@ class ErpConformanceInventoryTests(unittest.TestCase):
             if path.is_file() and ID.search(path.name)
         )
         ids = [ID.search(p.name).group(0) for p in docs]
-        self.assertEqual(ids, [f"ADR-ERP-{n:03d}" for n in range(1, 24)])
+        self.assertGreaterEqual(len(ids), 24, "the accepted 001–024 baseline must not regress")
+        self.assertEqual(ids, [f"ADR-ERP-{n:03d}" for n in range(1, len(ids) + 1)])
         for path in docs:
             with self.subTest(path=path.name):
-                self.assertIn("**Status:** Accepted", path.read_text(encoding="utf-8"))
+                self.assertRegex(path.read_text(encoding="utf-8"),
+                                 r"\*\*Status:\*\*\s+\*{0,2}Accepted\b")
 
         register = LEDGER.read_text(encoding="utf-8")
         rows = ROW.findall(register)
@@ -44,11 +46,12 @@ class ErpConformanceInventoryTests(unittest.TestCase):
                 self.assertIn("    evidence:", entry)
                 self.assertIn("    gap:", entry)
 
-    def test_draft_native_and_people_extensions_do_not_claim_acceptance(self):
+    def test_planned_wms_and_draft_extensions_do_not_claim_runtime_acceptance(self):
         ledger = LEDGER.read_text(encoding="utf-8")
         for adr, phrases in {
             "ADR-ERP-022": ("status: partial", "ERP #132", "DRAFT", "Fact_Acct"),
             "ADR-ERP-023": ("status: partial", "ERP #126", "DRAFT", "provider"),
+            "ADR-ERP-024": ("status: planned", "ERP #152", "WMS-00", "No WMS"),
         }.items():
             with self.subTest(adr=adr):
                 part = ledger.split(f"  - id: {adr}\n", 1)[1].split("\n  - id:", 1)[0]
