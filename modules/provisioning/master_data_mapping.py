@@ -41,11 +41,18 @@ class PostgresMasterDataMappingStore:
               (engine_instance_id,legal_entity_id,resource_kind,canonical_id,native_id,desired_digest,source_version)
               VALUES (%s,%s,%s,%s,%s,%s,%s)
               ON CONFLICT (engine_instance_id,legal_entity_id,resource_kind,canonical_id)
-              DO UPDATE SET native_id=EXCLUDED.native_id, desired_digest=EXCLUDED.desired_digest,
+              DO UPDATE SET desired_digest=EXCLUDED.desired_digest,
                             source_version=EXCLUDED.source_version, updated_at=now()
+              WHERE baobab.erp_master_data_mapping.native_id = EXCLUDED.native_id
               RETURNING erp_resource_id""",
               (engine_instance_id,legal_entity_id,kind,canonical_id,native_id,desired_digest,source_version))
-            public_id = c.fetchone()[0]  # minted by the column default on first write, never touched by an update
+            row = c.fetchone()
+            if row is None:
+                # A change of native identity is a governed migration, not
+                # a retry/upsert. Leave the existing mapping and public ID
+                # unchanged, and fail this transaction closed.
+                raise ValueError("canonical resource already maps to a different native ERP record")
+            public_id = row[0]  # minted on first write; never rekeyed
         if commit:  # an executor writes this in the same transaction as the inbox outcome and commits both itself
             self._connection.commit()
         return public_id
