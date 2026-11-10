@@ -12,7 +12,7 @@ Governing documents: accepted Shared ADR-SHARED-017, ADR-SHARED-033 (F1/F2/F3), 
 | Finance F2 six keys | ADR-033 approved census, no contracts | PROPOSED; no provider | Do not catalogue as capabilities or grant |
 | Finance F3 three keys | ADR-033 approved census, no contracts | PROPOSED; no provider | Do not catalogue as capabilities or grant; consolidation accountant policy mandatory |
 | People four workforce/payroll keys | Shared people/v1 DRAFT/EXPERIMENTAL | CONTRACTED; BYOP independent; **no** provider | Catalogue only, protect employer-specific provider selection, legal/employer/statutory qualification |
-| WMS two custody/warehouse-operation keys | Shared #452 DRAFT candidate (contract not merged) | CONTRACTING proposal; no iDempiere executor assumed | Do not catalogue until Shared #452 merges; then DRAFT only, WMS-00…WMS-12 before provider |
+| WMS two custody/warehouse-operation keys | Shared #452 merged (`1004d390`): DRAFT/EXPERIMENTAL canonical v1 | CONTRACTED planned only; no executor preselected | CP catalogue sync registers DRAFT vocabulary; WMS-00…WMS-12 and independent provider admission before binding |
 | Existing inventory availability | Shared ERP v1 | IMPLEMENTED on source axis | Existing CP governed activation remains independent |
 | Existing order consequence | Shared ERP v1 | PARTIAL | Never promote to IMPLEMENTED by finance namespace census |
 
