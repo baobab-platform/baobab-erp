@@ -19,6 +19,7 @@ final class FakeJdbc {
     final List<String> queries = new ArrayList<>();
     int commits;
     boolean autoCommit;
+    int transactionIsolation = Connection.TRANSACTION_READ_COMMITTED;
     /** (sql, parameters) -> rows; each row is the column values in order. */
     BiFunction<String, Map<Integer, Object>, List<Object[]>> answer = (sql, params) -> List.of();
 
@@ -26,6 +27,7 @@ final class FakeJdbc {
         return (Connection) Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{Connection.class},
                 (o, m, a) -> switch (m.getName()) {
                     case "getAutoCommit" -> autoCommit;
+                    case "getTransactionIsolation" -> transactionIsolation;
                     case "prepareStatement" -> statement((String) a[0]);
                     case "commit", "rollback", "close" -> { commits++; yield null; }
                     default -> null;
