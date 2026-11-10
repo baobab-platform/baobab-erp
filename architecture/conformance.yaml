@@ -895,3 +895,20 @@ adrs:
       data custody, supervised parallel run or independent employer-readback
       evidence is established in ERP main. This is an optional extension gate,
       not proof of completed native core financial ERP.
+
+  - id: ADR-ERP-024
+    title: Baobab WMS and 3PL provider-neutral capability architecture
+    status: planned
+    evidence:
+      - docs/adr/ADR-ERP-024 — Baobab WMS and 3PL Provider-Neutral Capability Architecture.md
+      - docs/adr/README.md
+    gap: >
+      ADR-ERP-024 was accepted on 9 November 2026 in merged ERP #152 as an
+      authoritative provider-neutral architecture decision only. No WMS/3PL
+      engine technology has been selected or implemented; no incumbent or
+      Baobab-managed executor, provider adapter, CP/IAM binding, Shared
+      contract, native accounting consequence or market-specific operating
+      qualification is accepted. WMS-00 through WMS-12 and independent
+      provider-isolation, inventory-owner, recovery, reconciliation and
+      real PostgreSQL/iDempiere/TMS/Trade evidence remain outstanding.
+      The status of this item must not be interpreted as an activated service.
