@@ -69,15 +69,18 @@ final class NativeLedgerFacts {
         """;
     private static final String LINEAGE = """
         SELECT DISTINCT a.finance_baseline_version
-          FROM baobab_native.finance_authority_attribution a
-          JOIN adempiere.ad_table t ON t.tablename = a.source_table
+          FROM adempiere.ad_table t
+          CROSS JOIN LATERAL baobab_native.governed_root(t.tablename, ?) root
+          JOIN baobab_native.finance_authority_attribution a
+            ON lower(a.source_table) = lower(root.root_table)
+           AND a.source_record_id = root.root_record
           JOIN baobab.financial_configuration_baseline b
             ON b.legal_entity_id = a.finance_baseline_legal_entity_id
            AND b.version = a.finance_baseline_version
-         WHERE a.tenant_id = ? AND a.responsible_legal_entity_id = ?
+         WHERE t.ad_table_id = ?
+           AND a.tenant_id = ? AND a.responsible_legal_entity_id = ?
            AND a.operating_organisation_id::text = ?
            AND a.ad_client_id = ? AND a.ad_org_id = ?
-           AND t.ad_table_id = ? AND a.source_record_id = ?
            AND b.legal_entity_id = ? AND b.functional_currency = ?
          LIMIT 2
         """;
@@ -190,13 +193,15 @@ final class NativeLedgerFacts {
 
     private int historicalBaseline(Connection db, Scope s, int tableId, int recordId) throws Exception {
         try (PreparedStatement st = db.prepareStatement(LINEAGE)) {
-            st.setString(1, s.tenantId());
-            st.setString(2, s.legalEntityId());
-            st.setString(3, s.operatingOrganisationId());
-            st.setInt(4, s.clientId());
-            st.setInt(5, s.orgId());
-            st.setInt(6, tableId);
-            st.setInt(7, recordId);
+            // Use the exact native source-to-governed-root resolver enforced
+            // by N0006's Fact_Acct COMMIT fence (M_MatchInv/PO included).
+            st.setInt(1, recordId);
+            st.setInt(2, tableId);
+            st.setString(3, s.tenantId());
+            st.setString(4, s.legalEntityId());
+            st.setString(5, s.operatingOrganisationId());
+            st.setInt(6, s.clientId());
+            st.setInt(7, s.orgId());
             st.setString(8, s.legalEntityId());
             st.setString(9, s.currency());
             try (ResultSet rows = st.executeQuery()) {
