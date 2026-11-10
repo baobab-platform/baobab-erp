@@ -12,7 +12,7 @@ schema: baobab-contract-consumer-lock
 version: "1.0"
 source:
   repository: baobab-platform/shared
-  commit: f081f1324c23247e65c06e4a6308d7ed864e86a0
+  commit: 1004d39056569bd7e4516dd53a913dfeae72f050
 contracts:
   # Transitive closure of the actual ERP assignment and authority consumers.
   - contracts/evidence/v1/domain.schema.json
@@ -60,6 +60,11 @@ contracts:
   - contracts/finance/v1/journal-manage-response.schema.json
   - contracts/finance/v1/statement-read-request.schema.json
   - contracts/finance/v1/statement-read-response.schema.json
+  - contracts/wms/v1/capabilities.yaml
+  - contracts/wms/v1/custody-read-request.schema.json
+  - contracts/wms/v1/custody-read-response.schema.json
+  - contracts/wms/v1/warehouse-operation-manage-request.schema.json
+  - contracts/wms/v1/warehouse-operation-manage-response.schema.json
   - contracts/people/v1/capabilities.yaml
   - contracts/people/v1/domain.schema.json
   - contracts/people/v1/provider-selection.schema.json
