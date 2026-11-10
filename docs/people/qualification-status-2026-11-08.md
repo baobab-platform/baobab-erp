@@ -23,7 +23,7 @@
 | Statutory rules | HOLD | HOLD | ZA PAYE/UIF/SDL/ETI and UG URA/NSSF **separate** signed, effective-dated expert reviewed golden vectors and official source references |
 | Worker and data protection | HOLD | HOLD | Approved retention, lawful purpose, residency, encryption and deletion/export proof |
 | Independent parallel calculation | HOLD | HOLD | At least two actual witnessed source-versus-expected pay runs per jurisdiction, including correction and zero/negative cases |
-| IAM/OIDC issuance | HOLD | HOLD | Current real workload audience, scopes, token validity, expiry/revocation readback and no tenant/provider claims |
+| IAM/OIDC issuance | HOLD | HOLD | Independent issuer readback confirms real workload audience, scopes, token lifetime, expiration and revocation; verifies no tenant or provider claims |
 | CP binding + provider resolution | HOLD | HOLD | Actual PG17 current legal employer + provider + EA-09 and statute evidence, positive and revoked/mismatched negatives |
 | ERP signed provider receipt | HOLD | HOLD | Actual registered provider public key, source run/version/binding result, replay and wrong-employer refusal |
 | Disruption/cutover/export | HOLD | HOLD | Source outage, no hidden fallback, historical lineage, effective date, migration-out/readback, replay |
