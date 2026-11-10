@@ -837,18 +837,24 @@ adrs:
       - config/provisioning/zuribeans-za.production.template.json
       - modules/provisioning/idempiere_adapter.py
       - tests/unit/test_provisioning_idempiere_adapter.py
+      - tests/architecture/test_adr_erp_021_acceptance.py
     gap: >
-      Status: Proposed (formal acceptance is a team action, not something implied
-      by this ledger). Records the decision ZuriBeans' two operating markets
-      (Uganda, South Africa) needed and that ADR-ERP-002/008 explicitly forbid
-      defaulting: two separate AD_Clients (ZURIBEANS_UG, ZURIBEANS_ZA), each its
-      own LegalEntity, both on the shared ERP-AF-SOUTH-01 EngineInstance alongside
-      NABHOLD/THAMANI. The two provisioning templates and the provisioning
-      adapter's CREATE_CLIENT/PERSIST_MAPPING steps are real code built against
-      this decision. What's still open: real Control-Plane-issued UUIDs and
-      Finance-approved accounting configuration for both legal entities (explicit
-      REQUIRED_* placeholders -- pending a live nabhold/baobab-cp deployment and
-      actual Finance sign-off, not fabricatable here); the UG<->ZA intercompany
-      consequence this decision creates (governed by ADR-ERP-008 sections 92-97)
-      is documented but not built; and none of it has run against a live
-      iDempiere instance (same REST-plugin-install gap as ADR-ERP-005/013).
+      ADR decision ACCEPTED on 8 November 2026 by the platform owner;
+      two separate AD_Clients (ZURIBEANS_UG, ZURIBEANS_ZA), each intended
+      for an independently incorporated LegalEntity with its own functional
+      currency, chart of accounts, fiscal calendar, tax profile and binding,
+      on the logical shared ERP-AF-SOUTH-01 EngineInstance. Authoritative
+      for ERP and dependent CP/ZuriBeans design, but architecture acceptance
+      is NOT production readiness. ZuriBeans has footprints in Uganda and
+      South Africa; company incorporation is still in progress, so neither
+      entity's registration number, legal authority, tax status or CP identity
+      may be assumed. Both separate production templates remain
+      draft-not-approved with REQUIRED_* placeholders. CP-issued Tenant,
+      LegalEntity, Market and EngineInstance identifiers, independent
+      legal/Finance approval, isolation/residency checks and EA-09 activation
+      are required before live provisioning. Existing CREATE_CLIENT and
+      PERSIST_MAPPING adapter code is not specific evidence of these two
+      named live clients or a completed UG/ZA native accounting configuration.
+      UG<->ZA intercompany purchase/sale, AR/AP, settlement and elimination
+      remain unqualified; do not confuse generic real iDempiere acceptance
+      runs with proof of this ZuriBeans-specific topology.

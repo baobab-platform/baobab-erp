@@ -24,6 +24,7 @@ jobs:
           python3 -m py_compile \
             idempiere/acceptance/erp-a/driver/ory_bootstrap.py \
             idempiere/acceptance/erp-a/driver/independent_company.py \
+            idempiere/acceptance/erp-a/driver/restore_drill.py \
             idempiere/acceptance/erp-a/driver/seed.py \
             idempiere/acceptance/erp-a/driver/gate_d_erp_a.py \
             scripts/dev09_connected_evidence.py \
@@ -31,6 +32,7 @@ jobs:
           bash -n idempiere/acceptance/erp-a/run-gate-d-erp-a.sh
           bash -n idempiere/acceptance/run-gate-d.sh
           python3 -m unittest discover -s tests/unit -p 'test_dev09_connected_evidence.py' -v
+          python3 -m unittest discover -s tests/unit -p 'test_dev12_restore.py' -v
       - name: Authenticate to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io --username "${{ github.actor }}" --password-stdin
       - name: Validate source and contracts in the Baobab environment
@@ -83,7 +85,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Java
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: "17"
@@ -137,7 +139,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Java
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: "17"
@@ -177,7 +179,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Java (keytool for the CI-generated truststore)
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: "17"
@@ -239,7 +241,7 @@ jobs:
           go-version-file: .erp-a/cp/go.mod
           cache: false
       - name: Set up Java (keytool for the run's truststore)
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: "17"
@@ -288,6 +290,8 @@ jobs:
             ${{ runner.temp }}/erp-a/dev09-report.sha256.json
             ${{ runner.temp }}/erp-a/dev09-connected-report.json
             ${{ runner.temp }}/erp-a/dev09-connected-report.sha256.json
+            ${{ runner.temp }}/erp-a/dev12-native-restore.json
+            ${{ runner.temp }}/erp-a/dev12-native-restore.sha256.json
           if-no-files-found: error
           retention-days: 30
       - name: ERP-A evidence

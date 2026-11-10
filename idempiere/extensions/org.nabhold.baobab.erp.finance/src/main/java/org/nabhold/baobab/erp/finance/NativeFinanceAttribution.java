@@ -6,6 +6,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 /**
@@ -102,7 +103,10 @@ final class NativeFinanceAttribution {
             s.setInt(17, operation.sourceRecordId());
             s.setString(18, decision.supersedesMandateId());
             s.setTimestamp(19, Timestamp.from(decision.mandateEffectiveFrom()));
-            s.setTimestamp(20, Timestamp.from(decision.usableUntil()));
+            // PostgreSQL stores microseconds. JDBC rounds nanoseconds, which
+            // can extend an issuer's expiry past CP's persisted ceiling. Floor
+            // the expiry before binding; never add a clock tolerance or grant.
+            s.setTimestamp(20, Timestamp.from(decision.usableUntil().truncatedTo(ChronoUnit.MICROS)));
             s.setString(21, placement.placementId());
             s.setInt(22, placement.version());
             s.setString(23, baseline.legalEntityId());

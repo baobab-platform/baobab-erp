@@ -34,8 +34,11 @@ engine. Kept for history; do not follow them for new work.
 - [ADR-ERP-018: ERP reporting, analytics, data export and intelligence integration architecture](ADR-ERP-018%20—%20ERP%20Reporting%2C%20Analytics%2C%20Data%20Export%20and%20Intelligence%20Integration%20Architecture.md)
 - [ADR-ERP-019: ERP provisioning, tenant and legal-entity onboarding, migration and decommissioning architecture](ADR-ERP-019%20—%20ERP%20Provisioning%2C%20Tenant%20and%20Legal-Entity%20Onboarding%2C%20Migration%20and%20Decommissioning%20Architecture.md)
 - [ADR-ERP-020: ERP production readiness, governance and architecture conformance](ADR-ERP-020%20—%20ERP%20Production%20Readiness%2C%20Governance%20and%20Architecture%20Conformance.md)
+- [ADR-ERP-021: ZuriBeans multi-market AD_Client topology — accepted, subject to incorporation and provisioning gates](ADR-ERP-021%20%E2%80%94%20ZuriBeans%20Multi-Market%20AD_Client%20Topology.md)
 - [ADR-ERP-022: native placement, document provenance and posting-authority enforcement](ADR-ERP-022%20—%20Native%20Placement%2C%20Document%20Provenance%20and%20Posting-Authority%20Enforcement.md)
 
 - [ADR-ERP-023: Baobab People — African workforce, payroll, CDSoftware re-engineering and PostgreSQL 17](ADR-ERP-023%20%E2%80%94%20Baobab%20People%20African%20Workforce%2C%20Payroll%2C%20CDSoftware%20Re-engineering%20and%20PostgreSQL%2017.md)
+
+- [ADR-ERP-024: Baobab WMS and 3PL provider-neutral capability architecture — accepted 2026-11-09](ADR-ERP-024%20%E2%80%94%20Baobab%20WMS%20and%203PL%20Provider-Neutral%20Capability%20Architecture.md) — first-party baobab-wms inside baobab-erp; existing tenant WMS retained through certified adapters, native-managed executor undecided pending comparative research, jurisdictional packs qualified separately; no provider/production activation by ADR acceptance.
 
 See `architecture/conformance.yaml` for how far each of these is actually implemented.
