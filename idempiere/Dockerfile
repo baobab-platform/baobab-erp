@@ -130,7 +130,13 @@ RUN set -eu; \
       fi; \
     done; \
     apt-get -o Acquire::Retries=3 -o Acquire::https::Timeout=45 update; \
-    apt-get -o Acquire::Retries=3 -o Acquire::https::Timeout=45 upgrade -y; \
+    if ! apt-get -o Acquire::Retries=3 -o Acquire::https::Timeout=45 upgrade -y; then \
+      # Signed index and mirror pool can briefly disagree (HTTP 404). Never \
+      # skip packages; refresh all signed indices from scratch and retry ONCE. \
+      rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/partial/*; \
+      apt-get -o Acquire::Retries=3 -o Acquire::https::Timeout=45 update; \
+      apt-get -o Acquire::Retries=3 -o Acquire::https::Timeout=45 upgrade -y; \
+    fi; \
     for package in apt libapt-pkg6.0t64; do \
       version=$(dpkg-query -W -f='${Version}' "$package"); \
       if ! dpkg --compare-versions "$version" ge 2.8.4ubuntu0.1; then \
