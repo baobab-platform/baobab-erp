@@ -99,3 +99,12 @@ INSERT INTO adempiere.c_currency VALUES (100, 'USD'), (102, 'EUR'), (300, 'UGX')
 ALTER TABLE adempiere.c_payment ADD COLUMN c_bpartner_id numeric(10), ADD COLUMN c_currency_id numeric(10),
   ADD COLUMN payamt numeric NOT NULL DEFAULT 0, ADD COLUMN c_invoice_id numeric(10);
 ALTER TABLE adempiere.c_invoice ADD COLUMN c_bpartner_id numeric(10), ADD COLUMN c_currency_id numeric(10);
+
+-- ADR-SHARED-033 F1: extend the Gate B synthetic Fact_Acct model only with native
+-- accounting book, account and write-time fields used by the bounded source reader.
+-- This fixture is not equivalent to a complete iDempiere accounting model.
+ALTER TABLE adempiere.c_acctschema ADD COLUMN c_currency_id numeric(10) NOT NULL DEFAULT 300;
+ALTER TABLE adempiere.fact_acct
+  ADD COLUMN c_acctschema_id numeric(10) NOT NULL DEFAULT 101,
+  ADD COLUMN account_id numeric(10) NOT NULL DEFAULT 501,
+  ADD COLUMN created timestamptz NOT NULL DEFAULT transaction_timestamp();
