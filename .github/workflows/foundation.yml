@@ -21,7 +21,7 @@ jobs:
     needs: vendor-patch-audit
     uses: baobab-platform/shared/.github/workflows/foundation-repository-gates.yml@4ea2cbb5638a5605e057a02665bc7360864fc253
     with:
-      foundation_ref: "40d180756461f3fbbdcf06d1dcd3e1fe6481bed2"
+      foundation_ref: "4ea2cbb5638a5605e057a02665bc7360864fc253"
       dependency_review_enabled: false
       # The shared scan's 2026-11-05 DB reports *already patched*
       # Ubuntu Noble apt 2.8.4ubuntu0.1 as unfixed CVE-2026-109518.
