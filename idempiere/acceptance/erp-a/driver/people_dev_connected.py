@@ -140,7 +140,7 @@ INSERT INTO capability.provider_capability_certification
  (certification_id,provider_id,capability_id,contract_version,engine_release_id,
   qualification_profile,evidence,request_digest,status,certified_by,certified_at,reason)
  VALUES ('{cert}'::uuid,'{provider}'::uuid,'{cap}'::uuid,1,'{release}'::uuid,
-   'people-dev-synthetic-fixture','[{"dev_only":true}]'::jsonb,'sha256:'||repeat('d',64),
+   'people-dev-synthetic-fixture','[{{"dev_only":true}}]'::jsonb,'sha256:'||repeat('d',64),
    'CERTIFIED','synthetic-pg17-reviewer',now(),'NOT statutory or real provider certification');
 INSERT INTO capability.people_provider_choice
  (tenant_id,legal_employer_id,jurisdiction,capability_key,binding_id,provider_id,binding_revision,
