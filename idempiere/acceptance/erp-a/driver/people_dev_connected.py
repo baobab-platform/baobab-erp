@@ -120,7 +120,7 @@ INSERT INTO capability.capability_grant
 INSERT INTO topology.engine_release
  (engine_release_id,engine_id,release_version,source_revision,declaration_digest,content_digest,status,
   recorded_by,recorded_at,reason,status_changed_by,status_changed_at,status_reason)
- VALUES ('{release}'::uuid,'{engine}'::uuid,'0.0.0-dev',repeat('a',40),
+ VALUES ('{release}'::uuid,'{engine}'::uuid,'1.0.0',repeat('a',40),
    'sha256:'||repeat('b',64),'sha256:'||repeat('c',64),'APPROVED',
    'people-dev-fixture',now(),'Disposable test only',
    'people-dev-reviewer',now(),'Development fixture');
@@ -162,10 +162,11 @@ def context_for(token: str, profile: dict) -> str:
 
 def run_case(c: Compose, root: Path, *, name: str, context_id: str,
              tenant: str, employer: str, jurisdiction: str, expect: str,
-             token_file: str = "issued-token") -> dict:
+             token_file: str = "issued-token", cp_http_statuses: tuple[int, ...] = (200,)) -> dict:
     case = {"name": name, "context_id": context_id, "tenant_id": tenant,
             "legal_employer_id": employer, "jurisdiction": jurisdiction,
-            "expect": expect, "token_file": token_file}
+            "expect": expect, "token_file": token_file,
+            "cp_http_statuses": list(cp_http_statuses)}
     (root / "case.json").write_text(json.dumps(case), encoding="utf-8")
     (root / "case.json").chmod(0o644)
     output = c.run("--profile", "people", "run", "--rm", "--no-deps", "-T", "people-probe")
@@ -247,14 +248,14 @@ def main() -> None:
     verify(c, fixture, context_id, 2)
     case(name="PPL-03-cross-tenant-deny", context_id=foreign_context_id,
          tenant=state["tenant"], employer=state["legal_entity"],
-         jurisdiction=state["market"], expect="deny")
+         jurisdiction=state["market"], expect="deny", cp_http_statuses=(403,))
     # ERP expected-employer verification independently rejects a valid CP
     # selection for a *different* employer, even with the same bearer.
     case(name="PPL-04-cross-employer-deny", context_id=context_id,
          tenant=fixture["tenant"], employer=state["legal_entity"],
-         jurisdiction="ZA", expect="deny")
+         jurisdiction="ZA", expect="deny", cp_http_statuses=(200,))
     case(name="PPL-05-reduced-issuer-scope-deny", expect="deny",
-         token_file="reduced-token", **allowed)
+         token_file="reduced-token", cp_http_statuses=(401, 403), **allowed)
     verify(c, fixture, context_id, 3)
     check(scalar(c, f"SELECT count(*) FROM capability.people_provider_choice WHERE tenant_id='{fixture['tenant']}'") == "1",
           "REPLAY_DUPLICATED_CHOICE")
@@ -266,8 +267,8 @@ UPDATE capability.provider_capability_certification
     check(scalar(c, f"""SELECT status FROM capability.provider_capability_certification
                          WHERE certification_id='{fixture["cert"]}'::uuid""") == "REVOKED",
           "CERT_REVOCATION_NOT_DURABLE")
-    case(name="PPL-06-revocation-deny-same-bearer", expect="deny", **allowed)
-    case(name="PPL-07-replay-after-revocation-deny", expect="deny", **allowed)
+    case(name="PPL-06-revocation-deny-same-bearer", expect="deny", cp_http_statuses=(403,), **allowed)
+    case(name="PPL-07-replay-after-revocation-deny", expect="deny", cp_http_statuses=(403,), **allowed)
     verify(c, fixture, context_id, 3)
     c.sql("cpdb", "controlplane", "controlplane", f"""UPDATE capability.capability
                   SET status='DRAFT' WHERE capability_id='{fixture['capability']}'::uuid;""")
