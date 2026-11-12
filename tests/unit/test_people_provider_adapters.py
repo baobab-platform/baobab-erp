@@ -211,6 +211,21 @@ class PeopleBYOPTests(unittest.TestCase):
         self.signed = receipt(issued_at=(NOW - timedelta(seconds=1)).isoformat())
         self.assertEqual(self.verify().evidence_reference, RECEIPT)
 
+    def test_cp_verified_during_real_transport_after_request_clock_is_accepted(self):
+        # The request clock is captured before HTTPS, while CP verified_at
+        # is recorded during/after the roundtrip, not at request start.
+        self.selected = selection(
+            verified_at=(NOW + timedelta(seconds=2)).isoformat(),
+            expires_at=(NOW + timedelta(seconds=27)).isoformat(),
+        )
+        selector = CPProviderSelector("https://cp.example.test", self.tokens, self.cp_transport)
+        accepted = selector.resolve(
+            context_id="ctx_synthetic01", correlation_id=CORRELATION,
+            capability_key="payroll.evidence.attest", tenant_id="tn_synthetic01",
+            legal_employer_id="SYNTHETIC-EMPLOYER", jurisdiction="ZA", now=NOW,
+        )
+        self.assertEqual(accepted.provider_id, "provider_synthetic01")
+
     def test_future_issued_evidence_remains_refused(self):
         self.signed = receipt(issued_at=(NOW + timedelta(seconds=1)).isoformat())
         with self.assertRaises(PayrollPolicyError):
@@ -232,7 +247,7 @@ class PeopleBYOPTests(unittest.TestCase):
             "silent fallback": {"source_of_record": "AUTO_FALLBACK"},
             "unknown provider": {"provider_id": "provider_other"},
             "revoked lease": {"expires_at": NOW.isoformat()},
-            "future receipt": {"verified_at": (NOW + timedelta(seconds=1)).isoformat()},
+            "unbounded future receipt": {"verified_at": (NOW + timedelta(seconds=8)).isoformat()},
             "stale selection": {"verified_at": (NOW - timedelta(seconds=31)).isoformat()},
             "no qualification": {"qualification_receipt_ref": ""},
             "foreign binding": {"binding_id": "bind_other"},
