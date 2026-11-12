@@ -419,10 +419,10 @@ jobs:
           ref: ${{ env.IAM_COMMIT }}
           path: .erp-a/iam
           persist-credentials: false
-      - name: Setup Go from pinned CP
+      - name: Setup Go from pinned IAM (also builds CP)
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: .erp-a/cp/go.mod
+          go-version-file: .erp-a/iam/go.mod
           cache: false
       - name: Independently validate IAM People admission policy negatives
         run: (cd .erp-a/iam && go test ./internal/tokenprofile -run '^TestPeople' -count=1)
