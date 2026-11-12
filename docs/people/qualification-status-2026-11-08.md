@@ -5,6 +5,18 @@
 **Engineering candidates:** Shared #436 · CP #466 · IAM #157 · ERP #126
 **Decision:** **HOLD — NOT STATUTORILY OR RUNTIME QUALIFIED**
 **Protected staging/production activation:** **NOT AUTHORISED**
+**Development code merge:** **ELIGIBLE only after exact-head CI and code safeguards pass; statutory/provider certification is not a source-merge gate.**
+
+## Development/release separation — 12 November 2026
+
+The engineering programme explicitly permits **merging inert source and reproducible disposable integration tests** before the independent payroll provider and statutory review are completed. This does **not** change the HOLD decision for operating payroll, external live-provider processing, employee-data custody or staging/production activation. No migration or provider can become operational merely because this branch is merged.
+
+**Development merge checks:** exact-head CI; real disposable PostgreSQL 17 immutable workforce/payroll draft CAS, correction and concurrency negatives; real iDempiere 13 ERP-A no-side-effect check; Shared-045 canonical People vocabulary; independent CP authority reader and IAM scoped workload adapter that fail closed without approved binding; provider- and reviewer-signature verification including forged/stale/revoked and foreign employer negatives; preserved zero-default capability registration and protected environment fences. CP #466 contains the complementary development-only reader; its **source-merge** is a prerequisite for treating the ERP adapter as reconciled, not a claim that any current employer actually has an ACTIVE choice.
+
+**Deferred until protected staging/production release:** actual country-specific ZA/UG statutory golden vectors and licensed qualified providers; live issuer-issued People token and CP-governed employer/provider choice with maker/checker; independently witnessed employee privacy, vendor source receipts, provider cutover/replay, supervised pay runs, accounting/Payments effects and EA-09 release. These remain blocked by explicit capability DRAFT status, empty/default-deny qualification trust, disabled experimental migrations and absent production People binding.
+
+**Acceptance semantics:** DEVELOPMENT SOURCE MERGED != RUNTIME PROVIDER QUALIFIED != STATUTORILY CERTIFIED != STAGING/PRODUCTION RELEASE AUTHORISED. Keep the original independent qualification matrix below as release evidence required, not as a prohibition on version-controlling inert code.
+
 
 ## Engineering readback
 
