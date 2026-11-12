@@ -392,3 +392,95 @@ jobs:
           BAOBAB_PEOPLE_EXPERIMENTAL: "1"
           BAOBAB_PEOPLE_TEST_DISPOSABLE: "1"
         run: PYTHONPATH=modules python3 -m unittest discover -s tests/integration -p 'test_*.py' -v
+
+  people-dev-connected:
+    name: People DEV IAM–CP–ERP connected provider-selection witness (not payroll certification)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 65
+    env:
+      # Accepted CP #466 development-only reader and the current merged IAM
+      # policy/config snapshot. These are immutable commits, not moving refs.
+      CP_COMMIT: 192555a80435ec55e01113fbb2c0515e95987ae5
+      IAM_COMMIT: 39fc7bcb3fd0568e09f1304e6fe07e64ba31c5bf
+    steps:
+      - name: Checkout ERP source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout merged CP People implementation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/baobab-cp
+          ref: ${{ env.CP_COMMIT }}
+          path: .erp-a/cp
+          persist-credentials: false
+      - name: Checkout IAM-owned Ory issuance config and People policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/baobab-iam
+          ref: ${{ env.IAM_COMMIT }}
+          path: .erp-a/iam
+          persist-credentials: false
+      - name: Setup Go from pinned CP
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: .erp-a/cp/go.mod
+          cache: false
+      - name: Independently validate IAM People admission policy negatives
+        run: (cd .erp-a/iam && go test ./internal/tokenprofile -run '^TestPeople' -count=1)
+      - name: Setup Java truststore tooling
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install PostgreSQL client
+        run: sudo apt-get update -q && sudo apt-get install -yq postgresql-client
+      - name: Build deployable ERP and CI-only real iDempiere driver
+        run: |
+          docker build -f idempiere/Dockerfile -t baobab-erp:test .
+          docker build -f idempiere/acceptance/Dockerfile \\
+            --build-arg BASE_IMAGE=baobab-erp:test -t baobab-erp:gate-d .
+      - name: Run actual Ory issuance, CP provider resolution and ERP TLS consumer
+        env:
+          BAOBAB_ENVIRONMENT: integration
+          PEOPLE_DEV_CONNECTED: "true"
+          ERP_IMAGE: baobab-erp:gate-d
+          CP_SRC: ${{ github.workspace }}/.erp-a/cp
+          IAM_SRC: ${{ github.workspace }}/.erp-a/iam
+          IAM_COMMIT: ${{ env.IAM_COMMIT }}
+        run: idempiere/acceptance/erp-a/run-gate-d-erp-a.sh "$RUNNER_TEMP/people-connected"
+      - name: Require independently witnessed source-only integration gates
+        run: |
+          python3 - "$RUNNER_TEMP/people-connected/people-dev-witness.json" <<'PEOPLE_VERIFY'
+          import json, pathlib, sys
+          f = pathlib.Path(sys.argv[1])
+          report = json.loads(f.read_text())
+          expected = (
+              "real_ory_hydra_signed_client_credentials",
+              "real_cp_binary_and_https_erp_consumer",
+              "independent_postgresql17_choice_and_resolution_readback",
+              "same_bearer_context_replay_no_duplicate_choice",
+              "same_tenant_wrong_legal_employer_denied_by_erp",
+              "cross_tenant_context_denied",
+              "missing_scope_denied",
+              "revoked_certification_denied_with_unexpired_token",
+              "canonical_people_capability_restored_to_draft",
+          )
+          if not report.get("passed") or not all(report.get(k) is True for k in expected):
+              raise SystemExit("unqualified People DEV connected witness")
+          if (report["statutory_za_ug_certification"] is not False
+                  or report["real_live_people_provider_qualified"] is not False
+                  or report["payroll_filing_or_money_movement"] is not False
+                  or report["protected_staging_production_authorized"] is not False):
+              raise SystemExit("development-only receipt overclaims release qualification")
+          PEOPLE_VERIFY
+          grep -qx 'ERP-A failures: 0' "$RUNNER_TEMP/people-connected/erp-a-report.txt"
+      - name: Upload secret-free witness and native ERP-A report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: people-dev-connected-witness
+          path: |
+            ${{ runner.temp }}/people-connected/people-dev-witness.json
+            ${{ runner.temp }}/people-connected/erp-a-report.txt
+            ${{ runner.temp }}/people-connected/dev09-ory-provision.json
+            ${{ runner.temp }}/people-connected/dev09-ory-consumption.json
+          if-no-files-found: warn
