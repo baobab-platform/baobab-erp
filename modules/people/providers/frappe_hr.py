@@ -82,6 +82,12 @@ class FrappeHRPayrollRunReader:
     legal_employer_id: str
     jurisdiction: str
     provider_id: str
+    # Operator's immutable registry entry for this exact provider/binding and
+    # payroll run. A tenant-supplied run name must never select an arbitrary
+    # Payroll Entry from the same employer's Frappe account.
+    binding_id: str
+    binding_revision: int
+    registered_source_run_ref: str
     endpoint: str
     company: str
     api_key: str = field(repr=False)
@@ -90,7 +96,12 @@ class FrappeHRPayrollRunReader:
 
     def __post_init__(self) -> None:
         _endpoint(self.endpoint, "")
-        if (not self.company or len(self.company) > 120
+        if (not isinstance(self.binding_id, str)
+                or not re.fullmatch(r"bind_[a-z0-9]+", self.binding_id)
+                or type(self.binding_revision) is not int or self.binding_revision < 1
+                or not isinstance(self.registered_source_run_ref, str)
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./-]{2,119}", self.registered_source_run_ref)
+                or not self.company or len(self.company) > 120
                 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 .&()_'/-]*", self.company)
                 or not re.fullmatch(r"[A-Za-z0-9_-]{8,100}", self.api_key)
                 or not re.fullmatch(r"[A-Za-z0-9_-]{8,200}", self.api_secret)):
@@ -99,7 +110,11 @@ class FrappeHRPayrollRunReader:
     def read_status(self, *, source_run_ref: str, now: datetime) -> FrappePayrollEntryStatus:
         if (not isinstance(now, datetime) or now.tzinfo is None
                 or not isinstance(source_run_ref, str)
-                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./-]{2,119}", source_run_ref)):
+                or source_run_ref != self.registered_source_run_ref):
+            # A source reference is not caller-selectable. The employer's
+            # trusted adapter registry must bind the exact run and credentials
+            # before constructing this instance.
+
             raise ProviderSelectionDenied("Invalid employer-owned payroll source reference")
         now = now.astimezone(timezone.utc)
         selected = self.selector.resolve(
@@ -110,6 +125,8 @@ class FrappeHRPayrollRunReader:
         )
         if (not isinstance(selected, ProviderSelection)
                 or selected.source_of_record != "EXTERNAL" or selected.provider_id != self.provider_id
+                or selected.binding_id != self.binding_id
+                or selected.binding_revision != self.binding_revision
                 or selected.tenant_id != self.tenant_id
                 or selected.legal_employer_id != self.legal_employer_id
                 or selected.jurisdiction != self.jurisdiction or selected.expires_at <= now):
