@@ -136,8 +136,14 @@ class CustomerProjectionTests(_Base):
 
         self.assertEqual((report["pass"], report["codes"]), ({"processed": 1}, {"CREATED": 1}))
         [(native_id, fields)] = self.partner_records().items()
+        from customers.payload import native_search_key, parse_customer_projected
+
         self.assertEqual({k: fields[k] for k in ("Name", "Value", "IsCustomer", "IsActive", "C_BP_Group_ID")},
-                         {"Name": "Example Importer", "Value": self.customer, "IsCustomer": True, "IsActive": True, "C_BP_Group_ID": 9})
+                         {"Name": "Example Importer",
+                          "Value": native_search_key(self.tenant, parse_customer_projected(self.projected()["data"])),
+                          "IsCustomer": True, "IsActive": True, "C_BP_Group_ID": 9})
+        self.assertEqual(len(fields["Value"]), 40)
+        self.assertNotEqual(fields["Value"], self.customer)
         self.assertIn(self.tenant, fields["Description"])  # the marker that makes an uncertain create recoverable
         native, digest, version = self.mapping()
         self.assertEqual((native, version), (native_id, "1"))
@@ -360,6 +366,33 @@ class CustomerProjectionTests(_Base):
         self.assertEqual((row["status"], row["code"]), ("blocked", code))
         self.assertEqual(self.partner_records(), {})  # nothing was created or invented
         self.assertIsNone(self.mapping())
+
+    def test_expired_placement_blocks_native_partner_projection(self):
+        self.seed_tenant()
+        with self.db.cursor() as cursor:
+            cursor.execute(
+                """UPDATE baobab.tenant_mapping
+                   SET effective_from = CURRENT_TIMESTAMP - interval '3 days',
+                       effective_to = CURRENT_TIMESTAMP - interval '2 days'
+                   WHERE tenant_id = %s AND entity_id = %s""",
+                (self.tenant, self.entity),
+            )
+        self.db.commit()
+        self._blocked("TENANT_UNMAPPED")
+        self.assertEqual(self.partners.writes, [])
+
+    def test_future_placement_blocks_native_partner_projection(self):
+        self.seed_tenant()
+        with self.db.cursor() as cursor:
+            cursor.execute(
+                """UPDATE baobab.tenant_mapping
+                   SET effective_from = CURRENT_TIMESTAMP + interval '2 days'
+                   WHERE tenant_id = %s AND entity_id = %s""",
+                (self.tenant, self.entity),
+            )
+        self.db.commit()
+        self._blocked("TENANT_UNMAPPED")
+        self.assertEqual(self.partners.writes, [])
 
     def test_a_tenant_with_no_engine_placement_blocks_the_event(self):
         self._blocked("TENANT_UNMAPPED")
