@@ -256,6 +256,7 @@ jobs:
       - name: ERP-A scenarios
         env:
           BAOBAB_ENVIRONMENT: integration
+          BAOBAB_PEOPLE_EXPERIMENTAL_NATIVE: "1" # Schema-only native BP-04 proof; never production activation
           ERP_IMAGE: baobab-erp:gate-d
           CP_SRC: ${{ github.workspace }}/.erp-a/cp
           IAM_SRC: ${{ github.workspace }}/.erp-a/iam
@@ -379,5 +380,15 @@ jobs:
         run: pip install --break-system-packages -q -e modules
       - name: Apply database migrations
         run: ./db/migrate.sh
+      - name: Install BP-04 experimental People tables (disposable PG17 CI only)
+        env:
+          BAOBAB_PEOPLE_EXPERIMENTAL: "1"
+          BAOBAB_ENVIRONMENT: integration
+        run: |
+          bash db/migrate-people-experimental.sh
+          bash db/migrate-people-experimental.sh # idempotent on same database
       - name: Run integration tests against real Postgres
+        env:
+          BAOBAB_PEOPLE_EXPERIMENTAL: "1"
+          BAOBAB_PEOPLE_TEST_DISPOSABLE: "1"
         run: PYTHONPATH=modules python3 -m unittest discover -s tests/integration -p 'test_*.py' -v
