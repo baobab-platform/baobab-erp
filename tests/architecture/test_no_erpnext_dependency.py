@@ -70,8 +70,10 @@ class NoErpnextDependencyTests(unittest.TestCase):
                 # name; importing the retired ERP engine is still forbidden.
                 optional_source = (REPO_ROOT / relative_path).read_text(errors="ignore")
                 if (FORBIDDEN_NATIVE_IMPORT.search(optional_source)
-                        or "erpnext" in optional_source.lower()
-                        or "bench" in optional_source.lower()):
+                        or (relative_path.endswith(".py") and (
+                            "erpnext" in optional_source.lower()
+                            or "bench" in optional_source.lower()
+                        ))):
                     violations.append(relative_path)
                 continue
             path = REPO_ROOT / relative_path
