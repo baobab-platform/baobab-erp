@@ -17,11 +17,25 @@ class PeopleArchitectureTests(unittest.TestCase):
     def test_only_planned_capabilities_no_people_support(self):
         declaration = (ROOT / ".baobab/capability-provider.yaml").read_text()
         self.assertIn("planned_capabilities:", declaration)
-        support, proposed = declaration.split("planned_capabilities:", 1)
-        for label in ("workforce.employment.manage", "payroll.run.manage"):
-            self.assertIn("proposed_key: " + label, proposed)
+        support, planned = declaration.split("planned_capabilities:", 1)
+        # ADR-SHARED-045 is now accepted in Shared. Contracted capability
+        # proposals are not executable, and must not become provider support
+        # without an independent native or BYOP qualification.
+        for label in (
+            "workforce.employment.manage",
+            "workforce.employment.read",
+            "payroll.run.read",
+            "payroll.evidence.attest",
+        ):
+            self.assertIn("capability_key: " + label, planned)
             self.assertNotIn("capability_key: " + label, support)
-        self.assertIn("proposal_status: PROPOSED", proposed)
+        self.assertIn("proposal_status: CONTRACTED", planned)
+        self.assertNotIn("proposal_status: PROPOSED", planned)
+        self.assertNotIn("payroll.run.manage", planned)
+        # No nominated native People provider can become a silent default.
+        for block in planned.split("  - capability_key: "):
+            if block.startswith(("workforce.", "payroll.")):
+                self.assertNotIn("target_provider_key:", block)
 
     def test_provider_neutrality_retains_tenant_choice_without_activating_provider(self):
         policy = (ROOT / "docs/people/provider-neutrality.md").read_text()
