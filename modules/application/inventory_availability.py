@@ -21,7 +21,7 @@ RETRY_AFTER_SECONDS = "30"
 
 
 def get_inventory_availability(*, tenant_id, query_string: str, connection, correlation_id: str, trace_id: str | None,
-                               idempiere_for: Callable[[int], IdempiereClient] | None = None,
+                               idempiere_for: Callable[[int, int], IdempiereClient] | None = None,
                                now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
                                **_) -> tuple[int, dict, dict]:
     def fail(kind: str, detail: str | None = None, *, errors=None, headers=None):
@@ -57,7 +57,7 @@ def get_inventory_availability(*, tenant_id, query_string: str, connection, corr
     if idempiere_for is None:
         return unavailable()
     try:
-        facts = IdempiereStockReader(idempiere_for(product.ad_client_id)).read(
+        facts = IdempiereStockReader(idempiere_for(product.ad_client_id, product.ad_org_id)).read(
             product_native_id=product.native_id, warehouse_native_id=warehouse.native_id)
     except (IdempiereClientError, StockReadError, OSError, TimeoutError):
         return unavailable()

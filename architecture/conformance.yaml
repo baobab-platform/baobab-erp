@@ -7,7 +7,7 @@
 #   partial    - some of the decision is implemented and tested; a material gap remains
 #   planned    - decided in the ADR, not yet implemented
 schema_version: "1.0"
-updated: "2026-10-08"
+updated: "2026-11-09"
 adrs:
   - id: ADR-ERP-001
     title: iDempiere as an isolated, headless, multi-tenant Baobab ERP engine
@@ -15,8 +15,25 @@ adrs:
     evidence:
       - idempiere/Dockerfile
       - compose.yaml
+      - upstream.lock.yaml
       - idempiere/extensions/
-    gap: No production EngineInstance exists; no application-service HTTP layer yet.
+      - tests/architecture/test_adr_erp_001_private_boundary.py
+      - docs/assessments/adr-erp-001-native-engine-conformance-2026-11-09.md
+    gap: >
+      2026-11-09 audit: real JVM/order/outbox/replay implementation now exists,
+      including the bounded synthetic-origin same-event qualification merged in
+      ERP #125, so the original 'no application-service HTTP layer yet' wording
+      is obsolete. The ADR-001 development gate remains OPEN: no independently
+      qualified full two-company native financial/core proof, complete CP
+      EngineInstance/IsolationProfile registration and negative isolation readback,
+      immutable upstream artifact digest and protected runtime/network/restore
+      evidence are established here. Default Compose published ports for native
+      iDempiere HTTPS and the ERP facade are now literal host-loopback only,
+      regression-tested with Docker's interpolated model where available.
+      This closes a source-configuration exposure defect but does not certify
+      remote gateways, cloud ingress, production networks, or release readiness.
+      ERP #132 accounting-integrity migrations and ERP #126 People are still
+      drafts, not accepted mainline functionality.
 
   - id: ADR-ERP-002
     title: ERP tenant, client and organization mapping
@@ -858,3 +875,57 @@ adrs:
       UG<->ZA intercompany purchase/sale, AR/AP, settlement and elimination
       remain unqualified; do not confuse generic real iDempiere acceptance
       runs with proof of this ZuriBeans-specific topology.
+  - id: ADR-ERP-022
+    title: Native placement, document provenance and posting-authority enforcement
+    status: partial
+    evidence:
+      - db/native-migrations/
+      - idempiere/extensions/org.nabhold.baobab.erp.finance/
+      - idempiere/acceptance/erp-a/
+      - tests/native/
+      - docs/adr/ADR-ERP-022 — Native Placement, Document Provenance and Posting-Authority Enforcement.md
+    gap: >
+      Merged native posting/placement authority and synthetic-origin iDempiere
+      13/PostgreSQL 17 evidence is substantial. ERP #132 is a separate DRAFT,
+      NOT MERGED financial-history/configuration hardening increment; N0010-N0013,
+      its original-head tests and its current failure evidence must not be counted
+      as accepted mainline functionality. The current reported real JVM S04b
+      M_MatchInv repost path conflicts with immutable Fact_Acct after prior
+      posting and is explicitly HELD, not bypassed. Independent exact-head
+      multi-company ledger, lawful correction/reversal, committed readback,
+      CP legal-actor/mandate and replay qualification remain required.
+
+  - id: ADR-ERP-023
+    title: Baobab People African workforce, payroll, provider-neutrality and PostgreSQL 17
+    status: partial
+    evidence:
+      - docs/adr/ADR-ERP-023 — Baobab People African Workforce, Payroll, CDSoftware Re-engineering and PostgreSQL 17.md
+      - docs/operations/postgresql-17-upgrade.md
+      - tests/architecture/test_postgresql17_baseline.py
+    gap: >
+      PostgreSQL 17 repository baseline and the accepted People/provider-neutral
+      architecture exist. ERP #126 is a separate DRAFT/HOLD experimental
+      workforce/payroll persistence and provider-adapter increment, not merged,
+      not production-activatable and not authoritative statutory qualification.
+      No qualified ZA/UG payroll calculators, official signed statutory golden
+      vectors, genuine IAM/CP provider binding, payroll GL posting, personal
+      data custody, supervised parallel run or independent employer-readback
+      evidence is established in ERP main. This is an optional extension gate,
+      not proof of completed native core financial ERP.
+
+  - id: ADR-ERP-024
+    title: Baobab WMS and 3PL provider-neutral capability architecture
+    status: planned
+    evidence:
+      - docs/adr/ADR-ERP-024 — Baobab WMS and 3PL Provider-Neutral Capability Architecture.md
+      - docs/adr/README.md
+    gap: >
+      ADR-ERP-024 was accepted on 9 November 2026 in merged ERP #152 as an
+      authoritative provider-neutral architecture decision only. No WMS/3PL
+      engine technology has been selected or implemented; no incumbent or
+      Baobab-managed executor, provider adapter, CP/IAM binding, Shared
+      contract, native accounting consequence or market-specific operating
+      qualification is accepted. WMS-00 through WMS-12 and independent
+      provider-isolation, inventory-owner, recovery, reconciliation and
+      real PostgreSQL/iDempiere/TMS/Trade evidence remain outstanding.
+      The status of this item must not be interpreted as an activated service.

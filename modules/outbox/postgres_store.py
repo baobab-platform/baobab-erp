@@ -132,11 +132,16 @@ class PostgresOutboxStore:
                                                 created_at=created_at))
         return records
 
+    # Result writes are conditional state transitions, not unconditional updates.
+    # Two schedulers can observe the same due row under at-least-once delivery.
+    # A stale failure must never resurrect DELIVERED/DEAD_LETTER/HELD, nor
+    # lower a later attempt counter. No replay authority is invented here.
     def mark_delivered(self, name: str) -> None:
         with self._connection.cursor() as cursor:
             cursor.execute(
                 "UPDATE baobab.event_outbox SET status = 'delivered', delivered_at = now(), next_attempt_at = NULL "
-                "WHERE event_id = %s::uuid",
+                "WHERE event_id = %s::uuid AND status IN ('pending', 'retry') "
+                "AND envelope_format = 'cloudevents'",
                 (name,),
             )
         self._connection.commit()
@@ -149,8 +154,11 @@ class PostgresOutboxStore:
                 SET status = 'retry', attempts = %s, last_error = %s,
                     next_attempt_at = now() + make_interval(secs => %s)
                 WHERE event_id = %s::uuid
+                  AND envelope_format = 'cloudevents'
+                  AND status IN ('pending', 'retry')
+                  AND attempts < %s
                 """,
-                (attempts, error, delay_seconds, name),
+                (attempts, error, delay_seconds, name, attempts),
             )
         self._connection.commit()
 
@@ -162,8 +170,11 @@ class PostgresOutboxStore:
                 SET status = 'dead_letter', attempts = %s, last_error = %s, dead_lettered_at = now(),
                     next_attempt_at = NULL
                 WHERE event_id = %s::uuid
+                  AND envelope_format = 'cloudevents'
+                  AND status IN ('pending', 'retry')
+                  AND attempts < %s
                 """,
-                (attempts, error, name),
+                (attempts, error, name, attempts),
             )
         self._connection.commit()
 

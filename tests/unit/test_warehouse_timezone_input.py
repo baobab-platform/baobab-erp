@@ -48,7 +48,13 @@ class ConfigurationTests(unittest.TestCase):
     def test_the_shipped_templates_parse_as_not_configured(self):
         import pathlib
         template = pathlib.Path(__file__).resolve().parents[2] / "config/provisioning/deployment.template.json"
-        self.assertEqual(parse_deployment_configuration(json.loads(template.read_text())).markets, {})
+        unapproved = json.loads(template.read_text())
+        with self.assertRaisesRegex(MarketConfigurationError, "not approved"):
+            parse_deployment_configuration(unapproved)
+        # The candidate can still be inspected in a development process,
+        # but it is neither configured nor activated for production.
+        unapproved["target_environment"] = "development"
+        self.assertEqual(parse_deployment_configuration(unapproved).markets, {})
 
 
 class RequestFileTests(unittest.TestCase):

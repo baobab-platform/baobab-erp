@@ -141,6 +141,8 @@ class PostgresCanonicalMappingStore:
                   AND canonical_type = %s
                   AND canonical_id = %s::uuid
                   AND status = 'active'
+                  AND effective_from <= CURRENT_TIMESTAMP
+                  AND (effective_to IS NULL OR effective_to > CURRENT_TIMESTAMP)
                 """,
                 (tenant_id, canonical_type, canonical_id),
             )
@@ -152,7 +154,9 @@ class PostgresCanonicalMappingStore:
         with self._connection.cursor() as cursor:
             cursor.execute(
                 "SELECT erp_resource_id FROM baobab.entity_mapping "
-                "WHERE tenant_id = %s AND canonical_type = %s AND canonical_id = %s::uuid AND status = 'active'",
+                "WHERE tenant_id = %s AND canonical_type = %s AND canonical_id = %s::uuid AND status = 'active' "
+                "AND effective_from <= CURRENT_TIMESTAMP "
+                "AND (effective_to IS NULL OR effective_to > CURRENT_TIMESTAMP)",
                 (tenant_id, canonical_type, canonical_id))
             row = cursor.fetchone()
         return row[0] if row else None
@@ -167,6 +171,8 @@ class PostgresCanonicalMappingStore:
                   AND native_table = %s
                   AND native_id = %s
                   AND status = 'active'
+                  AND effective_from <= CURRENT_TIMESTAMP
+                  AND (effective_to IS NULL OR effective_to > CURRENT_TIMESTAMP)
                 """,
                 (tenant_id, table, record_id),
             )
@@ -186,6 +192,8 @@ class PostgresCanonicalMappingStore:
                 WHERE tenant_id = %s
                   AND canonical_type = %s
                   AND status = 'active'
+                  AND effective_from <= CURRENT_TIMESTAMP
+                  AND (effective_to IS NULL OR effective_to > CURRENT_TIMESTAMP)
                 """,
                 (tenant_id, canonical_type),
             )
