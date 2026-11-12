@@ -8,7 +8,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "idempiere/acceptance/erp-a/driver"))
 
-from people_dev_connected import seed_choice  # noqa: E402
+from people_dev_connected import seed_choice, verify  # noqa: E402
 
 
 class DisposableComposeRecorder:
@@ -54,6 +54,33 @@ class PeopleConnectedSourceWiringTest(unittest.TestCase):
         self.assertEqual(fixture["employer"], "TEST-EMPLOYER")
         self.assertIn("UPDATE capability.capability SET status='ACTIVE'", script)
         self.assertNotIn("baobab_people.payroll_draft", script)
+
+    def test_independent_readback_uses_distinct_decision_rows_and_nonreserved_sql(self):
+        class ReadbackCompose:
+            def __init__(self):
+                self.sql_called = None
+
+            def sql(self, service, user, db, statement):
+                self.sql_called = statement
+                return [[
+                    "11111111-1111-4111-8111-111111111111",
+                    "22222222-2222-4222-8222-222222222222",
+                    "ACTIVE", "CERTIFIED", "1", "ACTIVE", "ACTIVE", "2", "2",
+                ]]
+
+        c = ReadbackCompose()
+        fixture = {
+            "tenant": "tn_disposable", "employer": "TEST-EMPLOYER",
+            "binding": "11111111-1111-4111-8111-111111111111",
+            "provider": "22222222-2222-4222-8222-222222222222",
+        }
+        verify(c, fixture, "33333333-3333-4333-8333-333333333333", 2)
+        self.assertIn("JOIN capability.capability_grant cg", c.sql_called)
+        self.assertIn("cg.status", c.sql_called)
+        self.assertNotIn("grant.status", c.sql_called)
+        self.assertIn("COUNT(", c.sql_called.upper())
+        with self.assertRaisesRegex(RuntimeError, "INDEPENDENT_PG17_READBACK"):
+            verify(c, fixture, "33333333-3333-4333-8333-333333333333", 3)
 
     def test_self_approval_cannot_seed_a_choice(self):
         c = DisposableComposeRecorder()
