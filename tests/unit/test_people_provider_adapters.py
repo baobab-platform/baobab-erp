@@ -204,6 +204,18 @@ class PeopleBYOPTests(unittest.TestCase):
         self.assertFalse(hasattr(result, "payment_authorization"))
         self.assertFalse(hasattr(result, "journal_posted"))
 
+    def test_evidence_issued_after_cp_observation_is_valid_when_current_and_signed(self):
+        # CP selection is observed first; the provider may sign the receipt
+        # afterwards in the same bounded verification flow.
+        self.selected = selection(verified_at=(NOW - timedelta(seconds=2)).isoformat())
+        self.signed = receipt(issued_at=(NOW - timedelta(seconds=1)).isoformat())
+        self.assertEqual(self.verify().evidence_reference, RECEIPT)
+
+    def test_future_issued_evidence_remains_refused(self):
+        self.signed = receipt(issued_at=(NOW + timedelta(seconds=1)).isoformat())
+        with self.assertRaises(PayrollPolicyError):
+            self.verify()
+
     def test_works_with_existing_independent_checker_gate_without_approving(self):
         result = PayrollEligibilityGate(Approval(), self.adapter()).check(
             draft(), authority_proof="checker-proof",
