@@ -1,13 +1,14 @@
 """Frappe HR real REST API adapter contract tests; no employee or salary data."""
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 import json
 from urllib.parse import parse_qs, urlparse
 import unittest
 
 from people.providers.frappe_hr import (
-    FrappeHRPayrollRunReader, FrappePayrollEntryStatus,
+    FrappeHRPayrollRunReader, FrappePayrollEntryStatus, frappe_read_https,
 )
 from people.providers.selection import ProviderSelection, ProviderSelectionDenied
 
@@ -83,6 +84,26 @@ class FrappeHRAdapterTests(unittest.TestCase):
                          [["name", "=", "PAYROLL-2026-001"], ["company", "=", "Acme ZA Ltd"]])
         for prohibited in ("Employee", "Salary Slip", "bank", "salary", "earnings", "tax_id"):
             self.assertNotIn(prohibited, url)
+
+    def test_international_company_names_are_exact_safe_filter_values(self):
+        for company in ("Acme, Inc.", "Société Exemple", "München & Co. (ZA)"):
+            with self.subTest(company=company):
+                self.source.calls.clear()
+                self.source.result["data"][0]["company"] = company
+                reader = replace(self.adapter, company=company)
+                result = reader.read_status(source_run_ref="PAYROLL-2026-001", now=NOW)
+                self.assertEqual(result.source_company, company)
+                query = parse_qs(urlparse(self.source.calls[0][0]).query)
+                self.assertEqual(json.loads(query["filters"][0])[1], ["company", "=", company])
+        self.source.result["data"][0]["company"] = "Acme ZA Ltd"
+        for invalid in (" Acme ZA Ltd", "Acme ZA Ltd ", "Acme\\nZA Ltd", "Acme\\x00ZA Ltd"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ProviderSelectionDenied):
+                    replace(self.adapter, company=invalid)
+
+    def test_default_https_transport_is_not_bound_as_an_instance_method(self):
+        reader = replace(self.adapter, transport=frappe_read_https)
+        self.assertIs(reader.transport, frappe_read_https)
 
     def test_denies_wrong_selected_provider_before_any_external_http(self):
         for drift in ("provider", "employer"):
