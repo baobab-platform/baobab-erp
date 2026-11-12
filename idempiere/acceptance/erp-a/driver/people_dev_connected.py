@@ -194,18 +194,18 @@ def verify(c: Compose, fixture: dict, context_id: str, expected_resolutions: int
     # SQL implementation and the Python consumer's HTTP response.
     facts = rows(c, f"""
 SELECT choice.binding_id::text, choice.provider_id::text, choice.status,
-       cert.status, cb.version::text, grant.status,
+       cert.status, cb.version::text, cg.status,
        cap.status, count(DISTINCT r.resolution_id)::text,
        count(DISTINCT CASE WHEN r.decision='RESOLVED' THEN r.resolution_id END)::text
 FROM capability.people_provider_choice choice
 JOIN capability.provider_capability_certification cert ON cert.certification_id=choice.certification_id
 JOIN capability.capability_binding cb ON cb.id=choice.binding_id
 JOIN capability.capability cap ON cap.capability_id=cb.capability_id
-JOIN capability.capability_grant grant ON grant.scope_id=cb.scope_id AND grant.capability_id=cap.capability_id
+JOIN capability.capability_grant cg ON cg.scope_id=cb.scope_id AND cg.capability_id=cap.capability_id
 LEFT JOIN capability.capability_resolution r ON r.tenant_id=choice.tenant_id
   AND r.context_id='{context_id}' AND r.capability_key='payroll.run.read'
 WHERE choice.tenant_id='{tenant}' AND choice.legal_employer_id='{employer}'
-GROUP BY choice.binding_id, choice.provider_id, choice.status,cert.status,cb.version,grant.status,cap.status;
+GROUP BY choice.binding_id, choice.provider_id, choice.status,cert.status,cb.version,cg.status,cap.status;
 """)
     check(len(facts) == 1 and facts[0][0] == fixture["binding"]
           and facts[0][1] == fixture["provider"]
