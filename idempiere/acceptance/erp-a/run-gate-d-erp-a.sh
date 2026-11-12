@@ -80,7 +80,7 @@ log "throwaway CA, the TLS edge certificate and iDempiere's truststore"
 mkdir -p "$RUN"/{edge,cp,issuer,erp-tls,erp-secret,gate-d/requests,gate-d/results}
 if [[ "${PEOPLE_DEV_CONNECTED:-false}" == "true" ]]; then
   mkdir -p "$RUN/people-secret"
-  printf "%s\\n" "$PEOPLE_WORKLOAD_SECRET" > "$RUN/people-secret/workload-secret"
+  printf "%s\n" "$PEOPLE_WORKLOAD_SECRET" > "$RUN/people-secret/workload-secret"
   chmod -R a+rX "$RUN/people-secret"
 fi
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=Baobab ERP-A throwaway CA" \
@@ -220,7 +220,7 @@ python3 "$HERE/driver/independent_company.py" verify --run "$RUN" --out "$OUT" -
 python3 "$HERE/driver/ory_bootstrap.py" consume --run "$RUN" --out "$OUT"
 if [[ "${PEOPLE_DEV_CONNECTED:-false}" == "true" ]]; then
   log "People: Ory-issued scoped workload -> current CP -> real ERP adapter -> independent PG17 readback"
-  PYTHONPATH="$REPO/modules" python3 -B "$HERE/driver/people_dev_connected.py" \\
+  PYTHONPATH="$REPO/modules" python3 -B "$HERE/driver/people_dev_connected.py" \
     --run "$RUN" --out "$OUT" --compose "$HERE/compose.yaml"
   test -s "$OUT/people-dev-witness.json"
 fi
