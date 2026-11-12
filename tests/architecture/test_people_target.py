@@ -60,6 +60,27 @@ class PeopleArchitectureTests(unittest.TestCase):
         self.assertNotIn("capability_key: workforce.employment.manage", provider.split("planned_capabilities:", 1)[0])
         self.assertNotIn("capability_key: payroll.run.manage", provider.split("planned_capabilities:", 1)[0])
 
+    def test_protected_runtime_never_auto_installs_people_experiment(self):
+        """Development merge must not silently activate People at boot."""
+        default_migration = (ROOT / "db/migrate.sh").read_text()
+        experimental = (ROOT / "db/migrate-people-experimental.sh").read_text()
+        self.assertNotIn("migrate-people-experimental.sh", default_migration)
+        self.assertIn('BAOBAB_PEOPLE_EXPERIMENTAL:-', experimental)
+        self.assertIn('BAOBAB_ENVIRONMENT:-', experimental)
+        self.assertIn('^(test|development|integration)
+        src = (ROOT / "modules/people").resolve()
+        self.assertTrue((src / "workforce/service.py").exists())
+        self.assertTrue((src / "payroll/service.py").exists())
+        self.assertFalse((ROOT / "idempiere/extensions/org.nabhold.baobab.erp.people").exists())
+        self.assertFalse((ROOT / "modules/people/api.py").exists())
+
+
+if __name__ == "__main__":
+    unittest.main()
+, experimental)
+        self.assertIn('BAOBAB_PEOPLE_DENIED', experimental)
+        self.assertIn("check-people-experimental.sql", experimental)
+
     def test_no_people_runtime_registration(self):
         src = (ROOT / "modules/people").resolve()
         self.assertTrue((src / "workforce/service.py").exists())
