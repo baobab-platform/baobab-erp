@@ -27,7 +27,20 @@ ALLOWED_PREFIXES = (
     "tests/architecture/test_no_erpnext_dependency.py",
 )
 
+# ADR-SHARED-045 permanent BYOP permits a physically separate external
+# Frappe HR REST *consumer*, not ERPNext-as-ERP, Bench orchestration or
+# imports into the native iDempiere application. The exception is EXACT;
+# another ERPNext/Frappe reference anywhere still fails this fitness gate.
+OPTIONAL_EXTERNAL_PEOPLE_ADAPTER_FILES = frozenset({
+    "modules/people/providers/frappe_hr.py",
+    "tests/unit/test_people_frappe_hr.py",
+})
+
 PATTERN = re.compile(r"\b(erpnext|frappe|bench)\b", re.IGNORECASE)
+FORBIDDEN_NATIVE_IMPORT = re.compile(
+    r"(?m)^\s*(?:from\s+(?:frappe|erpnext)\b|import\s+(?:frappe|erpnext)\b)"
+)
+
 
 
 def _tracked_files() -> list[str]:
@@ -49,6 +62,15 @@ class NoErpnextDependencyTests(unittest.TestCase):
         violations = []
         for relative_path in _tracked_files():
             if relative_path.startswith(ALLOWED_PREFIXES):
+                continue
+            if relative_path in OPTIONAL_EXTERNAL_PEOPLE_ADAPTER_FILES:
+                # This pair may describe the external wire protocol by
+                # name; importing the retired ERP engine is still forbidden.
+                optional_source = (REPO_ROOT / relative_path).read_text(errors="ignore")
+                if (FORBIDDEN_NATIVE_IMPORT.search(optional_source)
+                        or "erpnext" in optional_source.lower()
+                        or "bench" in optional_source.lower()):
+                    violations.append(relative_path)
                 continue
             path = REPO_ROOT / relative_path
             try:
