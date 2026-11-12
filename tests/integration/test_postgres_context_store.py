@@ -61,6 +61,65 @@ class PostgresContextStoreTests(unittest.TestCase):
         context = resolve_tenant(self.ad_client_id, self.ad_org_id, store)
         self.assertEqual((context.tenant_id, context.entity_id), (self.tenant_id, self.entity_id))
 
+    def test_future_dated_mapping_denied_in_both_directions(self):
+        from datetime import datetime, timedelta, timezone
+
+        self._insert_mapping()
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """UPDATE baobab.tenant_mapping
+                   SET effective_from = %s
+                   WHERE tenant_id = %s AND entity_id = %s""",
+                (datetime.now(timezone.utc) + timedelta(days=2),
+                 self.tenant_id, self.entity_id),
+            )
+        self.connection.commit()
+        store = PostgresTenantMappingStore(self.connection)
+        with self.assertRaises(ContextResolutionError):
+            resolve_context(self.tenant_id, self.entity_id, store)
+        with self.assertRaises(ContextResolutionError):
+            resolve_tenant(self.ad_client_id, self.ad_org_id, store)
+
+    def test_expired_mapping_denied_in_both_directions(self):
+        from datetime import datetime, timedelta, timezone
+
+        self._insert_mapping()
+        now = datetime.now(timezone.utc)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """UPDATE baobab.tenant_mapping
+                   SET effective_from = %s, effective_to = %s
+                   WHERE tenant_id = %s AND entity_id = %s""",
+                (now - timedelta(days=2), now - timedelta(days=1),
+                 self.tenant_id, self.entity_id),
+            )
+        self.connection.commit()
+        store = PostgresTenantMappingStore(self.connection)
+        with self.assertRaises(ContextResolutionError):
+            resolve_context(self.tenant_id, self.entity_id, store)
+        with self.assertRaises(ContextResolutionError):
+            resolve_tenant(self.ad_client_id, self.ad_org_id, store)
+
+    def test_currently_effective_bounded_mapping_resolves_both_directions(self):
+        from datetime import datetime, timedelta, timezone
+
+        self._insert_mapping()
+        now = datetime.now(timezone.utc)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """UPDATE baobab.tenant_mapping
+                   SET effective_from = %s, effective_to = %s
+                   WHERE tenant_id = %s AND entity_id = %s""",
+                (now - timedelta(days=1), now + timedelta(days=1),
+                 self.tenant_id, self.entity_id),
+            )
+        self.connection.commit()
+        store = PostgresTenantMappingStore(self.connection)
+        self.assertEqual(resolve_context(self.tenant_id, self.entity_id, store).ad_client_id,
+                         self.ad_client_id)
+        self.assertEqual(resolve_tenant(self.ad_client_id, self.ad_org_id, store).tenant_id,
+                         self.tenant_id)
+
     def test_unknown_native_ids_fail_closed(self):
         store = PostgresTenantMappingStore(self.connection)
         with self.assertRaises(ContextResolutionError):

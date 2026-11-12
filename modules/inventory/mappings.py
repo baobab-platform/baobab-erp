@@ -25,6 +25,7 @@ class ResolvedWarehouse:
 @dataclass(frozen=True, slots=True)
 class ResolvedProduct:
     ad_client_id: int
+    ad_org_id: int
     native_id: int
 
 
@@ -41,6 +42,8 @@ class PostgresInventoryMappings:
                 "SELECT w.legal_entity_id, w.native_id FROM baobab.erp_warehouse w "
                 "JOIN baobab.tenant_mapping tm ON tm.tenant_id = w.tenant_id AND tm.entity_id = w.legal_entity_id "
                 "AND tm.status = 'active' AND tm.engine_instance_id = w.engine_instance_id "
+                "AND tm.effective_from <= CURRENT_TIMESTAMP "
+                "AND (tm.effective_to IS NULL OR tm.effective_to > CURRENT_TIMESTAMP) "
                 "WHERE w.tenant_id = %s AND w.erp_resource_id = %s AND w.status = 'active' AND w.native_id IS NOT NULL",
                 (tenant_id, erp_warehouse_id))
             row = cursor.fetchone()
@@ -49,14 +52,17 @@ class PostgresInventoryMappings:
     def product(self, tenant_id: str, legal_entity_id: str, sku_id: str) -> ResolvedProduct | None:
         with self._connection.cursor() as cursor:
             cursor.execute(
-                "SELECT ad_client_id, engine_instance_id FROM baobab.tenant_mapping "
-                "WHERE tenant_id = %s AND entity_id = %s AND status = 'active'", (tenant_id, legal_entity_id))
+                "SELECT ad_client_id, ad_org_id, engine_instance_id FROM baobab.tenant_mapping "
+                "WHERE tenant_id = %s AND entity_id = %s AND status = 'active' "
+                "AND effective_from <= CURRENT_TIMESTAMP "
+                "AND (effective_to IS NULL OR effective_to > CURRENT_TIMESTAMP) "
+                "AND ad_client_id > 0", (tenant_id, legal_entity_id))
             tenant = cursor.fetchone()
-            if tenant is None or tenant[1] is None:
+            if tenant is None or tenant[2] is None:
                 return None
             cursor.execute(
                 "SELECT native_id FROM baobab.erp_master_data_mapping "
                 "WHERE engine_instance_id = %s AND legal_entity_id = %s AND resource_kind = %s AND canonical_id = %s",
-                (tenant[1], legal_entity_id, PRODUCT_KIND, sku_id))
+                (tenant[2], legal_entity_id, PRODUCT_KIND, sku_id))
             product = cursor.fetchone()
-        return ResolvedProduct(int(tenant[0]), int(product[0])) if product else None
+        return ResolvedProduct(int(tenant[0]), int(tenant[1]), int(product[0])) if product else None

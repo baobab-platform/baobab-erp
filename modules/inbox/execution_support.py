@@ -72,7 +72,10 @@ class PostgresMasterData:
         with self._connection.cursor() as cursor:
             cursor.execute(
                 "SELECT ad_client_id, ad_org_id, engine_instance_id FROM baobab.tenant_mapping "
-                "WHERE tenant_id = %s AND entity_id = %s AND status = 'active'", (tenant_id, legal_entity_id))
+                "WHERE tenant_id = %s AND entity_id = %s AND status = 'active' "
+                "AND effective_from <= CURRENT_TIMESTAMP "
+                "AND (effective_to IS NULL OR effective_to > CURRENT_TIMESTAMP) "
+                "AND ad_client_id > 0 AND ad_org_id >= 0", (tenant_id, legal_entity_id))
             row = cursor.fetchone()
         return Target(int(row[0]), int(row[1]), row[2]) if row else None
 

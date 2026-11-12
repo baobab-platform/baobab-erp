@@ -2,7 +2,7 @@
 No database; the Postgres behaviour is tests/integration/test_customer_projection_execution.py."""
 import unittest
 
-from customers.payload import CustomerProjection, PayloadError, marker, parse_customer_projected
+from customers.payload import CustomerProjection, PayloadError, marker, native_search_key, parse_customer_projected
 
 
 def valid(**overrides):
@@ -81,6 +81,25 @@ class MarkerTests(unittest.TestCase):
         self.assertLessEqual(len(marker(long_tenant, a)), 255)
         self.assertNotEqual(marker(long_tenant, a), marker(long_tenant, b))
         self.assertEqual(marker(long_tenant, a), marker(long_tenant, a))
+
+
+class NativeSearchKeyTests(unittest.TestCase):
+    def test_full_canonical_identifier_is_not_truncated_into_native_value(self):
+        a = CustomerProjection("ZURIBEANS", "c" * 127 + "a", 1, "organisation", "A", "active")
+        b = CustomerProjection("ZURIBEANS", "c" * 127 + "b", 1, "organisation", "A", "active")
+        values = [native_search_key("tn_a", a), native_search_key("tn_a", b),
+                  native_search_key("tn_b", a),
+                  native_search_key("tn_a", CustomerProjection("THAMANI", a.customer_id, 1, "organisation", "A", "active"))]
+        self.assertEqual(len(set(values)), 4)
+        for value in values:
+            self.assertEqual(len(value), 40)
+            self.assertRegex(value, r"^BC[0-9a-f]{38}$")
+        self.assertEqual(native_search_key("tn_a", a), values[0])
+
+    def test_native_name_limit_is_an_explicit_quality_failure_not_truncation(self):
+        self.assertEqual(len(parse_customer_projected(valid(display_name="A" * 120)).display_name), 120)
+        with self.assertRaises(PayloadError):
+            parse_customer_projected(valid(display_name="A" * 121))
 
 
 if __name__ == "__main__":

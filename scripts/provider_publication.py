@@ -132,6 +132,10 @@ def main(argv=None):
             'source_dirty': source_dirty(args.shared_checkout),
             'draft_registrations': registrations,
             'excluded_support': excluded,
+            # ADR-SHARED-017: report proposed/contracted intent for reconciliation,
+            # but never include these rows in DRAFT EngineRegistration support.
+            'planned_capabilities': sorted(declaration.get('planned_capabilities', []),
+                key=lambda p: p.get('capability_key', p.get('proposed_key', ''))),
             'blocked_providers': blocked,
             'registration_drift': drift,
             'runtime_authority_verified': False,

@@ -1,6 +1,6 @@
 {
   "repository": "baobab-platform/shared",
-  "commit": "e1da44e90903ab7f6fe9a9060604f9bff2f13666",
+  "commit": "584d7f3cd8426ffd3d1dc9f068f0b444dc74346e",
   "roots": [
     "contracts/admission/v2/documentary-restriction.schema.json",
     "contracts/control-plane/v1/domain.schema.json",
@@ -26,7 +26,7 @@
     "contracts/admission/v1/application.schema.json": "3febbc5e37744f50ee64e4737e9ca87bcd959263099356d14fe3734ef482e8f3",
     "contracts/admission/v1/decision.schema.json": "7ac5a22331341a20c3e2d20a1f652149561267fdc20c5201f0d4826426cf3b36",
     "contracts/admission/v2/documentary-restriction.schema.json": "1d12d8ed0581e152444a36b31c9f42f971c58215fdae9648bd4cfbc66eb29937",
-    "contracts/capability/v1/domain.schema.json": "45bd91c915bff16c010b4123a8dc814ceded7d2806a6755b13dc3fcdd508d4fc",
+    "contracts/capability/v1/domain.schema.json": "37ffd081066c1f7cdcc5e043f433463a33e622b7f404b31b4c4da99761487da2",
     "contracts/control-plane/v1/domain.schema.json": "d310ea065ba9445a27a83d50875a2616514608782345e7bb4413d9d1d69416ee",
     "contracts/control-plane/v1/erp-assignment.schema.json": "e412e22d9931d36fbc5816f134af5c3588a178775c4a9a0124a9855c2d018f3a",
     "contracts/control-plane/v1/market.schema.json": "acbdc4c1e8c716f1dcd9b855b79f5206ebcb69fd911f5a14b515bbcb78cca2f9",
