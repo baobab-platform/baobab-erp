@@ -56,7 +56,10 @@ class FrappeHRAdapterTests(unittest.TestCase):
         self.adapter = FrappeHRPayrollRunReader(
             selector=self.cp, context_id="ctx_exact", correlation_id="12345678-1234-4234-8234-123456789012",
             tenant_id="tn_test1", legal_employer_id="EXACT-EMPLOYER", jurisdiction="ZA",
-            provider_id="provider_registered1", endpoint="https://hr.example.test",
+            provider_id="provider_registered1",
+            binding_id="bind_exact1", binding_revision=4,
+            registered_source_run_ref="PAYROLL-2026-001",
+            endpoint="https://hr.example.test",
             company="Acme ZA Ltd", api_key="aaaaaaaa", api_secret="bbbbbbbb",
             transport=self.source,
         )
@@ -89,6 +92,31 @@ class FrappeHRAdapterTests(unittest.TestCase):
                     self.adapter.read_status(source_run_ref="PAYROLL-2026-001", now=NOW)
                 self.assertEqual(self.source.calls, [])
                 setattr(self.cp, drift, "provider_registered1" if drift == "provider" else "EXACT-EMPLOYER")
+
+    def test_denies_unregistered_run_and_changed_binding_before_vendor_http(self):
+        # A tenant who can read one run must not freely enumerate the employer's
+        # remaining payroll entries. The adapter's registry pins exact run scope.
+        with self.assertRaises(ProviderSelectionDenied):
+            self.adapter.read_status(source_run_ref="PAYROLL-2026-002", now=NOW)
+        self.assertEqual(self.cp.calls, 0)
+        self.assertEqual(self.source.calls, [])
+
+        original = self.cp.resolve
+        def changed_binding(**kwargs):
+            from dataclasses import replace
+            return replace(original(**kwargs), binding_revision=5)
+        self.cp.resolve = changed_binding
+        with self.assertRaises(ProviderSelectionDenied):
+            self.adapter.read_status(source_run_ref="PAYROLL-2026-001", now=NOW)
+        self.assertEqual(self.source.calls, [])
+
+        def changed_binding_id(**kwargs):
+            from dataclasses import replace
+            return replace(original(**kwargs), binding_id="bind_other1")
+        self.cp.resolve = changed_binding_id
+        with self.assertRaises(ProviderSelectionDenied):
+            self.adapter.read_status(source_run_ref="PAYROLL-2026-001", now=NOW)
+        self.assertEqual(self.source.calls, [])
 
     def test_denies_revoked_cp_or_context_before_external_http(self):
         self.cp.error = ProviderSelectionDenied("revoked")
@@ -125,7 +153,10 @@ class FrappeHRAdapterTests(unittest.TestCase):
             FrappeHRPayrollRunReader(
                 selector=self.cp, context_id="ctx", correlation_id="corr",
                 tenant_id="tn_test1", legal_employer_id="EXACT-EMPLOYER", jurisdiction="ZA",
-                provider_id="provider_registered1", endpoint="http://hr.example.test",
+                provider_id="provider_registered1",
+                binding_id="bind_exact1", binding_revision=4,
+                registered_source_run_ref="PAYROLL-2026-001",
+                endpoint="http://hr.example.test",
                 company="Acme ZA Ltd", api_key="aaaaaaaa", api_secret="bbbbbbbb",
             )
 
