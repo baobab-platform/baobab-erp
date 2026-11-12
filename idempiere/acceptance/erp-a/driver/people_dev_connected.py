@@ -276,8 +276,14 @@ UPDATE capability.provider_capability_certification
     check(scalar(c, f"""SELECT status FROM capability.provider_capability_certification
                          WHERE certification_id='{fixture["cert"]}'::uuid""") == "REVOKED",
           "CERT_REVOCATION_NOT_DURABLE")
+    # Cert revocation must cause refusal while the ORIGINAL bearer remains
+    # accepted by CP for an unrelated Context operation. Otherwise token
+    # expiry could masquerade as proof of immediate certification revocation.
+    context_for(token, first)
     case(name="PPL-06-revocation-deny-same-bearer", expect="deny", cp_http_statuses=(403,), **allowed)
+    context_for(token, first)
     case(name="PPL-07-replay-after-revocation-deny", expect="deny", cp_http_statuses=(403,), **allowed)
+    context_for(token, first)
     verify(c, fixture, context_id, 3)
     c.sql("cpdb", "controlplane", "controlplane", f"""UPDATE capability.capability
                   SET status='DRAFT' WHERE capability_id='{fixture['capability']}'::uuid;""")
