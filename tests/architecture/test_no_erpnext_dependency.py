@@ -34,6 +34,8 @@ ALLOWED_PREFIXES = (
 OPTIONAL_EXTERNAL_PEOPLE_ADAPTER_FILES = frozenset({
     "modules/people/providers/frappe_hr.py",
     "tests/unit/test_people_frappe_hr.py",
+    "docs/people/README.md",
+    "docs/people/frappe-hr-read-adapter.md",
 })
 
 PATTERN = re.compile(r"\b(erpnext|frappe|bench)\b", re.IGNORECASE)
