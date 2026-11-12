@@ -44,3 +44,20 @@ The existing `.github/workflows/security.yml` now schedules a **daily** disposab
 5. Only then consider CI_VERIFIED, SECURITY_ALERT_PATH_VERIFIED and CONSUMER_QUALIFIED. Staging and production remain independently approval-protected.
 
 **No merge, CI execution, production qualification or native financial authority acceptance is claimed by this source change.**
+
+
+## 12 November 2026 — independently observed JasperReports security blocker
+
+**Actual evidence:** Foundation run [43162173694](https://github.com/baobab-platform/baobab-erp/actions/runs/43162173694), native-image job 130995691684, independently rebuilt the candidate `idempiere/Dockerfile` image and ran Trivy 0.73.0 against the full Ubuntu Noble/Java package inventory. The strict validator refused:
+
+- CVE: **CVE-2025-10492**; package: `net.sf.jasperreports:jasperreports`;
+- actual installed version **6.21.0**; scanner-reported patched version **7.0.4**; severity **HIGH**;
+- result: **VENDOR_VEX_OTHER_HIGH_CRITICAL_FINDING**; Foundation is **red**.
+
+This is distinct from the separately adjudicated Ubuntu Noble `apt` vendor-patched advisory. It is **not** an allowed USN-8996-1 match and is not covered by any approved exception. The bounded diagnostic now gives the real advisory/package identity without exposing arbitrary scanner payloads.
+
+**Independent upstream reference:** [GitHub Security Advisory GHSA-7c3f-cg9x-f3gr](https://github.com/advisories/GHSA-7c3f-cg9x-f3gr) describes a deserialisation/code-execution risk in JasperReports below 7.0.4. [Jaspersoft's October 2025 FAQ, updated March 2026](https://community.jaspersoft.com/knowledgebase/faq/update-details-about-the-java-vulnerability-r4897/) explicitly says the Community fix is **not backported to 6.x**. Thus there is no basis to claim that a patch-level bump within 6.21 can remediate this finding.
+
+**Required engineering decision, not an automatic dependency bump:** audit iDempiere 13's OSGi JasperReports bundle, its compiled `.jasper` report compatibility, class-space wiring, custom report rendering, JRXML/report compilation, export behaviour and upstream build contracts before proposing a 7.0.4+ migration. Removing the jar or simply replacing a 6.x jar with 7.x may break native reporting and is not a qualified patch. No reporting input should be assumed trusted without a documented, exercised boundary. A compensating restriction or time-limited scoped exception requires independent Security evidence and approval; it must never be silently encoded into `.trivyignore` or `--ignore-unfixed`.
+
+**Next acceptance:** produce a bounded JasperReports version remediation PR with actual OSGi/container classpath readback, report fixtures, native ERP Gate D/ERP-A and all negative tests, then rerun unrestricted full-image Trivy. Keep ERP #131 **DRAFT/HOLD** until that gate is green or independently approved expiring vulnerability disposition exists. This source note alone does not close the vulnerability.
