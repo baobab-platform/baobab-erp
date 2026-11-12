@@ -11,6 +11,7 @@ Only exact OCI Ubuntu Noble plus the two actual dpkg patch identities qualify.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -22,6 +23,13 @@ SEVERITIES = frozenset({"HIGH", "CRITICAL"})
 
 class Refused(Exception):
     pass
+
+
+def safe_finding_field(value: object) -> str:
+    """Security triage metadata only: no raw scanner payload or credentials."""
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_.:+@/-]{1,100}", value):
+        return "REDACTED"
+    return value
 
 
 def unique(pairs: list[tuple[str, object]]) -> dict:
@@ -79,7 +87,17 @@ def reconcile(raw_scan: bytes, raw_packages: bytes) -> dict[str, object]:
             seen.add(identity)
             if (finding.get("VulnerabilityID") != CVE
                     or package not in PACKAGES or version != PATCHED):
-                raise Refused("VENDOR_VEX_OTHER_HIGH_CRITICAL_FINDING")
+                # The fail-closed scan must identify the real dependency to
+                # enable a patch or independently approved expiring exception.
+                # Never echo raw Trivy JSON, locations, descriptions or tokens.
+                raise Refused(
+                    "VENDOR_VEX_OTHER_HIGH_CRITICAL_FINDING"
+                    + " id=" + safe_finding_field(finding.get("VulnerabilityID"))
+                    + " package=" + safe_finding_field(package)
+                    + " installed=" + safe_finding_field(version)
+                    + " fixed=" + safe_finding_field(finding.get("FixedVersion"))
+                    + " severity=" + safe_finding_field(finding.get("Severity"))
+                )
             adjudicated += 1
     return {
         "status": "VENDOR_FIXED_EXACT_PATCH",

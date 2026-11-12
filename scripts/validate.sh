@@ -18,7 +18,8 @@ import subprocess
 import sys
 import tomllib
 
-requirements = tomllib.loads(Path("modules/pyproject.toml").read_text())["project"]["dependencies"]
+requirements = [*tomllib.loads(Path("modules/pyproject.toml").read_text())["project"]["dependencies"],
+                "PyYAML==6.0.3"]
 subprocess.run([sys.executable, "-m", "pip", "install", "--disable-pip-version-check",
                 "-q", "--target", sys.argv[1], *requirements], check=True)
 PY

@@ -5,17 +5,53 @@ on:
     branches: [main]
   pull_request:
   schedule:
-    - cron: "0 4 * * 1"
+    - cron: "0 4 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  python-lock-audit:
+    name: Daily pinned ERP uv workspace dependency advisory check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up supported Python for disposable audit tooling
+        uses: actions/setup-python@06da6279cdbca41027908073e81a4544dc79c06b # pinned accepted source
+        with:
+          python-version: "3.12"
+      - name: Install pinned uv and pip-audit in isolated environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv "$RUNNER_TEMP/erp-audit"
+          "$RUNNER_TEMP/erp-audit/bin/python" -m pip install --disable-pip-version-check --no-input "uv==0.13.7" "pip-audit==2.10.1"
+      - name: Export full locked ERP Python workspace without local editables
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/erp-audit/bin/uv" export --frozen --all-packages --all-extras \
+            --no-emit-workspace --no-hashes --format requirements-txt \
+            --output-file "$RUNNER_TEMP/erp-uv-locked-requirements.txt"
+          # Refuse accidental empty exports or source-only fake passes.
+          grep -Eq '^[[:alnum:]][^#]*==' "$RUNNER_TEMP/erp-uv-locked-requirements.txt"
+      - name: Fail closed on upstream Python advisories or scan errors
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/erp-audit/bin/pip-audit" --strict --no-deps \
+            --requirement "$RUNNER_TEMP/erp-uv-locked-requirements.txt"
   secrets:
     permissions:
       contents: read
-    uses: baobab-platform/shared/.github/workflows/security-secrets-scan.yml@4ea2cbb5638a5605e057a02665bc7360864fc253 # fix: scope gitleaks to checked-out ref (baobab-platform/shared#45)
+    uses: baobab-platform/shared/.github/workflows/security-secrets-scan.yml@317538bfa9cac7d0117420c12984d80d89d9f5ea # fix: scope gitleaks to checked-out ref (baobab-platform/shared#45)
 
   codeql:
     permissions:
@@ -23,6 +59,6 @@ jobs:
       contents: read
       security-events: write
       packages: read
-    uses: baobab-platform/shared/.github/workflows/security-codeql.yml@4ea2cbb5638a5605e057a02665bc7360864fc253 # fix: explicit upload-sarif step (baobab-platform/shared#42)
+    uses: baobab-platform/shared/.github/workflows/security-codeql.yml@b9f497f247f1c19be9b02a0d5eedd538daf9d84b # fix: explicit upload-sarif step (baobab-platform/shared#42)
     with:
       languages: '["python", "java"]'

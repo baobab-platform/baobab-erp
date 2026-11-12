@@ -1,51 +1,83 @@
+# BA-SEC-DEP-001 — Approved dependency/security maintenance policy v1.0.
+# Real ERP manifests: uv.lock (root workspace), Maven OSGi reactor,
+# iDempiere and Python Dockerfiles, root/runtime and ERP-A Compose harness.
+# Do not add redundant target-branch: GitHub security PRs use default branch.
+# Routine groups apply ONLY to minor/patch version updates. Security advisories,
+# major Java/Python/iDempiere upgrades and protected posting require own review.
 version: 2
-
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:00"
-      timezone: "Africa/Johannesburg"
+    schedule: {interval: "weekly", day: "monday", time: "06:00", timezone: "Africa/Johannesburg"}
     open-pull-requests-limit: 5
+    labels: ["dependencies", "github-actions"]
+    commit-message: {prefix: "chore", include: "scope"}
     groups:
-      actions-minor-patch:
+      actions-routine:
+        applies-to: "version-updates"
         patterns: ["*"]
         update-types: ["minor", "patch"]
-    labels: ["dependencies", "github-actions"]
-    commit-message:
-      prefix: "chore"
-      prefix-development: "chore"
-      include: "scope"
-    target-branch: "main"
+
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule: {interval: "weekly", day: "monday", time: "06:10", timezone: "Africa/Johannesburg"}
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "python"]
+    commit-message: {prefix: "build", include: "scope"}
+    groups:
+      python-routine:
+        applies-to: "version-updates"
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # iDempiere OSGi extensions' actual versioned dependencies live here;
+  # root pom.xml is an aggregator, not a second dependency authority.
+  - package-ecosystem: "maven"
+    directory: "/idempiere/extensions"
+    schedule: {interval: "weekly", day: "monday", time: "06:20", timezone: "Africa/Johannesburg"}
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "java"]
+    commit-message: {prefix: "chore", include: "scope"}
+    groups:
+      maven-routine:
+        applies-to: "version-updates"
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "docker"
     directory: "/idempiere"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:15"
-      timezone: "Africa/Johannesburg"
+    schedule: {interval: "weekly", day: "monday", time: "06:30", timezone: "Africa/Johannesburg"}
     open-pull-requests-limit: 5
     labels: ["dependencies", "docker"]
-    commit-message:
-      prefix: "chore"
-      prefix-development: "chore"
-      include: "scope"
-    target-branch: "main"
+    commit-message: {prefix: "chore", include: "scope"}
 
-  - package-ecosystem: "maven"
-    directory: "/idempiere/extensions"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:30"
-      timezone: "Africa/Johannesburg"
+  - package-ecosystem: "docker"
+    directory: "/modules"
+    schedule: {interval: "weekly", day: "monday", time: "06:40", timezone: "Africa/Johannesburg"}
     open-pull-requests-limit: 5
-    labels: ["dependencies", "java"]
-    commit-message:
-      prefix: "chore"
-      prefix-development: "chore"
-      include: "scope"
-    target-branch: "main"
+    labels: ["dependencies", "docker"]
+    commit-message: {prefix: "chore", include: "scope"}
+
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule: {interval: "weekly", day: "monday", time: "06:50", timezone: "Africa/Johannesburg"}
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "docker"]
+    commit-message: {prefix: "chore", include: "scope"}
+
+  # Test-only real PostgreSQL/Ory/CP composition is deliberately governed too.
+  - package-ecosystem: "docker-compose"
+    directory: "/idempiere/acceptance/erp-a"
+    schedule: {interval: "weekly", day: "monday", time: "07:00", timezone: "Africa/Johannesburg"}
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "docker"]
+    commit-message: {prefix: "chore", include: "scope"}
+
+  # Codespaces' actual developer topology is independently maintained;
+  # test images cannot be assumed safe from the production compose config.
+  - package-ecosystem: "docker-compose"
+    directory: "/.devcontainer"
+    schedule: {interval: "weekly", day: "monday", time: "07:10", timezone: "Africa/Johannesburg"}
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "docker"]
+    commit-message: {prefix: "chore", include: "scope"}

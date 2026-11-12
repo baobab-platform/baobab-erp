@@ -1,18 +1,60 @@
-name: Enforce Dependabot Config
+# BA-SEC-DEP-001 source-conformance gate.
+# Do not pin the unmerged strict validator from Shared #429.
+# This accepted baseline plus offline negatives verifies source configuration,
+# not real Dependabot job execution, private access or alert enablement.
+name: Enforce Dependency Maintenance Policy
 
 on:
   push:
     branches: [main]
-    paths: [".github/dependabot.yml"]
+    paths:
+      - ".github/dependabot.yml"
+      - ".github/workflows/enforce-dependabot-config.yml"
+      - ".github/workflows/security.yml"
+      - ".github/workflows/foundation.yml"
+      - ".baobab/repository.yaml"
+      - "docs/security/**"
+      - "tests/unit/test_dependency_maintenance.py"
   pull_request:
-    paths: [".github/dependabot.yml"]
+    paths:
+      - ".github/dependabot.yml"
+      - ".github/workflows/enforce-dependabot-config.yml"
+      - ".github/workflows/security.yml"
+      - ".github/workflows/foundation.yml"
+      - ".baobab/repository.yaml"
+      - "docs/security/**"
+      - "tests/unit/test_dependency_maintenance.py"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  check:
+  baseline:
     permissions:
       contents: read
-    uses: baobab-platform/shared/.github/workflows/enforce-dependabot-config.yml@38defb11aacd95a6f68b7db8026fe336417a2af6 # v1.2.0
+    uses: baobab-platform/shared/.github/workflows/enforce-dependabot-config.yml@31de2bc3dcd56128c019c640dc7e12c10ae9ca69 # accepted Shared v2.3.0
+    with:
+      required-ecosystems: "github-actions,uv,maven,docker,docker-compose"
+
+  policy-regression:
+    name: Manifest coverage and BA-SEC-DEP-001 negative cases
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout requested PR source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned offline test parser in disposable virtualenv
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/baobab-dep-policy"
+          "$RUNNER_TEMP/baobab-dep-policy/bin/python" -m pip install --disable-pip-version-check PyYAML==6.0.3
+      - name: Verify policy manifest paths, major separation and exception boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/baobab-dep-policy/bin/python" -B -m unittest discover -s tests/unit -p 'test_dependency_maintenance.py' -v

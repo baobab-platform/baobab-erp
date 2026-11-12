@@ -1,3 +1,12 @@
+# Historical iDempiere third-party vulnerability scan exclusions — NOT ACTIVE
+
+**BA-SEC-DEP-001 review date:** 2026-11-07. **Status: BLOCKED / REASSESSMENT REQUIRED.**
+
+The former root `.trivyignore` contained 16 CVE exclusions without independent, per-finding, expiring Security approval. Its prose described upstream vendor libraries and an earlier review, but that does not satisfy the approved security-maintenance exception process. The active scan suppression has been removed. This archived file is NOT consumed by Trivy or a substitute for approval.
+
+## Original exclusion list (historical only)
+
+```text
 # Vulnerability ignore list — vendor-bundled iDempiere dependencies
 #
 # Every ID below is a HIGH/CRITICAL finding inside a third-party Java library that
@@ -52,3 +61,11 @@ CVE-2026-1605
 # postgresql JDBC driver -- fixed 42.7.11/42.7.12
 CVE-2026-42198
 CVE-2026-54291
+
+```
+
+## Required independent triage
+
+For each CVE above, review the current vendor advisory and **actual built iDempiere 13 image** after Baobab's versioned Bouncy Castle/Jackson interventions. Match the precise library jar, classpath, module, reachability and available fixed version rather than assuming the upstream base is still vulnerable. Record owner, exposure, fix/alternative, compensating control, expiry, review cadence and independent Security approval if an exception is unavoidable. Reconcile OSGi/native-finance/JDBC negative tests and CP/IAM posting authority before any deployment. Do not turn the historical file back on or treat the absence of a waiver as a passed scan.
+
+Follow the [approved Shared policy v1.0](https://github.com/baobab-platform/shared/pull/429), Section 12. The historical approvals have not been independently verified; no protected release is authorized by this change.
