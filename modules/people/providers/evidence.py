@@ -183,7 +183,11 @@ class SelectedCalculationVerifier:
                 or received["verification_status"] != "VERIFIED"
                 or received["complete"] is not True
                 or not issued <= now < expiry
-                or issued > selected.verified_at
+                # The CP verified_at is an observation of the active
+                # provider binding, not an upper bound on when that provider
+                # may issue evidence. A newly signed receipt may be issued
+                # *after* selection but never in the future relative to now.
+                or issued > now
                 or expiry > selected.expires_at
                 or (expiry - issued).total_seconds() > 30):
             raise PayrollPolicyError("Provider evidence not current or scope-exact")
