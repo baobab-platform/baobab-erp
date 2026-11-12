@@ -162,39 +162,137 @@ providers:
             path: tests/integration/test_boundary_api.py
             description: Canonical authenticated ERP Boundary API routing and tenant-scoped behavior.
 
-# ADR-ERP-023 / Shared proposal PR #434: plans only, not provider support.
-# Proposed names are NOT catalogue membership or grants (ADR-SHARED-017).
-# This is ONE optional Baobab-native provider candidate, NOT a platform default.
-# Tenants may keep their existing HR/payroll providers indefinitely, with
-# independently qualified vendor adapter declarations and CP-selected bindings.
-# Do not infer mandatory native People/ERP usage, migration or activation from
-# target_provider_key. External-only and mixed-provider workflows remain valid.
+# ADR-SHARED-017 separates intent from runnable provider support.
+# CONTRACTED is canonical in Shared but not implemented; no CP registry support.
+# Shared #453 merged F2/F3 as canonical DRAFT only; F1, People and WMS also remain
+# CONTRACTED planning. No new runnable ERP support or CP binding is declared.
 planned_capabilities:
-  - proposed_key: workforce.employment.manage
-    proposal_status: PROPOSED
+  - capability_key: finance.journal.manage
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-033 F1 wire v1 exists; no native route/GL/accountant approval or EA-09 evidence; never bind from planning."
     target_provider_key: baobab-erp.idempiere
     provenance:
       authority:
-        repository: baobab-platform/baobab-erp
-        decision: ADR-ERP-023
-  - proposed_key: workforce.attendance.approve
-    proposal_status: PROPOSED
+        repository: baobab-platform/shared
+        decision: ADR-SHARED-033
+  - capability_key: finance.ledger.read
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-033 F1 wire v1 exists; no native route/GL/accountant approval or EA-09 evidence; never bind from planning."
     target_provider_key: baobab-erp.idempiere
     provenance:
       authority:
-        repository: baobab-platform/baobab-erp
-        decision: ADR-ERP-023
-  - proposed_key: payroll.run.manage
-    proposal_status: PROPOSED
+        repository: baobab-platform/shared
+        decision: ADR-SHARED-033
+  - capability_key: finance.statement.read
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-033 F1 wire v1 exists; no native route/GL/accountant approval or EA-09 evidence; never bind from planning."
     target_provider_key: baobab-erp.idempiere
     provenance:
       authority:
-        repository: baobab-platform/baobab-erp
-        decision: ADR-ERP-023
-  - proposed_key: payroll.journal-handoff.prepare
-    proposal_status: PROPOSED
-    target_provider_key: baobab-erp.idempiere
+        repository: baobab-platform/shared
+        decision: ADR-SHARED-033
+  - capability_key: payroll.evidence.attest
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-045 provider-neutral People contract exists; no qualified native or incumbent provider, employer grant or statutory evidence."
+    provenance:
+      authority:
+        repository: baobab-platform/shared
+        decision: ADR-SHARED-045
+  - capability_key: payroll.run.read
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-045 provider-neutral People contract exists; no qualified native or incumbent provider, employer grant or statutory evidence."
+    provenance:
+      authority:
+        repository: baobab-platform/shared
+        decision: ADR-SHARED-045
+  - capability_key: workforce.employment.manage
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-045 provider-neutral People contract exists; no qualified native or incumbent provider, employer grant or statutory evidence."
+    provenance:
+      authority:
+        repository: baobab-platform/shared
+        decision: ADR-SHARED-045
+  - capability_key: workforce.employment.read
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-045 provider-neutral People contract exists; no qualified native or incumbent provider, employer grant or statutory evidence."
+    provenance:
+      authority:
+        repository: baobab-platform/shared
+        decision: ADR-SHARED-045
+  - capability_key: finance.payable.manage
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-033 F2 canonical v1 DRAFT source contracts exist; no native ERP implementation, finance posting scope or EA-09 proof."
+    provenance:
+      authority:
+        repository: baobab-platform/shared
+        decision: ADR-SHARED-033
+  - capability_key: finance.receivable.manage
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-033 F2 canonical v1 DRAFT source contracts exist; no native ERP implementation, finance posting scope or EA-09 proof."
+    provenance:
+      authority:
+        repository: baobab-platform/shared
+        decision: ADR-SHARED-033
+  - capability_key: finance.bank-reconciliation.manage
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-033 F2 canonical v1 DRAFT source contracts exist; no native ERP implementation, finance posting scope or EA-09 proof."
+    provenance:
+      authority:
+        repository: baobab-platform/shared
+        decision: ADR-SHARED-033
+  - capability_key: finance.cash-position.read
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-033 F2 canonical v1 DRAFT source contracts exist; no native ERP implementation, finance posting scope or EA-09 proof."
+    provenance:
+      authority:
+        repository: baobab-platform/shared
+        decision: ADR-SHARED-033
+  - capability_key: finance.expense.manage
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-033 F2 canonical v1 DRAFT source contracts exist; no native ERP implementation, finance posting scope or EA-09 proof."
+    provenance:
+      authority:
+        repository: baobab-platform/shared
+        decision: ADR-SHARED-033
+  - capability_key: finance.budget.manage
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-033 F2 canonical v1 DRAFT source contracts exist; no native ERP implementation, finance posting scope or EA-09 proof."
+    provenance:
+      authority:
+        repository: baobab-platform/shared
+        decision: ADR-SHARED-033
+  - capability_key: finance.reporting-export.create
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-033 F3 canonical v1 DRAFT source contracts exist; approved accountant policy, native implementation and EA-09 proof remain absent."
+    provenance:
+      authority:
+        repository: baobab-platform/shared
+        decision: ADR-SHARED-033
+  - capability_key: finance.project-cost.read
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-033 F3 canonical v1 DRAFT source contracts exist; approved accountant policy, native implementation and EA-09 proof remain absent."
+    provenance:
+      authority:
+        repository: baobab-platform/shared
+        decision: ADR-SHARED-033
+  - capability_key: finance.consolidation.run
+    proposal_status: CONTRACTED
+    description: "ADR-SHARED-033 F3 canonical v1 DRAFT source contracts exist; approved accountant policy, native implementation and EA-09 proof remain absent."
+    provenance:
+      authority:
+        repository: baobab-platform/shared
+        decision: ADR-SHARED-033
+  - capability_key: inventory.custody.read
+    proposal_status: CONTRACTED
+    description: "Shared WMS v1 canonical DRAFT; ADR-ERP-024 accepted but executor/BYOP binding and WMS-00..12 are not qualified."
     provenance:
       authority:
         repository: baobab-platform/baobab-erp
-        decision: ADR-ERP-023
+        decision: ADR-ERP-024
+  - capability_key: inventory.warehouse-operation.manage
+    proposal_status: CONTRACTED
+    description: "Shared WMS v1 canonical DRAFT; ADR-ERP-024 accepted but executor/BYOP binding and WMS-00..12 are not qualified."
+    provenance:
+      authority:
+        repository: baobab-platform/baobab-erp
+        decision: ADR-ERP-024
