@@ -400,7 +400,9 @@ jobs:
     env:
       # Accepted CP #466 development-only reader and the current merged IAM
       # policy/config snapshot. These are immutable commits, not moving refs.
-      CP_COMMIT: 192555a80435ec55e01113fbb2c0515e95987ae5
+      # CP #478 companion fixes missing authoritative country-level jurisdiction.
+      # Pinned *review* SHA; replace with merged main commit before closing.
+      CP_COMMIT: eca7d896d408ee4880dac50af988ecec1672a214
       IAM_COMMIT: 39fc7bcb3fd0568e09f1304e6fe07e64ba31c5bf
     steps:
       - name: Checkout ERP source
@@ -444,6 +446,7 @@ jobs:
           PEOPLE_DEV_CONNECTED: "true"
           ERP_IMAGE: baobab-erp:gate-d
           CP_SRC: ${{ github.workspace }}/.erp-a/cp
+          CP_PEOPLE_WITNESS_SHA: ${{ env.CP_COMMIT }}
           IAM_SRC: ${{ github.workspace }}/.erp-a/iam
           IAM_COMMIT: ${{ env.IAM_COMMIT }}
         run: idempiere/acceptance/erp-a/run-gate-d-erp-a.sh "$RUNNER_TEMP/people-connected"
