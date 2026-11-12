@@ -43,7 +43,7 @@ def rows(compose: Compose, statement: str) -> list[list[str]]:
     return compose.sql("cpdb", "controlplane", "controlplane", statement)
 
 
-def provision_ory(secret: str) -> tuple[str, str]:
+def provision_ory(secret: str, tenant_state: dict) -> tuple[str, str]:
     expected = {"client_id": CLIENT, "client_secret": secret,
         "grant_types": ["client_credentials"], "response_types": [],
         "scope": " ".join(SCOPES), "audience": ["baobab-control-plane"],
@@ -73,7 +73,16 @@ def provision_ory(secret: str) -> tuple[str, str]:
         "grant_type": "client_credentials", "client_id": CLIENT,
         "client_secret": secret, "audience": "baobab-erp", "scope": " ".join(SCOPES),
     }, form=True)
-    check(status in (400, 401, 403), "FOREIGN_AUDIENCE_ISSUED")
+    if status == 200:
+        check(isinstance(_.get("access_token"), str), "FOREIGN_AUDIENCE_TOKEN_MISSING")
+        refused, _ = http("POST", CP + "/v1/platform-context/resolve", {
+            "tenant_id": tenant_state["tenant"],
+            "organisation_id": tenant_state["organisation"],
+            "country_code": tenant_state["market"],
+        }, token=_["access_token"])
+        check(refused in (401, 403), "FOREIGN_AUDIENCE_CP_ADMITTED")
+    else:
+        check(status in (400, 401, 403), "FOREIGN_AUDIENCE_ISSUED")
     return full, limited
 
 
@@ -218,7 +227,7 @@ def main() -> None:
     state = json.loads((args.run / "cp-seed.json").read_text())
     root = args.run / "people-secret"
     secret = (root / "workload-secret").read_text().strip()
-    token, reduced = provision_ory(secret)
+    token, reduced = provision_ory(secret, state["second"])
     # These token files are never copied to GitHub Actions artifacts or logs.
     for name, value in (("issued-token", token), ("reduced-token", reduced)):
         (root / name).write_text(value)
