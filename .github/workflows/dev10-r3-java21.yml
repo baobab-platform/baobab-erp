@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: "21"
@@ -82,7 +82,7 @@ jobs:
 
   java21-native-finance:
     # Java 21 JDK + Maven 3.10 + source-target Java21 classfiles.
-    # The OSGi reactor's 53 JDBC Gate B tests intentionally skip without
+    # The OSGi reactor's 54 JDBC Gate B tests (including native F1 ledger witness) intentionally skip without
     # BAOBAB_NATIVE_TEST_JDBC_URL. Do not call the Java21 compatibility
     # proof complete based solely on the non-database build job above.
     # This is the REAL PostgreSQL 17 provider/COMMIT-fence fixture, not
@@ -112,7 +112,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up Temurin Java 21
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: "21"
@@ -147,7 +147,7 @@ jobs:
           mvn --batch-mode --no-transfer-progress -f idempiere/extensions
           -pl org.nabhold.baobab.erp.finance -am test
           -Dtest=NativeFinancePostgresGateBTest -Dsurefire.failIfNoSpecifiedTests=false -Dmaven.compiler.release=21
-      - name: Require all 53 native JDBC tests to execute, none skipped
+      - name: Require all 54 native JDBC tests to execute, none skipped
         run: >-
-          python3 -c 'import xml.etree.ElementTree as ET,sys; x=ET.parse(sys.argv[1]).getroot(); assert int(x.attrib["tests"]) == 53 and all(int(x.attrib[k]) == 0 for k in ("failures", "errors", "skipped")), x.attrib'
+          python3 -c 'import xml.etree.ElementTree as ET,sys; x=ET.parse(sys.argv[1]).getroot(); assert int(x.attrib["tests"]) == 54 and all(int(x.attrib[k]) == 0 for k in ("failures", "errors", "skipped")), x.attrib'
           idempiere/extensions/org.nabhold.baobab.erp.finance/target/surefire-reports/TEST-org.nabhold.baobab.erp.finance.NativeFinancePostgresGateBTest.xml
