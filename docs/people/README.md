@@ -20,7 +20,7 @@ See [Provider-neutrality and portability design](provider-neutrality.md) and ADR
 
 ## Accepted Shared contract and BYOP adapter increment (8 November 2026)
 
-The stable canonical interface is [Shared ADR-SHARED-045](https://github.com/baobab-platform/shared/pull/434). Shared #436 proposes the non-authorising `people:provider:read` workload scope. CP #466 and IAM #157 provide independently gated development-only provider-selection enforcement.
+The stable canonical interface is [Shared ADR-SHARED-045](https://github.com/baobab-platform/shared/pull/434). Shared #436 has merged the non-authorising `people:provider:read` workload scope; IAM #157 has merged the issuer-side validation. CP #466 supplies the separately opt-in, development-only selected-provider reader, with no live People workload, CP employer choice or payroll authority enabled by its source merge.
 
 The new `people.providers.selection.CPProviderSelector` accepts only trusted `context_id`, one of the four accepted capability names, correlation and major version. It rejects untrusted provider/employer selection and verifies CP readback freshness and jurisdiction. `people.providers.evidence.ExternalEvidenceAdapter` verifies an Ed25519-signed source-payroll evidence receipt bound to that chosen provider, employer, run/version, jurisdiction, rule digest and binding revision. `SelectedCalculationVerifier` implements the existing PayrollEligibilityGate verifier port, but also demands a **separate independent statutory reviewer signature**. The qualification reader has **no defaults or keys**, so all real calls deny until authorised evidence custody is provided.
 
@@ -48,3 +48,10 @@ Current guards **do not implement production database-level tenant roles/RLS, ac
 - ZA statutory pack requires expert-approved PAYE/UIF/SDL/ETI, tax-year/registration details, signed vectors and supervised parallel payroll. UG URA/NSSF comes later, separately. No rate is hardcoded.
 - A qualified external payroll provider remains the first-pay contingency for Nabhold **and a permanent tenant choice for all customers**, not a forced migration staging state. Any tenant can keep existing HR, attendance, leave, payroll or filing providers indefinitely, or combine independently qualified native and external functions; no native Baobab People, iDempiere journal or Baobab Payments activation is required merely to use another Baobab capability. Payroll calculation, approval, native journals (where requested), liability reconciliation, payment release (where requested), filing, legal retention, multi-company proof and EA-09 activation are independently gated.
 - No employment proposal or payroll draft stored here is proof that the person is employed or money is owed.
+
+
+## Development merge boundary (12 November 2026)
+
+This repository may merge the **inert BP-04 code** after exact-final-head CI and its independently read-back disposable PostgreSQL 17/iDempiere 13 safeguards pass, and after the CP #466 development contract source is reconciled. The merger does not install People migrations in standard runtime startup, publish a native People provider, turn a CONTRACTED planning key into Supported/Qualified/Active, or permit employee pay runs. There is no automatic activation, no seeded CP choice, no external payroll account, no signed official statutory country pack and no bank/payment or GL consequence.
+
+The separately maintained [independent qualification register](qualification-status-2026-11-08.md) continues to **HOLD staging and production release**, including official ZA/UG calculation validation, privacy/residency and live vendor cutover. Do not use developer test fixtures or a merged branch to change that status. Existing tenants retain an indefinite BYOP option without migrating to native People.
