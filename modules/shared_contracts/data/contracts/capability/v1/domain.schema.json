@@ -13,7 +13,40 @@
     },
     "capabilityDomain": {
       "type": "string",
-      "enum": ["identity", "tenant", "organisation", "counterparty", "supplier", "customer", "market", "internal-trade", "commercial", "contract", "commerce", "catalogue", "pricing", "inventory", "procurement", "regulations", "trade", "customs", "tax", "logistics", "fulfilment", "documents", "finance", "billing", "payment", "settlement", "content", "intelligence", "audit", "integration"],
+      "enum": [
+        "identity",
+        "tenant",
+        "organisation",
+        "counterparty",
+        "supplier",
+        "customer",
+        "market",
+        "internal-trade",
+        "commercial",
+        "contract",
+        "commerce",
+        "catalogue",
+        "pricing",
+        "inventory",
+        "procurement",
+        "regulations",
+        "trade",
+        "customs",
+        "tax",
+        "logistics",
+        "fulfilment",
+        "documents",
+        "finance",
+        "billing",
+        "payment",
+        "settlement",
+        "content",
+        "intelligence",
+        "audit",
+        "integration",
+        "payroll",
+        "workforce"
+      ],
       "description": "Governed top-level namespace for a capability key's first segment. A new top-level domain requires an architecture review and an update to this enum; see namespace-registry.yaml for rationale per domain."
     },
     "capabilityId": {
@@ -25,17 +58,33 @@
     },
     "capabilityDependencyType": {
       "type": "string",
-      "enum": ["REQUIRED", "OPTIONAL", "CONDITIONAL"],
+      "enum": [
+        "REQUIRED",
+        "OPTIONAL",
+        "CONDITIONAL"
+      ],
       "description": "Whether a depended-upon capability must, may, or conditionally must be satisfied."
     },
     "capabilityLifecycle": {
       "type": "string",
-      "enum": ["DRAFT", "ACTIVE", "SUSPENDED", "DEPRECATED", "RETIRED"],
+      "enum": [
+        "DRAFT",
+        "ACTIVE",
+        "SUSPENDED",
+        "DEPRECATED",
+        "RETIRED"
+      ],
       "description": "Operational lifecycle of a Capability, CapabilityProvider or CapabilityBinding. Distinct from maturity: a capability can be maturity=SUPPORTED and lifecycle=SUSPENDED simultaneously."
     },
     "capabilityMaturity": {
       "type": "string",
-      "enum": ["EXPERIMENTAL", "PREVIEW", "SUPPORTED", "DEPRECATED", "RETIRED"],
+      "enum": [
+        "EXPERIMENTAL",
+        "PREVIEW",
+        "SUPPORTED",
+        "DEPRECATED",
+        "RETIRED"
+      ],
       "description": "Confidence/support level of a Capability's contract and implementation. Distinct from lifecycle."
     },
     "capabilityCompositionId": {
@@ -53,12 +102,22 @@
     },
     "capabilityCompositionType": {
       "type": "string",
-      "enum": ["PLATFORM", "PRODUCT", "PROFILE", "ADD_ON", "INTERNAL"],
+      "enum": [
+        "PLATFORM",
+        "PRODUCT",
+        "PROFILE",
+        "ADD_ON",
+        "INTERNAL"
+      ],
       "description": "Classification of a CapabilityComposition. Governs how it may be combined with others, not runtime behaviour."
     },
     "capabilityMembershipCriticality": {
       "type": "string",
-      "enum": ["MANDATORY", "IMPORTANT", "OPTIONAL"],
+      "enum": [
+        "MANDATORY",
+        "IMPORTANT",
+        "OPTIONAL"
+      ],
       "description": "Criticality of one capability's membership within one specific composition. The same capability can be MANDATORY in one composition and OPTIONAL in another."
     },
     "capabilityScopeId": {
@@ -76,12 +135,26 @@
     },
     "capabilityGrantStatus": {
       "type": "string",
-      "enum": ["PENDING", "ACTIVE", "SUSPENDED", "REVOKED", "EXPIRED"],
+      "enum": [
+        "PENDING",
+        "ACTIVE",
+        "SUSPENDED",
+        "REVOKED",
+        "EXPIRED"
+      ],
       "description": "Lifecycle of a CapabilityGrant. A grant is effective only when status=ACTIVE and the current time falls within [effective_from, effective_to)."
     },
     "capabilityGrantSource": {
       "type": "string",
-      "enum": ["PLATFORM_BASELINE", "PRODUCT_SUBSCRIPTION", "CONTRACT", "TRIAL", "MANUAL_APPROVAL", "INTERNAL_POLICY", "MIGRATION"],
+      "enum": [
+        "PLATFORM_BASELINE",
+        "PRODUCT_SUBSCRIPTION",
+        "CONTRACT",
+        "TRIAL",
+        "MANUAL_APPROVAL",
+        "INTERNAL_POLICY",
+        "MIGRATION"
+      ],
       "description": "Provenance of a CapabilityGrant. Multiple independent grants from different sources may coexist for the same tenant/capability/scope; revoking one source does not revoke grants from another."
     },
     "capabilityProviderId": {
@@ -99,22 +172,40 @@
     },
     "capabilityProviderType": {
       "type": "string",
-      "enum": ["BAOBAB_ENGINE", "EXTERNAL_SERVICE", "PLATFORM_NATIVE", "ADAPTER"],
+      "enum": [
+        "BAOBAB_ENGINE",
+        "EXTERNAL_SERVICE",
+        "PLATFORM_NATIVE",
+        "ADAPTER"
+      ],
       "description": "Kind of implementation a CapabilityProvider represents."
     },
     "providerHealthStatus": {
       "type": "string",
-      "enum": ["UNKNOWN", "HEALTHY", "DEGRADED", "UNAVAILABLE"],
+      "enum": [
+        "UNKNOWN",
+        "HEALTHY",
+        "DEGRADED",
+        "UNAVAILABLE"
+      ],
       "description": "Ephemeral operational health of a provider or engine instance, distinct from lifecycle. Health is never persisted as a substitute for lifecycle state."
     },
     "capabilityHealthCriticality": {
       "type": "string",
-      "enum": ["CRITICAL", "STANDARD"],
+      "enum": [
+        "CRITICAL",
+        "STANDARD"
+      ],
       "description": "Which provider health a capability tolerates (ADR-BCP-006 SS22). A per-capability policy, independent of any composition's membership criticality. CRITICAL, e.g. payment authorisation: only HEALTHY is eligible. STANDARD: HEALTHY or UNKNOWN. See health-policy.yaml."
     },
     "healthObservationSource": {
       "type": "string",
-      "enum": ["ACTIVE_PROBE", "PASSIVE_TELEMETRY", "ENGINE_REPORT", "OPERATOR"],
+      "enum": [
+        "ACTIVE_PROBE",
+        "PASSIVE_TELEMETRY",
+        "ENGINE_REPORT",
+        "OPERATOR"
+      ],
       "description": "How a HealthObservation (health.schema.json) was obtained. ACTIVE_PROBE: the Control Plane called the subject's health endpoint. PASSIVE_TELEMETRY: derived from the subject's observed request outcomes. ENGINE_REPORT: the engine instance reported its own health under its workload identity. OPERATOR: an authenticated operator recorded it. A closed set, so it is safe as a bounded metric label."
     },
     "healthReasonCode": {
@@ -131,7 +222,13 @@
     },
     "bindingMode": {
       "type": "string",
-      "enum": ["PRIMARY", "FALLBACK", "SHADOW", "MIGRATION", "DISABLED"],
+      "enum": [
+        "PRIMARY",
+        "FALLBACK",
+        "SHADOW",
+        "MIGRATION",
+        "DISABLED"
+      ],
       "description": "Canonical binding mode (locked by BCP-TS-ONBOARDING-001 CR-002, confirmed in baobab-platform/baobab-cp Phase-0 audit against ADR-SHARED-007's own independent proposal of the same five values). PRIMARY: normal authoritative binding. FALLBACK: eligible only under approved failover conditions, never a bypass of entitlement/scope/contract/residency/isolation checks. SHADOW: non-authoritative mirrored execution, never determines the business result. MIGRATION: temporary binding participating in an explicit ProviderMigration plan. DISABLED: retained but excluded from resolution. No other value is valid; a superseded seven-value set (including SECONDARY, READ_ONLY, MIGRATION_SOURCE, MIGRATION_TARGET) existed in early baobab-platform/baobab-cp migrations and must not be reintroduced -- see this schema's own README.md for the rationale."
     },
     "engineKey": {
@@ -151,17 +248,32 @@
     },
     "providerImplementationStatus": {
       "type": "string",
-      "enum": ["PARTIAL", "IMPLEMENTED"],
+      "enum": [
+        "PARTIAL",
+        "IMPLEMENTED"
+      ],
       "description": "How complete an engine repository says its implementation of one capability contract is (ADR-SHARED-017 SS25). PARTIAL: part of the contract is implemented; never registered as provider support. IMPLEMENTED: the declared contract majors are implemented, with implementation evidence. Deliberately not a lifecycle, certification or health value: ACTIVE belongs to the Control Plane, CERTIFIED to EA-09 and HEALTHY to HealthObservation."
     },
     "capabilityProposalStatus": {
       "type": "string",
-      "enum": ["CANDIDATE", "PROPOSED", "CONTRACTING", "CONTRACTED"],
+      "enum": [
+        "CANDIDATE",
+        "PROPOSED",
+        "CONTRACTING",
+        "CONTRACTED"
+      ],
       "description": "Architecture-workflow state of a planned capability (ADR-SHARED-017 SS16-17). CANDIDATE: found during census, not yet proposed. PROPOSED: under architecture review. CONTRACTING: the Shared contract is being written. CONTRACTED: the canonical Shared definition exists, but this provider does not implement it yet. Never a runtime lifecycle: a planned capability creates no Capability, ProviderCapabilitySupport or CapabilityBinding, satisfies no composition and never takes part in resolution."
     },
     "implementationEvidenceType": {
       "type": "string",
-      "enum": ["source", "test", "contract-test", "integration-test", "simulation", "conformance-fixture"],
+      "enum": [
+        "source",
+        "test",
+        "contract-test",
+        "integration-test",
+        "simulation",
+        "conformance-fixture"
+      ],
       "description": "Kind of repository artefact behind an implementation claim (ADR-SHARED-017 SS47). Evidence explains why a repository claims an implementation exists; it is not certification, which EA-09 owns."
     },
     "architectureDecisionId": {
@@ -184,7 +296,13 @@
     },
     "capabilityResolutionDecision": {
       "type": "string",
-      "enum": ["RESOLVED", "DENIED", "UNAVAILABLE", "AMBIGUOUS", "INCOMPATIBLE"],
+      "enum": [
+        "RESOLVED",
+        "DENIED",
+        "UNAVAILABLE",
+        "AMBIGUOUS",
+        "INCOMPATIBLE"
+      ],
       "description": "Outcome of a capability resolution request."
     }
   }

@@ -171,6 +171,52 @@ class PostgresOutboxStoreTests(unittest.TestCase):
         self.assertEqual(self._row(dead.id, "status, dead_lettered_at IS NOT NULL, next_attempt_at, last_error"),
                          ("dead_letter", True, None, "gave up"))
 
+    def test_stale_worker_cannot_resurrect_a_delivered_event(self):
+        store = PostgresOutboxStore(self.connection)
+        event = self._event()
+        store.record_event(event)
+        self.connection.commit()
+        store.mark_delivered(event.id)
+
+        store.mark_retry(event.id, 1, "late failure", 60)
+        store.mark_dead_letter(event.id, 2, "late abandonment")
+        self.assertEqual(
+            self._row(event.id, "status, attempts, delivered_at IS NOT NULL, dead_lettered_at"),
+            ("delivered", 0, True, None),
+        )
+
+    def test_stale_success_cannot_overwrite_a_dead_letter_or_held_event(self):
+        store = PostgresOutboxStore(self.connection)
+        dead = self._event()
+        store.record_event(dead)
+        legacy = str(uuid.uuid4())
+        self.event_ids.append(legacy)
+        store.record(EventEnvelope(
+            event_id=legacy, event_type="erp.payment.completed.v1", schema_version="1.0",
+            occurred_at=datetime.now(UTC), source="baobab-erp", correlation_id="cor-2",
+            tenant_id=self.tenant_id, entity_id="THAMANI", payload={"amount": 10}))
+        self.connection.commit()
+
+        store.mark_dead_letter(dead.id, 1, "abandoned")
+        store.mark_delivered(dead.id)
+        store.mark_retry(dead.id, 2, "late worker", 1)
+        store.mark_delivered(legacy)
+        store.mark_retry(legacy, 1, "stale delivery", 1)
+        self.assertEqual(self._row(dead.id, "status, attempts, delivered_at"), ("dead_letter", 1, None))
+        self.assertEqual(self._row(legacy, "status, attempts"), ("held", 0))
+
+    def test_late_retry_cannot_decrease_attempts_or_override_newer_failure(self):
+        store = PostgresOutboxStore(self.connection)
+        event = self._event()
+        store.record_event(event)
+        self.connection.commit()
+        store.mark_retry(event.id, 3, "newer failure", 120)
+        store.mark_retry(event.id, 2, "stale failure", 1)
+        store.mark_dead_letter(event.id, 2, "stale deadletter")
+        self.assertEqual(self._row(event.id, "status, attempts, last_error"), ("retry", 3, "newer failure"))
+        store.mark_dead_letter(event.id, 4, "exhausted")
+        self.assertEqual(self._row(event.id, "status, attempts, last_error"), ("dead_letter", 4, "exhausted"))
+
     def test_stats_report_the_backlog_the_dead_letters_and_the_oldest_wait(self):
         store = PostgresOutboxStore(self.connection)
         kind = "com.baobab-platform.erp.provisioning.changed.v1"

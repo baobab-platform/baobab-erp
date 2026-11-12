@@ -24,7 +24,7 @@ _COUNTRY = re.compile(r"^[A-Z]{2}$")
 _CURRENCY = re.compile(r"^[A-Z]{3}$")
 CUSTOMER_TYPES = frozenset({"person", "organisation"})
 STATUSES = frozenset({"active", "suspended", "closed"})
-MAX_NAME = 255
+MAX_NAME = 120  # native C_BPartner.Name (iDempiere); no silent truncation
 
 
 class PayloadError(ValueError):
@@ -72,7 +72,7 @@ def parse_customer_projected(data: Any) -> CustomerProjection:
         raise PayloadError("customer_type must be person or organisation")
     name = data.get("display_name")
     if not isinstance(name, str) or not name.strip() or len(name) > MAX_NAME or any(ord(ch) < 32 for ch in name):
-        raise PayloadError("display_name must be 1-255 printable characters")
+        raise PayloadError("display_name must fit the native Business Partner Name (1-120 printable characters)")
     status = data.get("status")
     if status not in STATUSES:
         raise PayloadError("status must be active, suspended or closed")
@@ -82,6 +82,24 @@ def parse_customer_projected(data: Any) -> CustomerProjection:
     if currency is not None and (not isinstance(currency, str) or not _CURRENCY.fullmatch(currency)):
         raise PayloadError("preferred_currency must be an ISO 4217 code")
     return CustomerProjection(data["legal_entity_id"], customer_id, version, customer_type, name.strip(), status)
+
+
+# C_BPartner.Value is varchar(40). The Trade customer identifier may be up
+# to 128 characters, and cannot be copied to this native search key. Generate a
+# deterministic client-scoped key, preserving full canonical identity separately
+# in the ERP mapping and immutable Description recovery marker.
+MAX_NATIVE_BP_VALUE = 40
+
+
+def native_search_key(tenant_id: str, customer: CustomerProjection) -> str:
+    """Stable opaque native BP key; *never* a canonical identifier or authority.
+
+    The same Trade customer in two tenants/legal entities gets different keys.
+    A truncated canonical ID would be both nonunique and misleading.
+    """
+    source = json.dumps((tenant_id, customer.legal_entity_id, customer.customer_id),
+                        separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    return "BC" + hashlib.sha256(source).hexdigest()[:38]
 
 
 MAX_MARKER = 255

@@ -59,6 +59,31 @@ class PostgresMasterDataMappingStoreTests(unittest.TestCase):
 
         self.assertEqual(result, (555, "digest-2", "2"))
 
+    def test_replay_may_refresh_metadata_but_cannot_rekey_native_identity(self):
+        store = PostgresMasterDataMappingStore(self.connection)
+        public_id = store.put(
+            engine_instance_id=self.engine_instance_id, legal_entity_id=self.legal_entity_id,
+            kind=self.kind, canonical_id=self.canonical_id, native_id=555,
+            desired_digest="approved-digest-v1", source_version="1",
+        )
+        with self.assertRaisesRegex(ValueError, "different native ERP record"):
+            store.put(
+                engine_instance_id=self.engine_instance_id, legal_entity_id=self.legal_entity_id,
+                kind=self.kind, canonical_id=self.canonical_id, native_id=556,
+                desired_digest="unauthorised-replacement", source_version="2",
+            )
+        self.connection.rollback()
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT native_id, desired_digest, source_version, erp_resource_id
+                   FROM baobab.erp_master_data_mapping
+                   WHERE engine_instance_id=%s AND legal_entity_id=%s
+                     AND resource_kind=%s AND canonical_id=%s""",
+                (self.engine_instance_id, self.legal_entity_id, self.kind, self.canonical_id),
+            )
+            self.assertEqual(cursor.fetchone(),
+                             (555, "approved-digest-v1", "1", public_id))
+
     def test_missing_mapping_returns_none(self):
         store = PostgresMasterDataMappingStore(self.connection)
 

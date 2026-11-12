@@ -45,8 +45,8 @@ class InventoryAvailabilityTests(unittest.TestCase):
         self.connection.rollback()
         self.connection.close()
 
-    def idempiere_for(self, ad_client_id):
-        self.requested.append(ad_client_id)
+    def idempiere_for(self, ad_client_id, ad_org_id):
+        self.requested.append((ad_client_id, ad_org_id))
         return self.engine
 
     def get(self, tenant=None, sku=None, warehouse=None, query=None, factory="default"):
@@ -63,7 +63,7 @@ class InventoryAvailabilityTests(unittest.TestCase):
             "legal_entity_id": self.entity, "sku_id": self.sku, "warehouse_id": self.warehouse,
             "on_hand": {"value": "42.5", "unit": "EA"}, "erp_allocated": {"value": "8", "unit": "EA"},
             "erp_available": {"value": "34.5", "unit": "EA"}, "as_of": "2026-10-02T12:00:00Z", "revision": 1790935200})
-        self.assertEqual(self.requested, [1001], "the engine client is the one of the legal entity's AD_Client")
+        self.assertEqual(self.requested, [(1001, 1)], "the engine uses the exact client/org of the legal entity")
 
     def test_unmapped_identifiers_are_404_and_never_reach_the_engine(self):
         for case in (dict(warehouse="erp_" + uuid.uuid4().hex), dict(sku="sku-unknown"), dict(tenant=self.other)):
@@ -75,6 +75,46 @@ class InventoryAvailabilityTests(unittest.TestCase):
         with self.connection.cursor() as cursor:
             cursor.execute("UPDATE baobab.tenant_mapping SET engine_instance_id = NULL WHERE tenant_id = %s", (self.tenant,))
         self.assertEqual(self.get()[0], 404)
+
+    def test_expired_legal_entity_placement_cannot_expose_stock(self):
+        from datetime import timedelta
+
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """UPDATE baobab.tenant_mapping
+                   SET effective_from = %s, effective_to = %s
+                   WHERE tenant_id = %s AND entity_id = %s""",
+                (NOW - timedelta(days=3), NOW - timedelta(days=2),
+                 self.tenant, self.entity),
+            )
+        self.assertEqual(self.get()[0], 404)
+        self.assertEqual(self.requested, [])
+
+    def test_future_legal_entity_placement_cannot_expose_stock(self):
+        with self.connection.cursor() as cursor:
+            # The database clock, not the caller-supplied as_of clock, governs
+            # the mapping's active window; migration must be operationally authorised.
+            cursor.execute(
+                """UPDATE baobab.tenant_mapping
+                   SET effective_from = CURRENT_TIMESTAMP + interval '2 days',
+                       effective_to = NULL
+                   WHERE tenant_id = %s AND entity_id = %s""",
+                (self.tenant, self.entity),
+            )
+        self.assertEqual(self.get()[0], 404)
+        self.assertEqual(self.requested, [])
+
+    def test_current_bounded_legal_entity_placement_still_reports_live_stock(self):
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """UPDATE baobab.tenant_mapping
+                   SET effective_from = CURRENT_TIMESTAMP - interval '2 days',
+                       effective_to = CURRENT_TIMESTAMP + interval '2 days'
+                   WHERE tenant_id = %s AND entity_id = %s""",
+                (self.tenant, self.entity),
+            )
+        self.assertEqual(self.get()[0], 200)
+        self.assertEqual(self.requested, [(1001, 1)])
 
     def test_malformed_queries_are_400_with_the_offending_fields(self):
         for query in ("", f"sku_id={self.sku}", f"warehouse_id={self.warehouse}", f"sku_id=a&warehouse_id={self.warehouse}",

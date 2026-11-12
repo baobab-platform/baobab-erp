@@ -47,6 +47,60 @@ class PostgresMappingStoreTests(unittest.TestCase):
         canonical_id = resolve_to_canonical(self.tenant_id, "C_BPartner", 1001, store)
         self.assertEqual(canonical_id, self.canonical_id)
 
+    def test_expired_mapping_preserves_history_but_refuses_live_resolution(self):
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO baobab.entity_mapping
+                   (tenant_id, legal_entity_id, canonical_type, canonical_id,
+                    native_table, native_id, effective_from, effective_to)
+                   VALUES (%s,%s,'Party',%s::uuid,'C_BPartner',1001,
+                           CURRENT_TIMESTAMP - interval '4 days',
+                           CURRENT_TIMESTAMP - interval '2 days') RETURNING mapping_id""",
+                (self.tenant_id, self.legal_entity_id, self.canonical_id),
+            )
+            mapping_id = cursor.fetchone()[0]
+        self.connection.commit()
+        store = PostgresCanonicalMappingStore(self.connection)
+        self.assertIsNone(store.find_native(self.tenant_id, "Party", self.canonical_id))
+        self.assertIsNone(store.find_canonical(self.tenant_id, "C_BPartner", 1001))
+        self.assertIsNone(store.erp_resource_id(self.tenant_id, "Party", self.canonical_id))
+        self.assertNotIn(self.canonical_id, store.active_canonical_ids(self.tenant_id, "Party"))
+        historical = store.get_mapping(self.tenant_id, mapping_id)
+        self.assertIsNotNone(historical)
+        # Legacy ERP projection does not invent a canonical_owner. Its
+        # historical row identity and validity must nevertheless remain readable.
+        self.assertEqual(historical.mapping_id, mapping_id)
+        self.assertIsNone(historical.canonical_reference)
+        self.assertIsNotNone(historical.effective_to)
+
+    def test_future_mapping_is_not_current_and_bounded_present_is_current(self):
+        self._insert_mapping()
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """UPDATE baobab.entity_mapping
+                   SET effective_from = CURRENT_TIMESTAMP + interval '2 days',
+                       effective_to = NULL
+                   WHERE tenant_id = %s AND canonical_id = %s::uuid""",
+                (self.tenant_id, self.canonical_id),
+            )
+        self.connection.commit()
+        store = PostgresCanonicalMappingStore(self.connection)
+        self.assertIsNone(store.find_native(self.tenant_id, "Party", self.canonical_id))
+        self.assertIsNone(store.find_canonical(self.tenant_id, "C_BPartner", 1001))
+
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """UPDATE baobab.entity_mapping
+                   SET effective_from = CURRENT_TIMESTAMP - interval '1 day',
+                       effective_to = CURRENT_TIMESTAMP + interval '1 day'
+                   WHERE tenant_id = %s AND canonical_id = %s::uuid""",
+                (self.tenant_id, self.canonical_id),
+            )
+        self.connection.commit()
+        self.assertEqual(store.find_native(self.tenant_id, "Party", self.canonical_id),
+                         NativeRecordRef("C_BPartner", 1001))
+        self.assertEqual(store.find_canonical(self.tenant_id, "C_BPartner", 1001), self.canonical_id)
+
     def test_missing_mapping_raises(self):
         store = PostgresCanonicalMappingStore(self.connection)
         with self.assertRaises(MappingNotFoundError):
