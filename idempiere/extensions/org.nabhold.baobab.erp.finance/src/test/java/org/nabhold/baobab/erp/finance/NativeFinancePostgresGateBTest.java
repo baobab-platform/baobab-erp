@@ -2032,4 +2032,41 @@ class NativeFinancePostgresGateBTest {
         assertEquals(1, count("SELECT count(*) FROM pg_trigger "
                 + "WHERE tgname='baobab_native_org_no_truncate' AND tgenabled='O'"));
     }
+
+    @Test
+    void f1NativeLedgerFactsRequireActualCommittedProvenanceAndBoundScope() throws Exception {
+        // Gate B is real JDBC/PostgreSQL with deliberately SYNTHETIC CP facts.
+        // It does NOT certify an F1 finance API, a current IAM/CP read grant or live iDempiere posting.
+        int journal;
+        try (Connection c = transaction()) {
+            journal = newJournal(c);
+            c.commit();
+        }
+        try (Connection c = transaction()) {
+            authorise(c, factLine(journal, "f1-ledger-readback"), Instant.now().plusSeconds(25));
+            insertFact(c, journal);
+            c.commit();
+        }
+        var scope = new NativeLedgerFacts.Scope(
+                "tn_gateb01", LE, "2c8e4f6a-1b3d-4e5f-8a7c-9d0e1f2a3b4c",
+                CLIENT, ORG, 101, "UGX", java.time.LocalDate.now().minusDays(1),
+                java.time.LocalDate.now().plusDays(1), Instant.now());
+        NativeLedgerFacts reader = new NativeLedgerFacts();
+        try (Connection c = transaction()) {
+            c.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+            var facts = reader.read(c, scope, ignored -> true); // SYNTHETIC current-permit stub only
+            assertFalse(facts.facts().isEmpty(), "native Fact_Acct source rows must be read, not fabricated");
+            assertTrue(facts.facts().stream().allMatch(line -> line.historicalBaselineVersion() == 1));
+            assertTrue(facts.facts().stream().allMatch(line -> line.nativeAccountId() == 501));
+            assertThrows(SecurityException.class, () -> reader.read(c, scope, ignored -> false));
+            assertThrows(SecurityException.class, () -> reader.read(c, new NativeLedgerFacts.Scope(
+                    "tn_unrelated", LE, scope.operatingOrganisationId(), CLIENT, ORG, 101, "UGX",
+                    scope.periodStart(), scope.periodEnd(), scope.asOf()), ignored -> true));
+            assertThrows(SecurityException.class, () -> reader.read(c, new NativeLedgerFacts.Scope(
+                    "tn_gateb01", LE, scope.operatingOrganisationId(), CLIENT, ORG, 101, "USD",
+                    scope.periodStart(), scope.periodEnd(), scope.asOf()), ignored -> true));
+            c.rollback();
+        }
+    }
+
 }
