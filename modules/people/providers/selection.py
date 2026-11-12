@@ -189,7 +189,14 @@ class CPProviderSelector:
                 or not _PROVIDER.fullmatch(fields["provider_id"])
                 or not _REF.fullmatch(fields["qualification_receipt_ref"])
                 or not _REF.fullmatch(result["decision_ref"])
-                or now < start or not observed <= now < expiry or now - observed > timedelta(seconds=30)
+                # 'now' is captured at request START. CP timestamps its
+                # selection during the HTTPS roundtrip, so a recent genuine
+                # observation can be slightly later than 'now'. Accept only
+                # the transport's seven-second deadline; unbounded future
+                # timestamps and stale/expired responses remain refused.
+                or now < start or not now < expiry or not observed < expiry
+                or observed - now > timedelta(seconds=7)
+                or now - observed > timedelta(seconds=30)
                 or expiry - observed > timedelta(seconds=30)
                 or until is not None and not now < until):
             raise ProviderSelectionDenied("Selected provider not currently authorised")

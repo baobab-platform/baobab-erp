@@ -132,6 +132,9 @@ services:
       ADMIN_OIDC_AUDIENCE: baobab-control-plane-admin
       ADMIN_OIDC_CLIENT_ID: baobab-control-plane-admin
       WORKLOAD_REGISTRY_FILE: /run/erpa/workload-registry.yaml
+      # Connected People witness is a test-only opt-in, never a release grant.
+      PEOPLE_PROVIDER_READ_ENABLED: ${PEOPLE_DEV_CONNECTED:-false}
+      PEOPLE_PROVIDER_READ_CLIENT_IDS: ${PEOPLE_WORKLOAD_CLIENT_ID:-}
       TENANT_BOOTSTRAP_REGISTRATION: enabled
       LEGAL_ACTOR_MANDATE_COMMANDS_ENABLED: "true"
       LEGAL_ACTOR_MANDATE_LIFECYCLE_ENABLED: "true"
@@ -190,6 +193,25 @@ services:
     depends_on: {kratos-migrate: {condition: service_completed_successfully}}
     networks: [erpa]
     ports: ["127.0.0.1:18014:4434"]
+
+
+  # Real ERP Python consumer calling CP over the harness TLS edge. Never
+  # started in standard ERP-A runs or protected environments.
+  people-probe:
+    image: ${PYTHON_IMAGE}
+    profiles: [people]
+    command: ["python", "-B", "/workspace/idempiere/acceptance/erp-a/driver/people_probe.py"]
+    environment:
+      BAOBAB_ENVIRONMENT: integration
+      PYTHONPATH: /workspace/modules
+      SSL_CERT_FILE: /run/erpa/ca.pem
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - ${RUN_DIR}/cp:/run/erpa:ro
+      - ${RUN_DIR}/people-secret:/run/people:ro
+      - ${ERP_REPO_PATH:-/nonexistent}:/workspace:ro
+    networks: [erpa]
+    restart: "no"
 
   # --- Test IAM and the TLS edge.
   issuer:

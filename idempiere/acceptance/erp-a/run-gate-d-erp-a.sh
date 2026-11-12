@@ -29,6 +29,18 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../../.." && pwd)
 RUN=$(mktemp -d)
 echo "[erp-a] run directory: $RUN"
+export ERP_REPO_PATH="$REPO"
+export PEOPLE_WORKLOAD_CLIENT_ID=baobab-erp-people-dev-witness
+if [[ "${PEOPLE_DEV_CONNECTED:-false}" == "true" ]]; then
+  : "${IAM_SRC:?IAM source required}"
+  : "${CP_PEOPLE_WITNESS_SHA:?exact CP People witness commit required}"
+  if [[ "$(git -C "$CP_SRC" rev-parse HEAD)" != "$CP_PEOPLE_WITNESS_SHA" ]] || \
+     ! grep -Fq 'trusted.Jurisdiction = chosen.CountryCode' "$CP_SRC/internal/service/context_resolution_service.go"; then
+    echo "People CP source pin lacks attested country jurisdiction" >&2
+    exit 1
+  fi
+  export PEOPLE_WORKLOAD_SECRET="$(openssl rand -hex 24)"
+fi
 export RUN_DIR=$RUN ERP_IMAGE
 export CP_IMAGE=baobab-gate-d-erp-a/cp:local PYTHON_IMAGE=baobab-gate-d-erp-a/python:local
 export CPDB_PASSWORD="cpdb-$(openssl rand -hex 12)" ERP_WORKLOAD_SECRET=$(openssl rand -hex 24)
@@ -43,7 +55,8 @@ collect() {
     "${COMPOSE[@]}" logs --no-color "$s" > "$OUT/$s.log" 2>&1 || true
   done
   # Logs are evidence: they must never carry a token or the workload secret.
-  if grep -l -e "$ERP_WORKLOAD_SECRET" -e "$ORY_HOOK_SECRET" -e "$ORY_SYSTEM_SECRET" "$OUT"/*.log >/dev/null 2>&1 \
+  if grep -l -e "$ERP_WORKLOAD_SECRET" -e "$ORY_HOOK_SECRET" -e "$ORY_SYSTEM_SECRET" \
+      -e "${PEOPLE_WORKLOAD_SECRET:-not-a-real-people-token-from-this-run}" "$OUT"/*.log >/dev/null 2>&1 \
      || grep -Pl 'eyJ[A-Za-z0-9_-]{20,}\.' "$OUT"/*.log >/dev/null 2>&1; then
     log "a log carries a token or the workload secret"; return 1
   fi
@@ -71,6 +84,11 @@ trap cleanup EXIT
 
 log "throwaway CA, the TLS edge certificate and iDempiere's truststore"
 mkdir -p "$RUN"/{edge,cp,issuer,erp-tls,erp-secret,gate-d/requests,gate-d/results}
+if [[ "${PEOPLE_DEV_CONNECTED:-false}" == "true" ]]; then
+  mkdir -p "$RUN/people-secret"
+  printf "%s\n" "$PEOPLE_WORKLOAD_SECRET" > "$RUN/people-secret/workload-secret"
+  chmod -R a+rX "$RUN/people-secret"
+fi
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=Baobab ERP-A throwaway CA" \
   -keyout "$RUN/ca.key" -out "$RUN/ca.pem" 2>/dev/null
 openssl req -newkey rsa:2048 -nodes -subj "/CN=gated.test" -keyout "$RUN/edge/server.key" -out "$RUN/edge.csr" 2>/dev/null
@@ -87,13 +105,29 @@ python3 "$HERE/driver/ory_bootstrap.py" prepare --run "$RUN" --out "$OUT" --iam 
 
 log "workload client and the CI-only registry snapshot"
 python3 - "$RUN/issuer/clients.json" "$ERP_WORKLOAD_SECRET" <<'EOF'
-import json, sys
-json.dump({"baobab-erp-legal-actor-assessor-staging": {
+import json, sys, os
+clients = {"baobab-erp-legal-actor-assessor-staging": {
     "secret": sys.argv[2], "audience": "baobab-control-plane",
     "scopes": ["context:resolve", "legal-actor:assess", "documentary:restriction-assess",
-               "erp-posting-authority:resolve"]}}, open(sys.argv[1], "w"))
+               "erp-posting-authority:resolve"]}}
+if os.environ.get("PEOPLE_DEV_CONNECTED") == "true":
+    clients["baobab-erp-people-dev-witness"] = {
+        "secret": os.environ["PEOPLE_WORKLOAD_SECRET"],
+        "audience": "baobab-control-plane",
+        "scopes": ["context:resolve", "people:provider:read"]}
+with open(sys.argv[1], "w") as out:
+    json.dump(clients, out)
 EOF
 cp "$HERE/cp/workload-registry.yaml" "$RUN/cp/workload-registry.yaml"
+if [[ "${PEOPLE_DEV_CONNECTED:-false}" == "true" ]]; then
+  cat >> "$RUN/cp/workload-registry.yaml" <<'PEOPLE_REGISTRY'
+  baobab-erp-people-dev-witness:
+    status: ACTIVE
+    environment: integration
+    allowed_scopes: ["context:resolve", "people:provider:read"]
+    context_purposes: ["RUNTIME"]
+PEOPLE_REGISTRY
+fi
 printf '%s\n' "$ERP_WORKLOAD_SECRET" > "$RUN/erp-secret/workload-secret"
 chmod a+rX "$RUN/erp-secret"; chmod 0444 "$RUN/erp-secret/workload-secret"
 chmod -R a+rX "$RUN/issuer" "$RUN/cp"
@@ -190,6 +224,12 @@ python3 "$HERE/driver/gate_d_erp_a.py" place --run "$RUN" --out "$OUT" --compose
 python3 "$HERE/driver/independent_company.py" place --run "$RUN" --out "$OUT" --compose "$HERE/compose.yaml"
 python3 "$HERE/driver/independent_company.py" verify --run "$RUN" --out "$OUT" --compose "$HERE/compose.yaml"
 python3 "$HERE/driver/ory_bootstrap.py" consume --run "$RUN" --out "$OUT"
+if [[ "${PEOPLE_DEV_CONNECTED:-false}" == "true" ]]; then
+  log "People: Ory-issued scoped workload -> current CP -> real ERP adapter -> independent PG17 readback"
+  PYTHONPATH="$REPO/modules" python3 -B "$HERE/driver/people_dev_connected.py" \
+    --run "$RUN" --out "$OUT" --compose "$HERE/compose.yaml"
+  test -s "$OUT/people-dev-witness.json"
+fi
 
 log "scenarios"
 export CP_COMMIT ERP_COMMIT=$(git -C "$REPO" rev-parse HEAD)
