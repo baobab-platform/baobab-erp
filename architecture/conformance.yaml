@@ -7,7 +7,7 @@
 #   partial    - some of the decision is implemented and tested; a material gap remains
 #   planned    - decided in the ADR, not yet implemented
 schema_version: "1.0"
-updated: "2026-11-09"
+updated: "2026-11-12"
 adrs:
   - id: ADR-ERP-001
     title: iDempiere as an isolated, headless, multi-tenant Baobab ERP engine
@@ -904,9 +904,11 @@ adrs:
       - tests/architecture/test_postgresql17_baseline.py
     gap: >
       PostgreSQL 17 repository baseline and the accepted People/provider-neutral
-      architecture exist. ERP #126 is a separate DRAFT/HOLD experimental
-      workforce/payroll persistence and provider-adapter increment, not merged,
-      not production-activatable and not authoritative statutory qualification.
+      architecture exist. ERP #126 merged on 12 November 2026 as a strictly inert development-only
+      workforce/payroll persistence and provider-adapter increment, not a
+      protected-activation, live provider or authoritative statutory qualification.
+      Its merge does not certify payroll rules, employer eligibility, real IAM/CP
+      execution or native financial effects.
       No qualified ZA/UG payroll calculators, official signed statutory golden
       vectors, genuine IAM/CP provider binding, payroll GL posting, personal
       data custody, supervised parallel run or independent employer-readback
@@ -929,3 +931,23 @@ adrs:
       provider-isolation, inventory-owner, recovery, reconciliation and
       real PostgreSQL/iDempiere/TMS/Trade evidence remain outstanding.
       The status of this item must not be interpreted as an activated service.
+
+  - id: ADR-ERP-025
+    title: Autonomous enterprise product monorepo and replaceable engine architecture
+    status: planned
+    evidence:
+      - docs/adr/ADR-ERP-025 — Autonomous Enterprise Product Monorepo and Replaceable Engine Architecture.md
+      - docs/adr/README.md
+      - tests/architecture/test_erp_product_monorepo_adr.py
+    gap: >
+      The Platform Owner accepted the product-family, shared-authority and
+      replaceable-headless-provider architecture on 12 November 2026.
+      This is repository/portfolio design only: the ERP-MONO-00 through
+      ERP-MONO-07 gates are NOT implemented or certified by documentation.
+      No physical code relocation, product runtime, new Shared capability,
+      CP binding, non-iDempiere financial provider, protected activation,
+      cross-provider data migration, qualified manufacturing or CRM,
+      Assets/Projects/Quality/Service Management product admission, or
+      native-ERP replacement is established by this ADR. Current selected
+      iDempiere 13/PG17 native controls remain mandatory until a separately
+      qualified provider and controlled cutover supersede the relevant binding.
