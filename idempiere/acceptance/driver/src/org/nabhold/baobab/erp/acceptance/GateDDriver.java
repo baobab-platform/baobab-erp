@@ -230,18 +230,30 @@ public final class GateDDriver implements BundleActivator, Runnable {
                 j.saveEx();
             }
             if (rollbackAfterPost) {
-                // Injected failure AFTER Fact_Acct rows were written in this
-                // transaction and BEFORE commit: nothing may survive.
-                String err = DocumentEngine.postImmediate(ctx, client, GL_JOURNAL_TABLE, id, true, trxName);
-                int facts = DB.getSQLValueEx(trxName, "SELECT COUNT(*) FROM Fact_Acct WHERE AD_Table_ID=? AND Record_ID=?", GL_JOURNAL_TABLE, id);
+                // Real iDempiere has already processed and posted this journal
+                // inside THIS database transaction. Observe its original
+                // native facts and CP authority before deliberately rolling
+                // back the transaction. Forcing a second Doc.post() here
+                // attempts to delete those provisional facts; that tests
+                // destructive reposting, NOT atomic rollback.
+                int facts = DB.getSQLValueEx(trxName,
+                        "SELECT COUNT(*) FROM Fact_Acct WHERE AD_Table_ID=? AND Record_ID=?",
+                        GL_JOURNAL_TABLE, id);
+                int decisions = DB.getSQLValueEx(trxName,
+                        "SELECT COUNT(*) FROM baobab_native.finance_authority_attribution"
+                        + " WHERE lower(source_table)='gl_journal' AND source_record_id=?"
+                        + " AND decision_id IS NOT NULL", id);
                 out.setProperty(prefix + "facts_before_rollback", String.valueOf(facts));
-                out.setProperty(prefix + "post_error", String.valueOf(err));
+                out.setProperty(prefix + "decisions_before_rollback", String.valueOf(decisions));
+                if (facts <= 0 || decisions <= 0) {
+                    throw new IllegalStateException("GATE_D_ROLLBACK_REQUIRES_REAL_NATIVE_FACTS_AND_AUTHORITY");
+                }
                 trx.rollback();
                 out.setProperty(prefix + "committed", "false");
             } else {
                 out.setProperty(prefix + "committed", String.valueOf(trx.commit(true)));
                 if (complete && post) {
-                    String err = DocumentEngine.postImmediate(ctx, client, GL_JOURNAL_TABLE, id, false, null);
+                    String err = NativePostReadback.postIfNeeded(ctx, client, "GL_Journal", GL_JOURNAL_TABLE, id);
                     out.setProperty(prefix + "post_error", String.valueOf(err));
                 }
             }
@@ -271,7 +283,7 @@ public final class GateDDriver implements BundleActivator, Runnable {
             out.setProperty("committed", String.valueOf(trx.commit(true)));
             if (ok) {
                 out.setProperty("post_error", String.valueOf(
-                        DocumentEngine.postImmediate(ctx, CLIENT, GL_JOURNAL_TABLE, id, false, null)));
+                        NativePostReadback.postIfNeeded(ctx, CLIENT, "GL_Journal", GL_JOURNAL_TABLE, id)));
             }
         } catch (Exception failed) {
             trx.rollback();
@@ -291,11 +303,19 @@ public final class GateDDriver implements BundleActivator, Runnable {
     private static Properties repost(Properties in) {
         Properties out = new Properties();
         int id = Integer.parseInt(in.getProperty("journal_id"));
+        int client = Integer.parseInt(in.getProperty("client", String.valueOf(CLIENT)));
+        int org = Integer.parseInt(in.getProperty("org", "11"));
+        if (client != CLIENT
+                && !"DEV09_SECOND_COMPANY_ONLY".equals(in.getProperty("profile"))) {
+            throw new IllegalArgumentException("DEV09_SECOND_JOURNAL_PROFILE_REQUIRED");
+        }
         boolean force = Boolean.parseBoolean(in.getProperty("force", "false"));
-        Properties ctx = context(11);
+        Properties ctx = context(client, org);
         try {
             out.setProperty("post_error", String.valueOf(
-                    DocumentEngine.postImmediate(ctx, CLIENT, GL_JOURNAL_TABLE, id, force, null)));
+                    force
+                        ? DocumentEngine.postImmediate(ctx, client, GL_JOURNAL_TABLE, id, true, null)
+                        : NativePostReadback.postIfNeeded(ctx, client, "GL_Journal", GL_JOURNAL_TABLE, id)));
         } catch (Exception failed) {
             out.setProperty("error", String.valueOf(failed.getMessage()));
         } finally {

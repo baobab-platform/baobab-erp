@@ -21,7 +21,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from erpalib import Compose, Erp, Evidence  # noqa: E402
+from erpalib import Compose, Erp, Evidence, native_post_clean, native_post_outcome_class  # noqa: E402
 from seed import CONTRACTING_ONLY, PURCHASE, ControlPlane  # noqa: E402
 
 CLIENT = 11
@@ -257,16 +257,38 @@ VALUES (gen_random_uuid(), 'SYNTHETIC_ENGINE_LOCAL', '{PLACEMENT}', 1, '{self.st
                     f"ON il.c_invoiceline_id = mi.c_invoiceline_id WHERE il.c_invoice_id = {inv or 0}")
         ev.scenario("S04", "vendor invoice: CO, posted, balanced, CP-backed; matched to the receipt",
                     self.posted("c_invoice", "C_Invoice", T_INVOICE, inv, VI) and bool(mi), json.dumps(r))
-        if mi and self.q(f"SELECT posted FROM m_matchinv WHERE m_matchinv_id = {mi}") != "Y":
-            self.repost("M_MatchInv", mi)
+        # Capture a privacy-safe classification of the genuine JVM posting
+        # result, including whether the failure existed before the retry.
+        # Balanced facts with Posted=E are NOT an accepted invoice match.
+        match_status_before = self.q(f"SELECT posted FROM m_matchinv WHERE m_matchinv_id = {mi or 0}")
+        match_facts_before = self.facts(T_MATCHINV, mi or 0)
+        match_attempt = {}
+        # M_MatchInv is a derived accounting source, not an approved independent
+        # reversal class. If committed facts already exist while Posted='E',
+        # do NOT call Doc.post(): its delete-and-rebuild path would rewrite
+        # historical ledger facts contrary to N0010. Keep S04b failing and
+        # record the conflict for a governed corrective posting design.
+        if mi and match_status_before != "Y" and int(match_facts_before or "0") == 0:
+            match_attempt = self.repost("M_MatchInv", mi)
+        match_error_class = (
+            "POSTING_STATE_CONFLICT_WITH_COMMITTED_FACTS"
+            if mi and match_status_before != "Y" and int(match_facts_before or "0") > 0
+            else native_post_outcome_class(match_attempt)
+        )
         inv_costs = self.q(f"SELECT count(*) FROM m_costdetail cd JOIN c_invoiceline il ON il.c_invoiceline_id = cd.c_invoiceline_id "
                            f"WHERE il.c_invoice_id = {inv or 0} AND coalesce(cd.m_inoutline_id, 0) = 0")
         inv_derived = self.q(f"SELECT count(*) FROM baobab_native.derived_write_attribution "
                              f"WHERE root_table = 'C_Invoice' AND root_record_id = {inv or 0}")
+        match_posted = self.q(f"SELECT posted FROM m_matchinv WHERE m_matchinv_id = {mi or 0}")
+        match_balanced = self.balanced(T_MATCHINV, mi or 0)
+        match_facts = self.facts(T_MATCHINV, mi or 0)
         ev.scenario("S04b", "invoice match: MatchInv posted and balanced, invoice-line cost detail derived from the vendor invoice",
-                    bool(mi) and self.q(f"SELECT posted FROM m_matchinv WHERE m_matchinv_id = {mi or 0}") == "Y"
-                    and self.balanced(T_MATCHINV, mi or 0) and int(inv_costs or 0) > 0 and int(inv_derived or 0) > 0,
-                    f"matchinv={mi} costs={inv_costs} derived={inv_derived}")
+                    bool(mi) and match_posted == "Y" and match_balanced
+                    and int(inv_costs or 0) > 0 and int(inv_derived or 0) > 0,
+                    f"matchinv={mi} posted_before={match_status_before} posted_after={match_posted} "
+                    f"facts_before={match_facts_before} facts_after={match_facts} "
+                    f"balanced={match_balanced} costs={inv_costs} derived={inv_derived} "
+                    f"posting_attempted={bool(match_attempt)} native_error_class={match_error_class}")
         self.evidence(inv)
         r = self.doc("vpayment", invoice_id=inv)
         pay = r.get("id", "")
@@ -289,13 +311,54 @@ VALUES (gen_random_uuid(), 'SYNTHETIC_ENGINE_LOCAL', '{PLACEMENT}', 1, '{self.st
                     bool(al) and self.q(f"SELECT docstatus FROM c_allocationhdr WHERE c_allocationhdr_id = {al}") == "CO"
                     and self.cp_backed("C_AllocationHdr", al, PA), json.dumps(r))
 
-        # S07: retry after commit and a forced background repost under authority: no duplicate ledger or costing.
-        f0, c0 = self.facts(T_INOUT, rc or 0), self.cost_rows(lines)
-        self.repost("M_InOut", rc)
-        rf = self.repost("M_InOut", rc, force=True)
-        ev.scenario("S07", "receipt retry and forced repost: ledger rebuilt balanced, costing not duplicated",
-                    bool(rc) and self.facts(T_INOUT, rc) == f0 and self.balanced(T_INOUT, rc) and self.cost_rows(lines) == c0,
-                    json.dumps(rf))
+        # S07: an already committed receipt must be adopted on non-forced
+        # replay, without a new posting attempt. A forced destructive Doc.post()
+        # is NOT a lawful correction and must be refused by N0010. Row counts
+        # alone cannot distinguish ledger replacement from immutable history.
+        def committed_receipt_snapshot():
+            return {
+                "state": self.status("m_inout", rc),
+                "facts": self.q(
+                    f"SELECT md5(coalesce(string_agg(to_jsonb(f)::text, '|' "
+                    f"ORDER BY f.fact_acct_id), '')) FROM fact_acct f "
+                    f"WHERE f.ad_table_id={T_INOUT} AND f.record_id={rc}"),
+                "cost": self.q(
+                    "SELECT md5(coalesce(string_agg(to_jsonb(cd)::text, '|' "
+                    "ORDER BY cd.m_costdetail_id), '')) FROM m_costdetail cd "
+                    f"WHERE cd.c_orderline_id IN ({lines}) "
+                    "AND coalesce(cd.m_inoutline_id, 0)=0 "
+                    "AND coalesce(cd.c_invoiceline_id, 0)=0"),
+                "authority": self.q(
+                    "SELECT md5(coalesce(string_agg(to_jsonb(a)::text, '|' "
+                    "ORDER BY to_jsonb(a)::text), '')) "
+                    "FROM baobab_native.finance_authority_attribution a "
+                    f"WHERE lower(a.source_table)='m_inout' AND a.source_record_id={rc}"),
+                "derived": self.q(
+                    "SELECT md5(coalesce(string_agg(to_jsonb(a)::text, '|' "
+                    "ORDER BY to_jsonb(a)::text), '')) "
+                    "FROM baobab_native.derived_write_attribution a "
+                    f"WHERE lower(a.root_table)='m_inout' AND a.root_record_id={rc}"),
+            }
+        original = committed_receipt_snapshot() if rc else None
+        replay = self.repost("M_InOut", rc) if rc else {}
+        after_replay = committed_receipt_snapshot() if rc else None
+        forced = self.repost("M_InOut", rc, force=True) if rc else {}
+        after_forced = committed_receipt_snapshot() if rc else None
+        replay_success = native_post_clean(replay)
+        # An arbitrary JVM crash, timeout, or unsupported-source exception
+        # is not evidence that the native immutable-history guard executed.
+        forced_refused = native_post_outcome_class(forced) == DENIED
+        ev.scenario(
+            "S07", "committed receipt replay is idempotent; destructive repost refused without source, ledger or cost mutation",
+            bool(rc) and original is not None and original["state"] == "COY"
+            and replay_success and forced_refused
+            and original == after_replay == after_forced
+            and self.balanced(T_INOUT, rc),
+            json.dumps({"replay_success": replay_success, "destructive_repost_refused": forced_refused,
+                        "before_after_replay_equal": original == after_replay,
+                        "before_after_forced_equal": original == after_forced,
+                        "posted_state_unchanged": (after_forced or {}).get("state") == "COY"}),
+        )
 
         # S08-S12: routes CP can never authorise (deny-by-name, ADR-SHARED-037 §3): refused natively.
         r = self.doc("vreturn", order_id=po)

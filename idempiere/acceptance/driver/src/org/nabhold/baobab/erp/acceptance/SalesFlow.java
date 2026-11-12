@@ -81,25 +81,45 @@ final class SalesFlow {
                 doc.saveEx();
             }
             if (rollbackAfterPost) {
-                // Injected failure AFTER ledger and cost rows exist in this transaction, BEFORE commit.
-                String err = DocumentEngine.postImmediate(ctx, CLIENT, doc.get_Table_ID(), doc.get_ID(), true, trxName);
-                out.setProperty("post_error", String.valueOf(err));
-                out.setProperty("facts_before_rollback", String.valueOf(DB.getSQLValueEx(trxName,
-                        "SELECT COUNT(*) FROM Fact_Acct WHERE AD_Table_ID=? AND Record_ID=?", doc.get_Table_ID(), doc.get_ID())));
-                out.setProperty("costs_before_rollback", String.valueOf(DB.getSQLValueEx(trxName,
-                        "SELECT COUNT(*) FROM M_CostDetail cd JOIN M_InOutLine l ON l.M_InOutLine_ID=cd.M_InOutLine_ID "
-                                + "WHERE l.M_InOut_ID=?", doc.get_ID())));
-                out.setProperty("matches_before_rollback", String.valueOf(DB.getSQLValueEx(trxName,
+                // Native processIt() performed the original completion and
+                // first-time posting in this exact JDBC transaction. Verify
+                // the uncommitted ledger, cost and authority from PostgreSQL,
+                // then inject rollback. A force=true second Doc.post() here
+                // attempts to rewrite freshly generated Fact_Acct and is not
+                // a valid test of lossless rollback.
+                int facts = DB.getSQLValueEx(trxName,
+                        "SELECT COUNT(*) FROM Fact_Acct WHERE AD_Table_ID=? AND Record_ID=?",
+                        doc.get_Table_ID(), doc.get_ID());
+                int costs = DB.getSQLValueEx(trxName,
+                        "SELECT COUNT(*) FROM M_CostDetail cd JOIN M_InOutLine l"
+                        + " ON l.M_InOutLine_ID=cd.M_InOutLine_ID WHERE l.M_InOut_ID=?",
+                        doc.get_ID());
+                int matches = DB.getSQLValueEx(trxName,
                         "SELECT (SELECT COUNT(*) FROM M_MatchPO mp JOIN M_InOutLine l ON l.M_InOutLine_ID=mp.M_InOutLine_ID "
-                                + "WHERE l.M_InOut_ID=?) + (SELECT COUNT(*) FROM M_MatchInv mi JOIN C_InvoiceLine il "
-                                + "ON il.C_InvoiceLine_ID=mi.C_InvoiceLine_ID WHERE il.C_Invoice_ID=?)", doc.get_ID(), doc.get_ID())));
+                        + "WHERE l.M_InOut_ID=?) + (SELECT COUNT(*) FROM M_MatchInv mi JOIN C_InvoiceLine il "
+                        + "ON il.C_InvoiceLine_ID=mi.C_InvoiceLine_ID WHERE il.C_Invoice_ID=?)",
+                        doc.get_ID(), doc.get_ID());
+                int decisions = DB.getSQLValueEx(trxName,
+                        "SELECT COUNT(*) FROM baobab_native.finance_authority_attribution"
+                        + " WHERE lower(source_table)=lower(?) AND source_record_id=?"
+                        + " AND decision_id IS NOT NULL",
+                        doc.get_TableName(), doc.get_ID());
+                out.setProperty("facts_before_rollback", String.valueOf(facts));
+                out.setProperty("costs_before_rollback", String.valueOf(costs));
+                out.setProperty("matches_before_rollback", String.valueOf(matches));
+                out.setProperty("decisions_before_rollback", String.valueOf(decisions));
+                if (!complete || !"true".equals(out.getProperty("complete_ok"))
+                        || facts <= 0 || decisions <= 0
+                        || ("M_InOut".equals(doc.get_TableName()) && costs <= 0)) {
+                    throw new IllegalStateException("GATE_D_ROLLBACK_REQUIRES_REAL_NATIVE_FACTS_COSTS_AND_AUTHORITY");
+                }
                 trx.rollback();
                 out.setProperty("committed", "false");
             } else {
                 out.setProperty("committed", String.valueOf(trx.commit(true)));
                 if (complete && post && "true".equals(out.getProperty("complete_ok"))) {
                     out.setProperty("post_error", String.valueOf(
-                            DocumentEngine.postImmediate(ctx, CLIENT, doc.get_Table_ID(), doc.get_ID(), false, null)));
+                            NativePostReadback.postIfNeeded(ctx, CLIENT, doc.get_TableName(), doc.get_Table_ID(), doc.get_ID())));
                 }
             }
         } catch (Exception failed) {
@@ -152,7 +172,7 @@ final class SalesFlow {
             out.setProperty("committed", String.valueOf(trx.commit(true)));
             if (ok) {
                 out.setProperty("post_error", String.valueOf(
-                        DocumentEngine.postImmediate(ctx, CLIENT, doc.get_Table_ID(), id, false, null)));
+                        NativePostReadback.postIfNeeded(ctx, CLIENT, doc.get_TableName(), doc.get_Table_ID(), id)));
             }
         } catch (Exception failed) {
             trx.rollback();
@@ -169,7 +189,9 @@ final class SalesFlow {
         int tableId = MTable.getTable_ID(in.getProperty("table"));
         int id = Integer.parseInt(in.getProperty("id"));
         boolean force = Boolean.parseBoolean(in.getProperty("force", "false"));
-        out.setProperty("post_error", String.valueOf(DocumentEngine.postImmediate(ctx, CLIENT, tableId, id, force, null)));
+        out.setProperty("post_error", String.valueOf(force
+                ? DocumentEngine.postImmediate(ctx, CLIENT, tableId, id, true, null)
+                : NativePostReadback.postIfNeeded(ctx, CLIENT, in.getProperty("table"), tableId, id)));
         return out;
     }
 

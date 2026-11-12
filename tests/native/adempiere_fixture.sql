@@ -12,6 +12,22 @@ CREATE TABLE adempiere.ad_org (ad_org_id numeric(10) PRIMARY KEY,
 CREATE TABLE adempiere.ad_table (ad_table_id numeric(10) PRIMARY KEY, tablename text NOT NULL);
 CREATE TABLE adempiere.c_acctschema (c_acctschema_id numeric(10) PRIMARY KEY, ad_client_id numeric(10) NOT NULL,
   isactive char(1) NOT NULL DEFAULT 'Y');
+-- N0011: the native financial configuration families protected from direct
+-- SQL bypass in placed AD_Clients. These fixture rows precede placement and
+-- represent existing, Finance-governed configuration only.
+DO $baobab_native_config$
+DECLARE config_table text;
+BEGIN
+  FOREACH config_table IN ARRAY ARRAY['c_acctschema_default', 'c_acctschema_gl',
+                                     'c_elementvalue', 'c_validcombination',
+                                     'c_tax', 'c_tax_acct', 'c_bankaccount',
+                                     'c_bankaccount_acct'] LOOP
+    EXECUTE format('CREATE TABLE adempiere.%I (%I numeric(10) PRIMARY KEY,
+      ad_client_id numeric(10) NOT NULL)', config_table, config_table || '_id');
+    EXECUTE format('INSERT INTO adempiere.%I (%I, ad_client_id) VALUES (111, 11)',
+      config_table, config_table || '_id');
+  END LOOP;
+END $baobab_native_config$;
 CREATE TABLE adempiere.c_doctype (c_doctype_id numeric(10) PRIMARY KEY, docbasetype char(3) NOT NULL);
 CREATE TABLE adempiere.c_period (c_period_id numeric(10) PRIMARY KEY, ad_client_id numeric(10) NOT NULL,
   startdate date NOT NULL, enddate date NOT NULL);
@@ -23,13 +39,25 @@ BEGIN
   FOREACH t IN ARRAY ARRAY['gl_journal','c_invoice','c_payment','c_allocationhdr','m_inout','c_order',
                            'c_bankstatement','c_cash'] LOOP
     EXECUTE format('CREATE TABLE adempiere.%I (%I numeric(10) PRIMARY KEY, ad_client_id numeric(10) NOT NULL,
-      ad_org_id numeric(10) NOT NULL, docstatus char(2) NOT NULL DEFAULT ''DR'', issotrx char(1) NOT NULL DEFAULT ''Y'',
+      ad_org_id numeric(10) NOT NULL, docstatus char(2) NOT NULL DEFAULT ''DR'', posted char(1) NOT NULL DEFAULT ''N'', issotrx char(1) NOT NULL DEFAULT ''Y'',
       c_doctype_id numeric(10), dateacct date NOT NULL DEFAULT current_date)', t, t || '_id');
   END LOOP;
 END $$;
 CREATE TABLE adempiere.gl_journalline (gl_journalline_id numeric(10) PRIMARY KEY, gl_journal_id numeric(10) NOT NULL,
   ad_client_id numeric(10) NOT NULL, ad_org_id numeric(10) NOT NULL);
+-- Accounting source totals and monetary line columns needed to verify that
+-- N0010 fences actual financial values, not only client/org identifiers.
+ALTER TABLE adempiere.gl_journal ADD COLUMN totaldr numeric NOT NULL DEFAULT 0,
+  ADD COLUMN totalcr numeric NOT NULL DEFAULT 0;
+ALTER TABLE adempiere.gl_journalline ADD COLUMN amtacctdr numeric NOT NULL DEFAULT 0,
+  ADD COLUMN amtacctcr numeric NOT NULL DEFAULT 0,
+  ADD COLUMN amtsourcedr numeric NOT NULL DEFAULT 0,
+  ADD COLUMN amtsourcecr numeric NOT NULL DEFAULT 0;
 CREATE TABLE adempiere.c_invoiceline (c_invoiceline_id numeric(10) PRIMARY KEY, c_invoice_id numeric(10) NOT NULL,
+  ad_client_id numeric(10) NOT NULL, ad_org_id numeric(10) NOT NULL);
+-- N0010: financial line integrity uses the same parent/status vocabulary as
+-- the real Order Module; these are deliberately only the necessary columns.
+CREATE TABLE adempiere.c_orderline (c_orderline_id numeric(10) PRIMARY KEY, c_order_id numeric(10) NOT NULL,
   ad_client_id numeric(10) NOT NULL, ad_org_id numeric(10) NOT NULL);
 CREATE TABLE adempiere.fact_acct (fact_acct_id numeric(10) PRIMARY KEY, ad_client_id numeric(10) NOT NULL,
   ad_org_id numeric(10) NOT NULL, ad_table_id numeric(10) NOT NULL, record_id numeric(10) NOT NULL,
