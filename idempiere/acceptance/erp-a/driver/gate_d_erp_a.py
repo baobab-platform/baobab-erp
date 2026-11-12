@@ -21,7 +21,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from erpalib import Compose, Erp, Evidence  # noqa: E402
+from erpalib import Compose, Erp, Evidence, native_post_clean, native_post_outcome_class  # noqa: E402
 from seed import CONTRACTING_ONLY, PURCHASE, ControlPlane  # noqa: E402
 
 CLIENT = 11
@@ -263,14 +263,17 @@ VALUES (gen_random_uuid(), 'SYNTHETIC_ENGINE_LOCAL', '{PLACEMENT}', 1, '{self.st
         match_status_before = self.q(f"SELECT posted FROM m_matchinv WHERE m_matchinv_id = {mi or 0}")
         match_facts_before = self.facts(T_MATCHINV, mi or 0)
         match_attempt = {}
-        if mi and match_status_before != "Y":
+        # M_MatchInv is a derived accounting source, not an approved independent
+        # reversal class. If committed facts already exist while Posted='E',
+        # do NOT call Doc.post(): its delete-and-rebuild path would rewrite
+        # historical ledger facts contrary to N0010. Keep S04b failing and
+        # record the conflict for a governed corrective posting design.
+        if mi and match_status_before != "Y" and int(match_facts_before or "0") == 0:
             match_attempt = self.repost("M_MatchInv", mi)
-        native_result = json.dumps(match_attempt)
         match_error_class = (
-            "BAOBAB_NATIVE_FINANCE_DENIED" if DENIED in native_result
-            else "NATIVE_POST_ERROR" if match_attempt.get("post_error") not in (None, "", "null")
-            else "NATIVE_EXCEPTION" if match_attempt.get("error")
-            else "NO_ERROR_RETURNED"
+            "POSTING_STATE_CONFLICT_WITH_COMMITTED_FACTS"
+            if mi and match_status_before != "Y" and int(match_facts_before or "0") > 0
+            else native_post_outcome_class(match_attempt)
         )
         inv_costs = self.q(f"SELECT count(*) FROM m_costdetail cd JOIN c_invoiceline il ON il.c_invoiceline_id = cd.c_invoiceline_id "
                            f"WHERE il.c_invoice_id = {inv or 0} AND coalesce(cd.m_inoutline_id, 0) = 0")
@@ -341,8 +344,10 @@ VALUES (gen_random_uuid(), 'SYNTHETIC_ENGINE_LOCAL', '{PLACEMENT}', 1, '{self.st
         after_replay = committed_receipt_snapshot() if rc else None
         forced = self.repost("M_InOut", rc, force=True) if rc else {}
         after_forced = committed_receipt_snapshot() if rc else None
-        replay_success = (replay.get("post_error") in (None, "", "null") and not replay.get("error"))
-        forced_refused = (forced.get("post_error") not in (None, "", "null") or bool(forced.get("error")))
+        replay_success = native_post_clean(replay)
+        # An arbitrary JVM crash, timeout, or unsupported-source exception
+        # is not evidence that the native immutable-history guard executed.
+        forced_refused = native_post_outcome_class(forced) == DENIED
         ev.scenario(
             "S07", "committed receipt replay is idempotent; destructive repost refused without source, ledger or cost mutation",
             bool(rc) and original is not None and original["state"] == "COY"
