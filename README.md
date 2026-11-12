@@ -61,6 +61,18 @@ major-version migration; see [PG17 upgrade runbook](docs/operations/postgresql-1
 
 Baobab People is governed by [ADR-ERP-023](docs/adr/ADR-ERP-023%20%E2%80%94%20Baobab%20People%20African%20Workforce%2C%20Payroll%2C%20CDSoftware%20Re-engineering%20and%20PostgreSQL%2017.md).
 
+## Autonomous product monorepo and replaceable headless engines
+
+[Accepted ADR-ERP-025](docs/adr/ADR-ERP-025%20%E2%80%94%20Autonomous%20Enterprise%20Product%20Monorepo%20and%20Replaceable%20Engine%20Architecture.md) establishes **independent products, shared enterprise authority and replaceable headless engines**.
+
+- **First-wave product boundaries (architecture and capability assessment, not deployment claims):** Baobab Finance, People, WMS, Manufacturing, Supply Chain Management and CRM.
+- **Candidate boundaries (product-admission evidence required):** Assets, Projects, Quality and Service Management.
+- **Current provider:** iDempiere 13 is the selected ERP implementation, including native financial/posting authority under current bindings; it is **not** a permanent dependency in the product-facing canonical interfaces.
+- **Replacement contract:** Shared canonical semantics, CP/IAM provider authority, explicit vendor-neutral ports/adapters, independent provider qualification, historical data portability and controlled reconciliation/cutover.
+- **No activation by ADR:** Product directories, documentation and registration proposals do not install a provider, qualify accounting/payroll/manufacturing or alter protected runtime state.
+
+Existing working modules and OSGi extensions remain in place until independently verified migration gates approve a source restructure. See `architecture/conformance.yaml` for the implementation ledger.
+
 ## Development
 
 ```bash

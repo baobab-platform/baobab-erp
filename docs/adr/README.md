@@ -41,4 +41,6 @@ engine. Kept for history; do not follow them for new work.
 
 - [ADR-ERP-024: Baobab WMS and 3PL provider-neutral capability architecture — accepted 2026-11-09](ADR-ERP-024%20%E2%80%94%20Baobab%20WMS%20and%203PL%20Provider-Neutral%20Capability%20Architecture.md) — first-party baobab-wms inside baobab-erp; existing tenant WMS retained through certified adapters, native-managed executor undecided pending comparative research, jurisdictional packs qualified separately; no provider/production activation by ADR acceptance.
 
+- [ADR-ERP-025: Autonomous enterprise product monorepo and replaceable engine architecture — accepted 2026-11-12](ADR-ERP-025%20%E2%80%94%20Autonomous%20Enterprise%20Product%20Monorepo%20and%20Replaceable%20Engine%20Architecture.md) — Finance, People, WMS, Manufacturing, SCM and CRM first-wave boundaries; Assets, Projects, Quality and Service Management candidate families; replaceable headless providers, preserved Shared/CP/IAM authority and existing iDempiere posting safeguards; no implementation/provider activation from ADR acceptance.
+
 See `architecture/conformance.yaml` for how far each of these is actually implemented.
