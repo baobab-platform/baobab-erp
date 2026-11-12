@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 import json
 import re
 import ssl
+import unicodedata
 from typing import Callable
 from urllib.parse import urlencode
 from urllib.request import Request, build_opener, HTTPSHandler, ProxyHandler
@@ -92,7 +93,7 @@ class FrappeHRPayrollRunReader:
     company: str
     api_key: str = field(repr=False)
     api_secret: str = field(repr=False)
-    transport: Callable[[str, str], bytes] = frappe_read_https
+    transport: Callable[[str, str], bytes] = field(default=frappe_read_https, repr=False)
 
     def __post_init__(self) -> None:
         _endpoint(self.endpoint, "")
@@ -101,8 +102,14 @@ class FrappeHRPayrollRunReader:
                 or type(self.binding_revision) is not int or self.binding_revision < 1
                 or not isinstance(self.registered_source_run_ref, str)
                 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./-]{2,119}", self.registered_source_run_ref)
+                or not isinstance(self.company, str)
                 or not self.company or len(self.company) > 120
-                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 .&()_'/-]*", self.company)
+                or self.company != self.company.strip()
+                # Frappe company names may contain Unicode, commas and
+                # punctuation. JSON+urlencode makes these filter values,
+                # never executable URL/JSON syntax. Refuse control/format
+                # characters without imposing an English-only character set.
+                or any(unicodedata.category(ch).startswith("C") for ch in self.company)
                 or not re.fullmatch(r"[A-Za-z0-9_-]{8,100}", self.api_key)
                 or not re.fullmatch(r"[A-Za-z0-9_-]{8,200}", self.api_secret)):
             raise ProviderSelectionDenied("Employer-scoped Frappe credential configuration required")
@@ -114,7 +121,6 @@ class FrappeHRPayrollRunReader:
             # A source reference is not caller-selectable. The employer's
             # trusted adapter registry must bind the exact run and credentials
             # before constructing this instance.
-
             raise ProviderSelectionDenied("Invalid employer-owned payroll source reference")
         now = now.astimezone(timezone.utc)
         selected = self.selector.resolve(
