@@ -74,6 +74,37 @@ an hour, and on `planned` operations that are not draining.
 Not covered yet: the new AD_Client's own integration credentials (`IDEMPIERE_CLIENT_CREDENTIALS_JSON`, which order execution reads) are still set by
 hand after provisioning, and none of this has run against a live iDempiere.
 
+## ADR-ERP-001 — private native ERP access
+
+The development Compose topology publishes iDempiere HTTPS and the Baobab
+application facade **only on the Docker host's loopback interface**
+(`127.0.0.1`). The native `/webui/` interface is for authorised back-office
+operators; the native REST plugin, if installed, is *not* a Baobab public API.
+The Baobab application facade also requires authenticated platform identity
+and CP-authorised context for consequential operations.
+
+The published port numbers can be changed with `IDEMPIERE_HTTPS_PORT` and
+`BAOBAB_APP_PORT`, but their host binding is deliberately not configurable
+to `0.0.0.0`. Docker-internal services continue to connect by service name
+over the private Compose network; the database has no published port.
+Do not override this by publishing the same ports from another Compose
+file, using `network_mode: host`, or adding an unrestricted ingress.
+
+Remote access requires a separately approved, authenticated, TLS-terminating
+gateway or a tightly controlled operator tunnel. A gateway running as a
+container should join the approved private network and call the internal
+service name/port; a gateway running on the same Docker host can target
+the loopback binding. External firewalls, cloud security groups, gateway
+authorization, native ERP roles and protected-network policies are not
+proved by this Compose safeguard.
+
+Regression check: `PYTHONPATH=modules python -m unittest
+tests/architecture/test_adr_erp_001_private_boundary.py -v`. The suite
+also verifies Docker Compose's resolved port model when the Compose CLI
+is available. This is an engineering protection, **not** ERP production
+readiness evidence. See
+[the ADR-001 acceptance audit](assessments/adr-erp-001-native-engine-conformance-2026-11-09.md).
+
 ## Production requirements
 
 1. Build images from a reviewed commit and immutable upstream pins
