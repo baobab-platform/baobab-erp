@@ -436,7 +436,7 @@ jobs:
       - name: Build deployable ERP and CI-only real iDempiere driver
         run: |
           docker build -f idempiere/Dockerfile -t baobab-erp:test .
-          docker build -f idempiere/acceptance/Dockerfile \\
+          docker build -f idempiere/acceptance/Dockerfile \
             --build-arg BASE_IMAGE=baobab-erp:test -t baobab-erp:gate-d .
       - name: Run actual Ory issuance, CP provider resolution and ERP TLS consumer
         env:
