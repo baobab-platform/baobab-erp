@@ -29,7 +29,7 @@ from typing import Callable, Protocol
 import psycopg
 
 from customers.partner_events import business_partner_changed_event
-from customers.payload import CustomerProjection, PayloadError, marker, parse_customer_projected
+from customers.payload import CustomerProjection, PayloadError, marker, native_search_key, parse_customer_projected
 from inbox.execution_support import (AdvisoryLock, EngineOrgMismatch, PostgresMasterData, blocked, dead, engine_errors, settle,
                                      utc_now)
 from inbox.postgres_queue import Claim, PostgresInboxQueue
@@ -159,7 +159,7 @@ def _execute(claim: Claim, connection: psycopg.Connection, queue: PostgresInboxQ
                     engine.update_record(TABLE, native_id, _update_fields(customer))  # bring it to this version
                 else:
                     native_id = engine.create_record(TABLE, {
-                        **_update_fields(customer), "Value": customer.customer_id, "IsCustomer": True,
+                        **_update_fields(customer), "Value": native_search_key(claim.tenant_id, customer), "IsCustomer": True,
                         "C_BP_Group_ID": _default_group(engine), "Description": text})
                     code = "CREATED"
 

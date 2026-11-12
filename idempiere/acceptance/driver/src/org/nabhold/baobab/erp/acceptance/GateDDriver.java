@@ -50,9 +50,11 @@ public final class GateDDriver implements BundleActivator, Runnable {
     private static final int GL_JOURNAL_TABLE = 224;
     private volatile boolean running = true;
     private Thread worker;
+    private BundleContext bundleContext;
 
     @Override
     public void start(BundleContext context) {
+        bundleContext = context;
         worker = new Thread(this, "baobab-gate-d-driver");
         worker.setDaemon(true);
         worker.start();
@@ -70,6 +72,9 @@ public final class GateDDriver implements BundleActivator, Runnable {
             Files.createDirectories(ROOT.resolve("requests"));
             Files.createDirectories(ROOT.resolve("results"));
             while (running && !(Adempiere.isStarted() && DB.isConnected())) Thread.sleep(1000);
+            // This CI-only layer must observe the real fixed vendor family
+            // and one consistent native JMS class space before any scenario.
+            NativeMessagingCompatibility.verify(bundleContext);
             Files.writeString(ROOT.resolve("ready"), "ready\n");
             while (running) {
                 try (DirectoryStream<Path> requests = Files.newDirectoryStream(ROOT.resolve("requests"), "*.properties")) {

@@ -52,3 +52,48 @@ A resolved context for one tenant must never satisfy a request scoped to another
 tested explicitly in `tests/tenancy/test_context_resolver.py`
 (`test_cross_tenant_pair_fails_closed`). A cross-tenant access attempt is a security event
 requiring audit retention, not merely a denied request.
+
+## 5 November 2026 — Ubuntu Noble patched APT / Trivy advisory lag
+
+ERP PR #125's exact-head Foundation container run `41985870878` built the
+real iDempiere 13 image and then failed Trivy 0.73.0 on two HIGH findings
+for `CVE-2026-109518`: `apt` and `libapt-pkg6.0t64`, installed
+`2.8.4ubuntu0.1` (no fixed version known to the then-downloaded Trivy DB).
+This is **not** a finding against the separately upgraded ActiveMQ 5.19.12,
+which was scanned with zero issues.
+
+The upstream source of truth is Canonical's USN-8996-1,
+<https://ubuntu.com/security/notices/USN-8996-1>, and Ubuntu's published
+CVE record, <https://ubuntu.com/security/CVE-2026-109518>. Both identify
+**`2.8.4ubuntu0.1` as the actual released fixed version for Ubuntu Noble
+24.04** on 4 November 2026. The existing ERP Dockerfile patches APT before
+other unguarded package operations and asserts both installed versions
+against that security floor; disabling APT retries prior to the patch is
+preserved. No image package is downgraded or forcibly removed.
+
+**Independent, mandatory verification:** the ERP Foundation workflow first
+runs its own `vendor-patch-audit` job against a freshly rebuilt **same
+actual final Dockerfile**. It obtains APT package versions directly from
+an offline, network-isolated, read-only container using `dpkg-query`,
+executes an unfiltered Trivy HIGH/CRITICAL JSON scan, and calls
+`scripts/check_ubuntu_vendor_cve.py`. That verifier requires precisely
+Ubuntu Noble and **both exact patched APT package versions**; it refuses
+every other HIGH or CRITICAL finding including any new/unfixed CVE, wrong
+package, earlier version, duplicate or malformed evidence. Negative tests
+run inside that job. If it fails, the normal reusable Foundation job is
+not eligible to run. This prevents a broad `--ignore-unfixed` false
+success on newly discovered issues.
+
+Only **after** that unfiltered, independently validated scan succeeds,
+the pinned reusable Foundation scan uses its existing opt-in
+`container_ignore_unfixed` input to avoid *double-counting* the
+Trivy-database-lag false positive. All fixed-version CVEs, ordinary
+policy, SBOM and other Foundation gates still apply. The gate does not
+waive an actually vulnerable version, exempt any additional finding or
+certify protected release. If the original Trivy DB is corrected, remove
+the opt-in and second scan together after final-head requalification.
+
+This is a **vendor-adjudicated scanner finding, not a synthetic security
+PASS**. Its first live GitHub Actions run must still pass, and the DEV-11
+same-event native JVM, CP lineage, replay and exported trace requirements
+remain distinct; all L4-OPS-01 and production admissions stay BLOCKED.

@@ -16,7 +16,68 @@ permissions:
 
 jobs:
   foundation:
-    uses: baobab-platform/shared/.github/workflows/foundation-repository-gates.yml@b9f497f247f1c19be9b02a0d5eedd538daf9d84b
+    # The normal reusable foundation cannot green until the independently
+    # full-scanned vendor patch gate passes. No hidden unfixed-CVE waiver.
+    needs: vendor-patch-audit
+    uses: baobab-platform/shared/.github/workflows/foundation-repository-gates.yml@584d7f3cd8426ffd3d1dc9f068f0b444dc74346e
     with:
-      foundation_ref: "40d180756461f3fbbdcf06d1dcd3e1fe6481bed2"
+      foundation_ref: "584d7f3cd8426ffd3d1dc9f068f0b444dc74346e"
       dependency_review_enabled: false
+      # The shared scan's 2026-11-05 DB reports *already patched*
+      # Ubuntu Noble apt 2.8.4ubuntu0.1 as unfixed CVE-2026-109518.
+      # DO NOT treat this as permission to skip unknown vulnerabilities:
+      # vendor-patch-audit below scans the SAME Dockerfile independently
+      # without --ignore-unfixed and fails every other HIGH/CRITICAL CVE.
+      container_ignore_unfixed: true
+
+  vendor-patch-audit:
+    name: ERP Ubuntu Noble — independently verify patched APT and all HIGH/CRITICAL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Negative tests for vendor-adjudication policy
+        run: python3 -B -m unittest discover -s tests/unit -p 'test_ubuntu_vendor_cve.py' -v
+      - name: Build the actual final ERP image with all vulnerability mitigations
+        run: |
+          set -euo pipefail
+          docker build --file idempiere/Dockerfile \
+            --build-arg VERSION=0.0.0-ci \
+            --build-arg REVISION="$(git rev-parse HEAD)" \
+            --tag erp-noble-security:current .
+      - name: Read actual Ubuntu package identities from the built image
+        run: |
+          set -euo pipefail
+          docker run --rm --read-only --network none --cap-drop ALL \
+            --security-opt no-new-privileges --user idempiere \
+            --entrypoint /usr/bin/dpkg-query erp-noble-security:current \
+            -W '-f=${Package}\t${Version}\n' apt libapt-pkg6.0t64 \
+            > "${RUNNER_TEMP}/erp-noble-packages.tsv"
+          test "$(wc -l < "${RUNNER_TEMP}/erp-noble-packages.tsv")" -eq 2
+      - name: Install verified Trivy 0.73.0
+        env:
+          TRIVY_SHA256: 2edd39da482bb4e9831962487b68f68e3928ec3137794757f54d00383d79547b
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 --retry-all-errors -o trivy_0.73.0_Linux-64bit.tar.gz \
+            https://github.com/aquasecurity/trivy/releases/download/v0.73.0/trivy_0.73.0_Linux-64bit.tar.gz
+          echo "${TRIVY_SHA256}  trivy_0.73.0_Linux-64bit.tar.gz" | sha256sum -c -
+          tar -xzf trivy_0.73.0_Linux-64bit.tar.gz trivy
+          sudo install -m 0755 trivy /usr/local/bin/trivy
+      - name: Independently scan ALL high and critical vulnerabilities, with no ignore rule
+        run: |
+          set -euo pipefail
+          trivy image --severity HIGH,CRITICAL --exit-code 0 --skip-version-check \
+            --format json --output "${RUNNER_TEMP}/erp-noble-trivy.json" \
+            erp-noble-security:current
+          python3 -B scripts/check_ubuntu_vendor_cve.py \
+            "${RUNNER_TEMP}/erp-noble-trivy.json" \
+            "${RUNNER_TEMP}/erp-noble-packages.tsv"
+          echo "Canonical USN-8996-1 fixed Noble apt confirmed; no OTHER HIGH/CRITICAL admitted." \
+            >> "${GITHUB_STEP_SUMMARY}"

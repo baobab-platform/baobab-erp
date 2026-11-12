@@ -45,8 +45,8 @@ class InventoryAvailabilityTests(unittest.TestCase):
         self.connection.rollback()
         self.connection.close()
 
-    def idempiere_for(self, ad_client_id):
-        self.requested.append(ad_client_id)
+    def idempiere_for(self, ad_client_id, ad_org_id):
+        self.requested.append((ad_client_id, ad_org_id))
         return self.engine
 
     def get(self, tenant=None, sku=None, warehouse=None, query=None, factory="default"):
@@ -63,7 +63,7 @@ class InventoryAvailabilityTests(unittest.TestCase):
             "legal_entity_id": self.entity, "sku_id": self.sku, "warehouse_id": self.warehouse,
             "on_hand": {"value": "42.5", "unit": "EA"}, "erp_allocated": {"value": "8", "unit": "EA"},
             "erp_available": {"value": "34.5", "unit": "EA"}, "as_of": "2026-10-02T12:00:00Z", "revision": 1790935200})
-        self.assertEqual(self.requested, [1001], "the engine client is the one of the legal entity's AD_Client")
+        self.assertEqual(self.requested, [(1001, 1)], "the engine uses the exact client/org of the legal entity")
 
     def test_unmapped_identifiers_are_404_and_never_reach_the_engine(self):
         for case in (dict(warehouse="erp_" + uuid.uuid4().hex), dict(sku="sku-unknown"), dict(tenant=self.other)):

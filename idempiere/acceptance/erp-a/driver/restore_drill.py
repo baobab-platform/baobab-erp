@@ -27,11 +27,20 @@ TABLES = (
     'adempiere.m_costdetail', 'baobab_native.native_placement',
     'baobab_native.document_provenance', 'baobab_native.finance_authority_attribution',
     'baobab_native.payment_execution_evidence', 'baobab_native.payment_execution_binding',
+    # Recovery is not accounting-only. Preserve the original canonical event
+    # identity, delivery/consumption states and tenant/legal-entity mapping too.
+    # Even an empty table must match exactly, so recovery cannot erase the
+    # durable integration history and still pass the native-ERP drill.
+    'baobab.event_inbox', 'baobab.event_outbox',
+    'baobab.tenant_mapping', 'baobab.entity_mapping',
+    'baobab.erp_master_data_mapping', 'baobab.erp_warehouse',
 )
 CASES = (
     'DEV12-ERP-PG17', 'DEV12-ERP-NATIVE-STATE-RESTORE',
     'DEV12-ERP-NATIVE-GUARD-RESTORE', 'DEV12-ERP-RESTORED-COMMIT-DENIAL',
     'DEV12-ERP-RESTORE-RESOURCE-DELETION',
+    'DEV12-ERP-INBOX-OUTBOX-CUSTODY',
+    'DEV12-ERP-CANONICAL-MAPPING-CUSTODY',
 )
 
 

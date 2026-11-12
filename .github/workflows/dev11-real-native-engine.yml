@@ -1,0 +1,201 @@
+name: DEV-11 real Hydra CP RabbitMQ native iDempiere 13 qualification
+
+# Real JVM/PG17/Ory/CP local integration with synthetic business order input;
+# NOT a substitute for a governed Medusa buyer commitment or complete L4.
+# An unconfigured private-source token fails CLOSED, never skips success.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/dev11-real-native-engine.yml
+      - idempiere/Dockerfile
+      - idempiere/dependency-overrides/**
+      - idempiere/acceptance/erp-a/**
+      - idempiere/acceptance/driver/**
+      - idempiere/extensions/**
+      - modules/order_to_cash/**
+      - modules/integration/native_finance_guard.py
+      - modules/application/inbox_worker.py
+      - modules/application/inbox_authority.py
+      - modules/integration/idempiere_gate_d_real.py
+      - scripts/dev11_trade_persisted_jvm.py
+      - scripts/dev11_verify_native_idempiere_order.py
+      - scripts/dev11_verify_cp_native_lineage.py
+      - db/migrations/**
+      - db/native-migrations/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev11-native-jvm-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  real-native-engine-local:
+    name: Actual Hydra and CP authority, RabbitMQ, ERP and JVM veto native order
+    runs-on: ubuntu-26.04
+    timeout-minutes: 150
+    env:
+      BAOBAB_ENVIRONMENT: integration
+      DEV11_REAL_NATIVE_ACCEPTANCE: "true"
+      DEV11_TRADE_PERSISTED_REQUIRED: "true"
+      TRADE_PIN: f2c88d4a70486abe0e44c642f22feaaf8bc18c6c
+      TRADE_COMMIT: f2c88d4a70486abe0e44c642f22feaaf8bc18c6c
+      INFRA_COMMIT: 65931ab9892b829b0e0b1ca23c53199ba1216e8b
+      TRADE_SRC: ${{ github.workspace }}/trade-source
+      INFRA_SRC: ${{ github.workspace }}/infrastructure-source
+      ERP_EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      ERP_IMAGE: baobab-idempiere-acceptance:dev11
+      CP_PIN: 6fee9fe9537409df428a2e3dd7b8f78ff8d1d456
+      IAM_PIN: fae32b20187b2201e6070c382f563e170773e692
+      CP_SRC: ${{ github.workspace }}/cp-source
+      IAM_SRC: ${{ github.workspace }}/iam-source
+      IAM_COMMIT: fae32b20187b2201e6070c382f563e170773e692
+    steps:
+      - name: Check out ERP source (exact PR head)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Retain read-only private-source scope; no invented credentials
+        env:
+          BAOBAB_INTEGRATION_READ_TOKEN: ${{ secrets.BAOBAB_INTEGRATION_READ_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          test -n "$BAOBAB_INTEGRATION_READ_TOKEN"
+          # If GITHUB_TOKEN cannot read another private repo, checkout below
+          # fails rather than skipping an authority dependency as successful.
+      - name: Checkout exact accepted CP source containing merged privacy logging
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/baobab-cp
+          ref: 6fee9fe9537409df428a2e3dd7b8f78ff8d1d456
+          path: cp-source
+          token: ${{ secrets.BAOBAB_INTEGRATION_READ_TOKEN || github.token }}
+          persist-credentials: false
+      - name: Checkout exact IAM candidate, not an unpinned provider configuration
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/baobab-iam
+          ref: fae32b20187b2201e6070c382f563e170773e692
+          path: iam-source
+          token: ${{ secrets.BAOBAB_INTEGRATION_READ_TOKEN || github.token }}
+          persist-credentials: false
+      - name: Checkout composed Trade native-owner and confirmed-publisher source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/baobab-trade
+          ref: f2c88d4a70486abe0e44c642f22feaaf8bc18c6c
+          path: trade-source
+          fetch-depth: 0
+          token: ${{ secrets.BAOBAB_INTEGRATION_READ_TOKEN || github.token }}
+          persist-credentials: false
+      - name: Checkout independently owned trace observer and collector source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baobab-platform/infrastructure
+          ref: 65931ab9892b829b0e0b1ca23c53199ba1216e8b
+          path: infrastructure-source
+          token: ${{ secrets.BAOBAB_INTEGRATION_READ_TOKEN || github.token }}
+          persist-credentials: false
+      - name: Set up Trade's exact Node 24 baseline
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: trade-source/.nvmrc
+          cache: npm
+          cache-dependency-path: trade-source/package-lock.json
+      - name: Install frozen actual Medusa source dependencies
+        working-directory: trade-source
+        run: npm ci
+      - name: Set up Python 3.14 for isolated native ERP worker and audit
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+      - name: Set up CP's exact Go major and minor from pinned go.mod
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: cp-source/go.mod
+          cache: false
+      - name: Verify exact source and installed tools before downloading images
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ERP_EXPECTED_SOURCE_SHA"
+          test -x idempiere/acceptance/erp-a/run-gate-d-erp-a.sh
+          test "$(git -C cp-source rev-parse HEAD)" = "$CP_PIN"
+          test "$(git -C iam-source rev-parse HEAD)" = "$IAM_PIN"
+          test "$(git -C trade-source rev-parse HEAD)" = "$TRADE_PIN"
+          test "$(git -C infrastructure-source rev-parse HEAD)" = "$INFRA_COMMIT"
+          git -C trade-source merge-base --is-ancestor 2b4c7c929801d47d1215771f6071c2704ddd38ec HEAD
+          git -C trade-source merge-base --is-ancestor 55659409a7e4787c0d70a69d4c1301f13d7fc219 HEAD
+          python3 -m compileall -q \
+            modules/application modules/inbox \
+            modules/integration/idempiere_gate_d_real.py \
+            scripts/dev11_trade_persisted_jvm.py \
+            scripts/dev11_verify_cp_native_lineage.py \
+            scripts/dev11_verify_native_idempiere_order.py \
+            idempiere/acceptance/erp-a/driver/dev11_native_connected.py
+          bash -n idempiere/acceptance/erp-a/run-gate-d-erp-a.sh
+          docker compose version
+          go version
+      - name: Build REAL iDempiere13 JVM with finance veto, then real Gate D OSGi acceptance driver
+        timeout-minutes: 75
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull --progress=plain \
+            -f idempiere/Dockerfile \
+            -t baobab-idempiere:ci .
+          docker build --progress=plain \
+            -f idempiere/acceptance/Dockerfile \
+            --build-arg BASE_IMAGE=baobab-idempiere:ci \
+            -t "$ERP_IMAGE" .
+      - name: Actual CP/Ory, RabbitMQ, durable inbox, protected JVM, independent CP/native/negative tests
+        timeout-minutes: 65
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/dev11-real-native
+          idempiere/acceptance/erp-a/run-gate-d-erp-a.sh \
+            artifacts/dev11-real-native
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path("artifacts/dev11-real-native")
+          assert json.loads((root/"dev11-engine-local.json").read_text())["l4_ops_01"]=="BLOCKED"
+          assert json.loads((root/"dev11-native-effect.json").read_text())["native_order_effect_qualified"]
+          assert json.loads((root/"dev11-cp-jvm-lineage.json").read_text())["native_cp_lineage_qualified"]
+          adopted=json.loads((root/"dev11-native-unknown-adopted.json").read_text())
+          assert adopted["native_order_effect_qualified"]
+          assert adopted["adopted_after_recovery"]
+          assert (root/"dev09-cleanup.json").is_file()
+          for name in ("dev11-trade-jvm-joined.json","dev11-trade-jvm-unknown-joined.json"):
+              joined=json.loads((root/name).read_text())
+              assert joined["same_persisted_event_id"]
+              assert joined["same_event_native_jvm_effect_joined"]
+              assert joined["native_buyer_origin_refusal"]=="NATIVE_ORDER_ABSENT"
+              assert joined["l4_ops_01"]=="BLOCKED"
+          exported=json.loads((root/"dev11-trade-jvm-exported.json").read_text())
+          assert exported["exported_lineage_observed"]
+          print("DEV11_REAL_JVM_HYDRA_CP_RABBIT_LOCAL_PASS; FULL_L4_BLOCKED")
+          PY
+      - name: Retain only sanitised engine-local independent receipts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dev11-real-hydra-cp-native-jvm-engine-local
+          path: |
+            artifacts/dev11-real-native/dev11-trade-jvm-joined.json
+            artifacts/dev11-real-native/dev11-trade-jvm-unknown-joined.json
+            artifacts/dev11-real-native/dev11-trade-jvm-exported.json
+            artifacts/dev11-real-native/dev11-engine-local.json
+            artifacts/dev11-real-native/dev11-native-effect.json
+            artifacts/dev11-real-native/dev11-native-unknown-adopted.json
+            artifacts/dev11-real-native/dev11-cp-jvm-lineage.json
+            artifacts/dev11-real-native/dev09-cleanup.json
+            artifacts/dev11-real-native/dev11-native-fixture-readiness.json
+            artifacts/dev11-real-native/dev11-cp-sales-preflight.json
+            artifacts/dev11-real-native/dev11-cp-documentary-preflight.json
+          if-no-files-found: warn
+          retention-days: 14

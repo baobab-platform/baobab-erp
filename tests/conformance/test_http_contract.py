@@ -225,7 +225,7 @@ class HttpContractTests(unittest.TestCase):
         warehouse = self._inventory_mappings(sku)
         status, body, _ = get_inventory_availability(
             tenant_id=self.tenant, query_string=f"sku_id={sku}&warehouse_id={warehouse}", connection=self.connection,
-            correlation_id=str(uuid.uuid4()), trace_id=None, idempiere_for=lambda ad_client_id: Engine(),
+            correlation_id=str(uuid.uuid4()), trace_id=None, idempiere_for=lambda ad_client_id, ad_org_id: Engine(),
             now=lambda: datetime(2026, 10, 2, 12, 0, tzinfo=timezone.utc))
         self.assertEqual(status, 200, body)
         self.assertEqual(shared.errors_for("/inventory-availability", "GET", 200, "application/json", body), [])
