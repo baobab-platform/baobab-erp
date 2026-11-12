@@ -33,7 +33,12 @@ export ERP_REPO_PATH="$REPO"
 export PEOPLE_WORKLOAD_CLIENT_ID=baobab-erp-people-dev-witness
 if [[ "${PEOPLE_DEV_CONNECTED:-false}" == "true" ]]; then
   : "${IAM_SRC:?IAM source required}"
-  git -C "$CP_SRC" merge-base --is-ancestor 192555a80435ec55e01113fbb2c0515e95987ae5 HEAD || { echo "People CP source lacks merged #466" >&2; exit 1; }
+  : "${CP_PEOPLE_WITNESS_SHA:?exact CP People witness commit required}"
+  if [[ "$(git -C "$CP_SRC" rev-parse HEAD)" != "$CP_PEOPLE_WITNESS_SHA" ]] || \
+     ! grep -Fq 'trusted.Jurisdiction = chosen.CountryCode' "$CP_SRC/internal/service/context_resolution_service.go"; then
+    echo "People CP source pin lacks attested country jurisdiction" >&2
+    exit 1
+  fi
   export PEOPLE_WORKLOAD_SECRET="$(openssl rand -hex 24)"
 fi
 export RUN_DIR=$RUN ERP_IMAGE
