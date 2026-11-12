@@ -400,9 +400,8 @@ jobs:
     env:
       # Accepted CP #466 development-only reader and the current merged IAM
       # policy/config snapshot. These are immutable commits, not moving refs.
-      # CP #478 companion fixes missing authoritative country-level jurisdiction.
-      # Pinned *review* SHA; replace with merged main commit before closing.
-      CP_COMMIT: eca7d896d408ee4880dac50af988ecec1672a214
+      # CP #478 accepted on main: authoritative country-level jurisdiction.
+      CP_COMMIT: ba2fe3109b9d7ceca5f6a848da44091adb9dfda1
       IAM_COMMIT: 39fc7bcb3fd0568e09f1304e6fe07e64ba31c5bf
     steps:
       - name: Checkout ERP source
