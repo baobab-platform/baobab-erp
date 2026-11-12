@@ -46,12 +46,15 @@ class ErpConformanceInventoryTests(unittest.TestCase):
                 self.assertIn("    evidence:", entry)
                 self.assertIn("    gap:", entry)
 
-    def test_planned_wms_and_draft_extensions_do_not_claim_runtime_acceptance(self):
+    def test_unqualified_products_and_draft_work_do_not_claim_runtime_acceptance(self):
         ledger = LEDGER.read_text(encoding="utf-8")
         for adr, phrases in {
             "ADR-ERP-022": ("status: partial", "ERP #132", "DRAFT", "Fact_Acct"),
-            "ADR-ERP-023": ("status: partial", "ERP #126", "DRAFT", "provider"),
+            # #126 was merged as inert development code, not a qualified payroll
+            # provider. Requiring the stale token "DRAFT" hides that distinction.
+            "ADR-ERP-023": ("status: partial", "ERP #126 merged", "development-only", "No qualified"),
             "ADR-ERP-024": ("status: planned", "ERP #152", "WMS-00", "No WMS"),
+            "ADR-ERP-025": ("status: planned", "ERP-MONO-00", "No physical code relocation", "NOT implemented or certified"),
         }.items():
             with self.subTest(adr=adr):
                 part = ledger.split(f"  - id: {adr}\n", 1)[1].split("\n  - id:", 1)[0]
