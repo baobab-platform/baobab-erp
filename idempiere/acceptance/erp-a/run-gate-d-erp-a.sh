@@ -50,7 +50,8 @@ collect() {
     "${COMPOSE[@]}" logs --no-color "$s" > "$OUT/$s.log" 2>&1 || true
   done
   # Logs are evidence: they must never carry a token or the workload secret.
-  if grep -l -e "$ERP_WORKLOAD_SECRET" -e "$ORY_HOOK_SECRET" -e "$ORY_SYSTEM_SECRET" "$OUT"/*.log >/dev/null 2>&1 \
+  if grep -l -e "$ERP_WORKLOAD_SECRET" -e "$ORY_HOOK_SECRET" -e "$ORY_SYSTEM_SECRET" \
+      -e "${PEOPLE_WORKLOAD_SECRET:-not-a-real-people-token-from-this-run}" "$OUT"/*.log >/dev/null 2>&1 \
      || grep -Pl 'eyJ[A-Za-z0-9_-]{20,}\.' "$OUT"/*.log >/dev/null 2>&1; then
     log "a log carries a token or the workload secret"; return 1
   fi
