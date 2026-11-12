@@ -96,7 +96,7 @@ class FrappeHRAdapterTests(unittest.TestCase):
                 query = parse_qs(urlparse(self.source.calls[0][0]).query)
                 self.assertEqual(json.loads(query["filters"][0])[1], ["company", "=", company])
         self.source.result["data"][0]["company"] = "Acme ZA Ltd"
-        for invalid in (" Acme ZA Ltd", "Acme ZA Ltd ", "Acme\\nZA Ltd", "Acme\\x00ZA Ltd"):
+        for invalid in (" Acme ZA Ltd", "Acme ZA Ltd ", "Acme" + chr(10) + "ZA Ltd", "Acme" + chr(0) + "ZA Ltd"):
             with self.subTest(invalid=invalid):
                 with self.assertRaises(ProviderSelectionDenied):
                     replace(self.adapter, company=invalid)
