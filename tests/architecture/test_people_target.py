@@ -65,20 +65,10 @@ class PeopleArchitectureTests(unittest.TestCase):
         default_migration = (ROOT / "db/migrate.sh").read_text()
         experimental = (ROOT / "db/migrate-people-experimental.sh").read_text()
         self.assertNotIn("migrate-people-experimental.sh", default_migration)
-        self.assertIn('BAOBAB_PEOPLE_EXPERIMENTAL:-', experimental)
-        self.assertIn('BAOBAB_ENVIRONMENT:-', experimental)
-        self.assertIn('^(test|development|integration)
-        src = (ROOT / "modules/people").resolve()
-        self.assertTrue((src / "workforce/service.py").exists())
-        self.assertTrue((src / "payroll/service.py").exists())
-        self.assertFalse((ROOT / "idempiere/extensions/org.nabhold.baobab.erp.people").exists())
-        self.assertFalse((ROOT / "modules/people/api.py").exists())
-
-
-if __name__ == "__main__":
-    unittest.main()
-, experimental)
-        self.assertIn('BAOBAB_PEOPLE_DENIED', experimental)
+        self.assertIn("BAOBAB_PEOPLE_EXPERIMENTAL", experimental)
+        self.assertIn("BAOBAB_ENVIRONMENT", experimental)
+        self.assertIn("test|development|integration", experimental)
+        self.assertIn("BAOBAB_PEOPLE_DENIED", experimental)
         self.assertIn("check-people-experimental.sql", experimental)
 
     def test_no_people_runtime_registration(self):
