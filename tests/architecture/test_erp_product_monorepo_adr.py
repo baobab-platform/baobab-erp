@@ -57,7 +57,7 @@ class ERPProductMonorepoArchitectureTests(unittest.TestCase):
 
     def test_not_a_runtime_activation_or_data_migration(self):
         self.assertIn("No physical split or rename", self.adr)
-        self.assertIn("does not install a provider", (ROOT / "README.md").read_text(encoding="utf-8"))
+        self.assertIn("do not install a provider", (ROOT / "README.md").read_text(encoding="utf-8"))
         self.assertIn("ADR-ERP-023", self.adr)
         self.assertIn("ADR-ERP-024", self.adr)
         self.assertIn("ADR-ERP-015", self.adr)
