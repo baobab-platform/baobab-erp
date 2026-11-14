@@ -1,6 +1,6 @@
 services:
   workspace:
-    image: ghcr.io/baobab-platform/baobab-dev:1.4.4
+    image: ghcr.io/baobab-platform/baobab-dev:1.5.1@sha256:faf9022ef06288767651a0ec1071d5199bc2b645f2cf7ada50477774dd297eed
     command: sleep infinity
     volumes:
       - ..:/workspaces/baobab-erp:cached

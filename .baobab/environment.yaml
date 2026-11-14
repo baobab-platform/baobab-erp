@@ -7,7 +7,7 @@ application:
 environment:
   provider: "baobab-dev"
   profile: "full"
-  minimum_version: "1.4.4"
+  minimum_version: "1.5.1"
   contract_minimum_version: "1.0"
 compatibility_policy:
   strict_runtime_versions: false
@@ -24,4 +24,4 @@ validation:
     - "development.github_cli"
 notes:
   - "PostgreSQL is now the ERP runtime database (iDempiere + Baobab-owned schema)."
-  - "OSGi extension bundles require Java 17 and Maven; both are present in this session's base image, but baobab-dev's contract does not yet declare a languages.java capability. Track adding one under ADR-ERP-013 rather than assuming it silently."
+  - "OSGi extension bundles require Java and Maven; validate the image's actual versions in hosted Codespaces before treating native iDempiere builds as qualified. The full-profile contract declares languages.java and development.maven."
