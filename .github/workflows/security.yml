@@ -15,7 +15,7 @@ jobs:
   secrets:
     permissions:
       contents: read
-    uses: baobab-platform/shared/.github/workflows/security-secrets-scan.yml@4ea2cbb5638a5605e057a02665bc7360864fc253 # fix: scope gitleaks to checked-out ref (baobab-platform/shared#45)
+    uses: baobab-platform/shared/.github/workflows/security-secrets-scan.yml@75b1fa96462f5e5148f842c47ace805ec8e679b5 # fix: scope gitleaks to checked-out ref (baobab-platform/shared#45)
 
   codeql:
     permissions:
