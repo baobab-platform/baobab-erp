@@ -19,7 +19,7 @@ jobs:
     # The normal reusable foundation cannot green until the independently
     # full-scanned vendor patch gate passes. No hidden unfixed-CVE waiver.
     needs: vendor-patch-audit
-    uses: baobab-platform/shared/.github/workflows/foundation-repository-gates.yml@584d7f3cd8426ffd3d1dc9f068f0b444dc74346e
+    uses: baobab-platform/shared/.github/workflows/foundation-repository-gates.yml@75b1fa96462f5e5148f842c47ace805ec8e679b5
     with:
       foundation_ref: "584d7f3cd8426ffd3d1dc9f068f0b444dc74346e"
       dependency_review_enabled: false
