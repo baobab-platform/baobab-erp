@@ -48,6 +48,28 @@ class VendorPatchedCveTest(unittest.TestCase):
             with self.subTest(finding=adversarial), self.assertRaises(Refused):
                 reconcile(source([finding(), adversarial]), PATCHES)
 
+    def test_security_failure_identifies_real_advisory_without_dumping_raw_scan(self):
+        bad = finding(cve="CVE-2026-OTHER", package="org.example.library",
+                      version="1.2.3", severity="CRITICAL")
+        bad["FixedVersion"] = "1.2.4"
+        with self.assertRaises(Refused) as ctx:
+            reconcile(source([finding(), bad]), PATCHES)
+        reason = str(ctx.exception)
+        self.assertIn("VENDOR_VEX_OTHER_HIGH_CRITICAL_FINDING", reason)
+        self.assertIn("id=CVE-2026-OTHER", reason)
+        self.assertIn("package=org.example.library", reason)
+        self.assertIn("installed=1.2.3", reason)
+        self.assertIn("fixed=1.2.4", reason)
+        self.assertIn("severity=CRITICAL", reason)
+
+    def test_untrusted_scanner_metadata_is_redacted_in_failure(self):
+        bad = finding(cve="CVE-2026-OTHER", package="bad\\nsecret=not-for-logs")
+        with self.assertRaises(Refused) as ctx:
+            reconcile(source([bad]), PATCHES)
+        reason = str(ctx.exception)
+        self.assertIn("package=REDACTED", reason)
+        self.assertNotIn("not-for-logs", reason)
+
     def test_no_ubuntu_noble_or_unpatched_apt_cannot_qualify(self):
         for scan, packages in (
             (source([finding()], osname="26.04"), PATCHES),
