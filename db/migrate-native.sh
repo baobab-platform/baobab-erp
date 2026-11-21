@@ -33,3 +33,15 @@ for migration in "${repo_root}"/db/native-migrations/*.sql; do
     -f "${migration}" \
     -c "INSERT INTO baobab.schema_migrations (filename) VALUES ('${filename}')"
 done
+
+# A tracking row is not itself evidence that the native security triggers
+# remain installed/enabled. This exact native PostgreSQL 17 connection must
+# independently observe all mandatory N0010–N0013 controls on EVERY run,
+# including idempotent re-execution and when nothing needs migrating.
+missing_guards=$(psql "${DATABASE_URL}" -X -v ON_ERROR_STOP=1 -tA \
+  -f "${repo_root}/db/check-native-guards.sql")
+if [[ ! "${missing_guards}" =~ ^[0-9]+$ || "${missing_guards}" != "0" ]]; then
+  echo "error: native finance guard verification failed (missing/disabled controls); refuse readiness" >&2
+  exit 1
+fi
+echo "verify native PostgreSQL 17 financial and legal-actor guards: PASS"

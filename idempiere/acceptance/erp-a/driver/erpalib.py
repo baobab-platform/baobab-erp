@@ -144,3 +144,29 @@ class Evidence:
 
 def key() -> str:
     return str(uuid.uuid4())
+
+
+def native_post_outcome_class(result: dict) -> str:
+    """Classify the actual driver boundary, not just Doc.post()'s nullable error.
+
+    The OSGi harness reports uncaught Java exceptions as driver_error.
+    Ignore raw error text in published acceptance evidence: only the bounded
+    class is exported, and missing keys must never imply an authorised post.
+    """
+    errors = " ".join(str(result.get(k) or "") for k in ("driver_error", "error", "post_error"))
+    if "BAOBAB_NATIVE_FINANCE_DENIED" in errors:
+        return "BAOBAB_NATIVE_FINANCE_DENIED"
+    if result.get("driver_error"):
+        if "unsupported native posting source" in errors:
+            return "UNSUPPORTED_NATIVE_POSTING_SOURCE"
+        return "NATIVE_DRIVER_FAILURE"
+    if result.get("error"):
+        return "NATIVE_EXCEPTION"
+    if result.get("post_error") not in (None, "", "null"):
+        return "NATIVE_POST_ERROR"
+    return "NO_ERROR_RETURNED"
+
+
+def native_post_clean(result: dict) -> bool:
+    """A JVM failure cannot be mistaken for successful idempotent adoption."""
+    return native_post_outcome_class(result) == "NO_ERROR_RETURNED"

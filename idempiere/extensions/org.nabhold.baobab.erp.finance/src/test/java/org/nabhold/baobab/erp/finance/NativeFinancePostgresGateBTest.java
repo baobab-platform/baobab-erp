@@ -864,12 +864,17 @@ class NativeFinancePostgresGateBTest {
             sql(c, "UPDATE adempiere.c_allocationhdr SET docstatus = 'CO' WHERE c_allocationhdr_id = " + allocation);
             c.commit();
         }
-        // Bypass: direct SQL adding a sales line to the completed payables allocation is refused at COMMIT.
+        // Bypass: adding a sales line to the COMPLETED payables allocation
+        // now fails even at statement time (the existing COMMIT fence still
+        // protects incomplete allocations and races).
         try (Connection c = transaction()) {
-            sql(c, "INSERT INTO adempiere.c_allocationline (c_allocationline_id, c_allocationhdr_id, c_invoice_id, "
-                    + "ad_client_id, ad_org_id) VALUES (" + IDS.incrementAndGet() + ", " + allocation + ", "
-                    + salesInvoice + ", 11, 11)");
-            denied(c);
+            SQLException refused = assertThrows(SQLException.class, () ->
+                    sql(c, "INSERT INTO adempiere.c_allocationline "
+                            + "(c_allocationline_id, c_allocationhdr_id, c_invoice_id, ad_client_id, ad_org_id) "
+                            + "VALUES (" + IDS.incrementAndGet() + ", " + allocation + ", "
+                            + salesInvoice + ", 11, 11)"));
+            assertTrue(refused.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"), refused.getMessage());
+            c.rollback();
         }
         assertEquals(NativeOperation.PAYABLES_ALLOCATION, storedClass("C_AllocationHdr", allocation));
     }
@@ -1398,13 +1403,17 @@ class NativeFinancePostgresGateBTest {
             assertNull(storedClass_on(c, "C_Payment", again));
             c.rollback();
         }
-        // A bound payment whose values drift from its evidence loses its class (direct SQL included).
+        // An already completed, evidence-bound payment cannot have its
+        // amount rewritten even transiently by direct SQL; no mutation may
+        // create a momentary alternative accounting/evidence fact.
         try (Connection c = transaction()) {
-            sql(c, "UPDATE adempiere.c_payment SET payamt = 310 WHERE c_payment_id = " + paid);
-            assertNull(storedClass_on(c, "C_Payment", paid), "a changed amount no longer matches the evidence");
-            assertNull(new NativeOperationResolver(trx -> c).classify(payment(paid, invoice, "310.00", "IsOnline", "N")));
+            SQLException refused = assertThrows(SQLException.class, () ->
+                    sql(c, "UPDATE adempiere.c_payment SET payamt = 310 WHERE c_payment_id = " + paid));
+            assertTrue(refused.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"), refused.getMessage());
             c.rollback();
         }
+        assertEquals(NativeOperation.VENDOR_PAYMENT, storedClass("C_Payment", paid),
+                "the original payment and evidence binding must survive the refused rewrite");
         // Ambiguity denies: two unbound records for the same values bind neither.
         ingestEvidence(invoice, "77.00", PARTNER, CURRENCY, "UGX");
         ingestEvidence(invoice, "77.00", PARTNER, CURRENCY, "UGX");
@@ -1624,6 +1633,407 @@ class NativeFinancePostgresGateBTest {
     }
 
     @Test
+    void postedLedgerHistoryCannotBeRewrittenOrDeletedByDirectSql() throws Exception {
+        int journal;
+        try (Connection c = transaction()) {
+            journal = newJournal(c);
+            c.commit();
+        }
+        try (Connection c = transaction()) {
+            authorise(c, factLine(journal, "gate-b-history"), Instant.now().plusSeconds(25));
+            insertFact(c, journal);
+            c.commit();
+        }
+        assertEquals(1, count("SELECT count(*) FROM adempiere.fact_acct WHERE record_id = " + journal));
+        for (String mutation : new String[] {
+                "UPDATE adempiere.fact_acct SET amtacctdr = amtacctdr + 1 WHERE record_id = " + journal,
+                "DELETE FROM adempiere.fact_acct WHERE record_id = " + journal,
+                "UPDATE adempiere.fact_acct SET ad_client_id = 98 WHERE record_id = " + journal
+        }) {
+            try (Connection c = transaction(); Statement s = c.createStatement()) {
+                SQLException denied = assertThrows(SQLException.class, () -> s.execute(mutation));
+                assertTrue(denied.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"), denied.getMessage());
+                c.rollback();
+            }
+        }
+        assertEquals(1, count("SELECT count(*) FROM adempiere.fact_acct "
+                + "WHERE record_id = " + journal + " AND amtacctdr = 10 AND ad_client_id = 11"));
+    }
+
+    @Test
+    void onlySameTransactionUncommittedLedgerRowsMayBeReplacedDuringNativePosting() throws Exception {
+        // Real iDempiere Doc.post() clears provisional Fact_Acct during the
+        // original document transaction before re-deriving the final lines.
+        // PostgreSQL xmin distinguishes that provisional state from committed
+        // accounting history. The existing committed-history refusal test
+        // above still denies identical SQL in any subsequent transaction.
+        int journal;
+        try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+            journal = newJournal(c);
+            authorise(c, factLine(journal, "gate-b-uncommitted-native-rebuild"),
+                    Instant.now().plusSeconds(25));
+            insertFact(c, journal);
+            try (java.sql.ResultSet rows = stmt.executeQuery(
+                    "SELECT count(*) FROM adempiere.fact_acct WHERE record_id = " + journal)) {
+                assertTrue(rows.next());
+                assertEquals(1, rows.getInt(1), "original uncommitted native fact must exist");
+            }
+            assertEquals(1, stmt.executeUpdate(
+                    "DELETE FROM adempiere.fact_acct WHERE record_id = " + journal),
+                    "same-transaction provisional native posting may replace its own fact");
+            // Roll back the whole synthetic operation: no direct SQL mutation
+            // can create an authorised, committed financial consequence.
+            c.rollback();
+        }
+        assertEquals(0, count("SELECT count(*) FROM adempiere.fact_acct WHERE record_id = " + journal));
+        assertEquals(0, count("SELECT count(*) FROM adempiere.gl_journal WHERE gl_journal_id = " + journal));
+    }
+
+    @Test
+    void historicalPlacementRemainsImmutableAfterAnAuthorityLeaseLapses() throws Exception {
+        int journal;
+        try (Connection c = transaction()) {
+            journal = newJournal(c);
+            c.commit();
+        }
+        try (Connection c = transaction()) {
+            authorise(c, factLine(journal, "gate-b-history-after-lease"), Instant.now().plusSeconds(25));
+            insertFact(c, journal);
+            c.commit();
+        }
+        // History protection uses any placement ever associated with the
+        // client; it cannot be opened by letting a transient CP lease expire.
+        try (Connection c = transaction(); Statement s = c.createStatement()) {
+            SQLException denied = assertThrows(SQLException.class, () ->
+                    s.execute("DELETE FROM adempiere.fact_acct WHERE record_id = " + journal));
+            assertTrue(denied.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"));
+            c.rollback();
+        }
+    }
+
+    @Test
+    void completedDocumentRejectsAccountingFactChangesAndHistoryDeletion() throws Exception {
+        int journal;
+        try (Connection c = transaction(); Statement s = c.createStatement()) {
+            journal = newJournal(c);
+            authorise(c, factLine(journal, "gate-b-completed-history"), Instant.now().plusSeconds(25));
+            s.execute("UPDATE adempiere.gl_journal SET docstatus = 'CO' WHERE gl_journal_id = " + journal);
+            c.commit();
+        }
+        for (String mutation : new String[] {
+                "UPDATE adempiere.gl_journal SET dateacct = dateacct + 1 WHERE gl_journal_id = " + journal,
+                "UPDATE adempiere.gl_journal SET docstatus = 'DR' WHERE gl_journal_id = " + journal,
+                "UPDATE adempiere.gl_journal SET docstatus = 'CL' WHERE gl_journal_id = " + journal,
+                "UPDATE adempiere.gl_journal SET c_doctype_id = 202 WHERE gl_journal_id = " + journal,
+                "UPDATE adempiere.gl_journal SET totaldr = totaldr + 10 WHERE gl_journal_id = " + journal,
+                "UPDATE adempiere.gl_journal SET totalcr = totalcr + 10 WHERE gl_journal_id = " + journal,
+                "DELETE FROM adempiere.gl_journal WHERE gl_journal_id = " + journal
+        }) {
+            try (Connection c = transaction(); Statement s = c.createStatement()) {
+                SQLException denied = assertThrows(SQLException.class, () -> s.execute(mutation));
+                assertTrue(denied.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"), denied.getMessage());
+                c.rollback();
+            }
+        }
+        assertEquals(1, count("SELECT count(*) FROM adempiere.gl_journal "
+                + "WHERE gl_journal_id = " + journal + " AND docstatus = 'CO' AND c_doctype_id = 201"));
+        // A harmless native no-op bookkeeping UPDATE is permitted; only
+        // original commercial/accounting facts are immutable.
+        try (Connection c = transaction(); Statement s = c.createStatement()) {
+            s.execute("UPDATE adempiere.gl_journal SET docstatus = docstatus WHERE gl_journal_id = " + journal);
+            c.commit();
+        }
+    }
+
+    @Test
+    void committedCompletedPostingCannotBeDowngradedByFailedForcedRepost() throws Exception {
+        int journal;
+        try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+            journal = newJournal(c);
+            authorise(c, factLine(journal, "gate-b-posted-status"), Instant.now().plusSeconds(25));
+            // This only tests immutable status guards with synthetic fixture
+            // rows; real accounting is separately demonstrated in Gate D.
+            stmt.execute("UPDATE adempiere.gl_journal SET docstatus='CO', posted='Y'"
+                    + " WHERE gl_journal_id = " + journal);
+            c.commit();
+        }
+        for (String downgraded : new String[] {"I", "N"}) {
+            try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+                SQLException denied = assertThrows(SQLException.class, () ->
+                        stmt.execute("UPDATE adempiere.gl_journal SET posted='" + downgraded
+                                + "' WHERE gl_journal_id = " + journal));
+                assertTrue(denied.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"),
+                        denied.getMessage());
+                c.rollback();
+            }
+        }
+        assertEquals(1, count("SELECT count(*) FROM adempiere.gl_journal"
+                + " WHERE gl_journal_id = " + journal + " AND docstatus='CO' AND posted='Y'"));
+    }
+
+    @Test
+    void completedFinancialLinesCannotBeInsertedChangedOrDeleted() throws Exception {
+        int journal;
+        int line = IDS.incrementAndGet();
+        try (Connection c = transaction(); Statement s = c.createStatement()) {
+            journal = newJournal(c);
+            // Creating and correcting the lines of a DRAFT is permitted.
+            s.execute("INSERT INTO adempiere.gl_journalline "
+                    + "(gl_journalline_id, gl_journal_id, ad_client_id, ad_org_id) VALUES ("
+                    + line + ", " + journal + ", 11, 11)");
+            s.execute("UPDATE adempiere.gl_journalline SET ad_org_id = 11 WHERE gl_journalline_id = " + line);
+            authorise(c, factLine(journal, "gate-b-line-history"), Instant.now().plusSeconds(25));
+            s.execute("UPDATE adempiere.gl_journal SET docstatus = 'CO' WHERE gl_journal_id = " + journal);
+            c.commit();
+        }
+        int second = IDS.incrementAndGet();
+        for (String mutation : new String[] {
+                "UPDATE adempiere.gl_journalline SET ad_org_id = 12 WHERE gl_journalline_id = " + line,
+                "UPDATE adempiere.gl_journalline SET amtacctdr = 99 WHERE gl_journalline_id = " + line,
+                "UPDATE adempiere.gl_journalline SET amtsourcecr = 99 WHERE gl_journalline_id = " + line,
+                "DELETE FROM adempiere.gl_journalline WHERE gl_journalline_id = " + line,
+                "INSERT INTO adempiere.gl_journalline "
+                        + "(gl_journalline_id, gl_journal_id, ad_client_id, ad_org_id) VALUES ("
+                        + second + ", " + journal + ", 11, 11)"
+        }) {
+            try (Connection c = transaction(); Statement s = c.createStatement()) {
+                SQLException denied = assertThrows(SQLException.class, () -> s.execute(mutation));
+                assertTrue(denied.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"), denied.getMessage());
+                c.rollback();
+            }
+        }
+        assertEquals(1, count("SELECT count(*) FROM adempiere.gl_journalline "
+                + "WHERE gl_journalline_id = " + line + " AND gl_journal_id = " + journal + " AND ad_org_id = 11"));
+        assertEquals(0, count("SELECT count(*) FROM adempiere.gl_journalline WHERE gl_journalline_id = " + second));
+    }
+
+    @Test
+    void unplacedLegacyLedgerIsNotRetroactivelyDeclaredGoverned() throws Exception {
+        int id = IDS.incrementAndGet();
+        try (Connection c = transaction(); Statement s = c.createStatement()) {
+            s.execute("INSERT INTO adempiere.fact_acct "
+                    + "(fact_acct_id, ad_client_id, ad_org_id, ad_table_id, record_id, amtacctdr) VALUES ("
+                    + id + ", 98, 98, 224, " + id + ", 10)");
+            s.execute("UPDATE adempiere.fact_acct SET amtacctdr = 11 WHERE fact_acct_id = " + id);
+            s.execute("DELETE FROM adempiere.fact_acct WHERE fact_acct_id = " + id);
+            c.commit();
+        }
+        assertEquals(0, count("SELECT count(*) FROM adempiere.fact_acct WHERE fact_acct_id = " + id));
+    }
+
+    @Test
+    void accountingConfigurationHasNoDirectSqlBackdoorForPlacedClients() throws Exception {
+        String[] tables = {
+                "c_acctschema", "c_acctschema_default", "c_acctschema_gl",
+                "c_elementvalue", "c_validcombination",
+                "c_tax", "c_tax_acct", "c_bankaccount", "c_bankaccount_acct"
+        };
+        for (String table : tables) {
+            String pk = table + "_id";
+            int existing = table.equals("c_acctschema") ? 101 : 111;
+            for (String mutation : new String[] {
+                    "INSERT INTO adempiere." + table + " (" + pk + ", ad_client_id) VALUES ("
+                            + IDS.incrementAndGet() + ", 11)",
+                    "UPDATE adempiere." + table + " SET ad_client_id = 97 WHERE " + pk + " = " + existing,
+                    "DELETE FROM adempiere." + table + " WHERE " + pk + " = " + existing
+            }) {
+                try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+                    SQLException denied = assertThrows(SQLException.class, () -> stmt.execute(mutation), table);
+                    assertTrue(denied.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"),
+                            table + " " + denied.getMessage());
+                    c.rollback();
+                }
+            }
+            assertEquals(1, count("SELECT count(*) FROM adempiere." + table
+                    + " WHERE " + pk + " = " + existing + " AND ad_client_id = 11"));
+        }
+        // Both sides of a cross-client move are independently fenced:
+        // a previously unplaced row cannot be moved INTO a governed client.
+        int unplaced = IDS.incrementAndGet();
+        try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+            stmt.execute("INSERT INTO adempiere.c_tax (c_tax_id, ad_client_id) VALUES (" + unplaced + ", 97)");
+            SQLException denied = assertThrows(SQLException.class, () ->
+                    stmt.execute("UPDATE adempiere.c_tax SET ad_client_id = 11 WHERE c_tax_id = " + unplaced));
+            assertTrue(denied.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"));
+            c.rollback();
+        }
+        assertEquals(0, count("SELECT count(*) FROM adempiere.c_tax WHERE c_tax_id = " + unplaced));
+    }
+
+    @Test
+    void nativeHistoryAndConfigurationFencesCannotBeSilentlySkipped() throws Exception {
+        String[] protectedTables = {
+                "fact_acct", "gl_journal", "c_invoice", "c_payment",
+                "c_allocationhdr", "m_inout", "c_order",
+                "c_bankstatement", "c_cash", "gl_journalline",
+                "c_invoiceline", "c_orderline", "m_inoutline",
+                "c_allocationline", "c_acctschema", "c_acctschema_default",
+                "c_acctschema_gl", "c_elementvalue",
+                "c_validcombination", "c_tax", "c_tax_acct", "c_bankaccount", "c_bankaccount_acct"
+        };
+        for (String table : protectedTables) {
+            String triggerName;
+            if (table.equals("fact_acct")) triggerName = "baobab_ledger_immutable_history";
+            else if (java.util.Set.of("gl_journal", "c_invoice", "c_payment", "c_allocationhdr",
+                    "m_inout", "c_order", "c_bankstatement", "c_cash").contains(table))
+                triggerName = "baobab_protect_governed_header_history";
+            else if (java.util.Set.of("gl_journalline", "c_invoiceline", "c_orderline",
+                    "m_inoutline", "c_allocationline").contains(table))
+                triggerName = "baobab_protect_completed_financial_line";
+            else triggerName = "baobab_uncatalogued_finance_configuration";
+            assertEquals(1, count("SELECT count(*) FROM pg_trigger t JOIN pg_class rel ON rel.oid=t.tgrelid "
+                            + "JOIN pg_namespace n ON n.oid=rel.relnamespace "
+                            + "WHERE n.nspname='adempiere' AND rel.relname='" + table
+                            + "' AND t.tgname='" + triggerName + "' AND t.tgenabled='O'"),
+                    "native history guard must be installed AND enabled on " + table);
+        }
+    }
+
+    @Test
+    void truncateCannotBypassRowLevelNativeFinancialHistoryGuards() throws Exception {
+        // PostgreSQL TRUNCATE never invokes DELETE triggers. Every critical
+        // protected source and evidence table therefore has an explicit
+        // statement-level refusal; neither empty nor non-empty is an excuse.
+        for (String relation : new String[] {
+                "adempiere.fact_acct", "adempiere.gl_journal",
+                "adempiere.c_tax", "baobab_native.document_provenance",
+                "baobab_native.finance_authority_attribution"
+        }) {
+            try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+                SQLException denied = assertThrows(SQLException.class,
+                        () -> stmt.execute("TRUNCATE TABLE " + relation), relation);
+                assertTrue(denied.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"),
+                        relation + " " + denied.getMessage());
+                c.rollback();
+            }
+            int idx = relation.indexOf('.');
+            String schema = relation.substring(0, idx);
+            String table = relation.substring(idx + 1);
+            assertEquals(1, count("SELECT count(*) FROM pg_trigger t JOIN pg_class rel ON rel.oid=t.tgrelid "
+                    + "JOIN pg_namespace n ON n.oid=rel.relnamespace "
+                    + "WHERE n.nspname='" + schema + "' AND rel.relname='" + table
+                    + "' AND t.tgname='baobab_immutable_history_no_truncate' AND t.tgenabled='O'"),
+                    "native TRUNCATE guard must be installed AND enabled: " + relation);
+        }
+    }
+
+    @Test
+    void historicalNativeCompanyAndOrgIdentifiersCannotBeRecycledAfterClosure() throws Exception {
+        int company = IDS.incrementAndGet();
+        int org = IDS.incrementAndGet();
+        String placement = UUID.randomUUID().toString();
+        try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+            stmt.execute("INSERT INTO adempiere.ad_client (ad_client_id, isactive) VALUES (" + company + ", 'Y')");
+            stmt.execute("INSERT INTO adempiere.ad_org (ad_org_id, ad_client_id, isactive) VALUES ("
+                    + org + ", " + company + ", 'Y')");
+            stmt.execute("""
+                    INSERT INTO baobab_native.native_placement
+                      (placement_id,version,tenant_id,engine_instance_id,operating_organisation_id,
+                       legal_entity_id,market,ad_client_id,ad_org_id,effective_from,
+                       approved_by,checked_by,evidence_reference,erp_assignment_reference)
+                    VALUES ('%s',1,'tn_history01','ei_history01','%s',
+                      'LE-HISTORY01','UG',%d,%d,clock_timestamp()-interval '1 day',
+                      'History Maker','History Checker','synthetic:gate-b/history','synthetic:plan/history')
+                    """.formatted(placement, UUID.randomUUID(), company, org));
+            // A one-time closure is allowed (ERP-owned legal-actor history);
+            // it must NOT permit reusing the original native identifiers.
+            stmt.execute("UPDATE baobab_native.native_placement SET effective_to = "
+                    + "clock_timestamp() WHERE placement_id = '" + placement + "'");
+            c.commit();
+        }
+        for (String mutation : new String[] {
+                "DELETE FROM adempiere.ad_org WHERE ad_org_id = " + org,
+                "UPDATE adempiere.ad_org SET ad_client_id = 97 WHERE ad_org_id = " + org,
+                "UPDATE adempiere.ad_org SET ad_org_id = " + IDS.incrementAndGet()
+                        + " WHERE ad_org_id = " + org,
+                "DELETE FROM adempiere.ad_client WHERE ad_client_id = " + company,
+                "UPDATE adempiere.ad_client SET ad_client_id = " + IDS.incrementAndGet()
+                        + " WHERE ad_client_id = " + company
+        }) {
+            try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+                SQLException refused = assertThrows(SQLException.class, () -> stmt.execute(mutation));
+                assertTrue(refused.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"),
+                        refused.getMessage());
+                c.rollback();
+            }
+        }
+        assertEquals(1, count("SELECT count(*) FROM baobab_native.native_placement "
+                + "WHERE placement_id='" + placement + "' AND effective_to IS NOT NULL"));
+        assertEquals(1, count("SELECT count(*) FROM adempiere.ad_client "
+                + "WHERE ad_client_id = " + company));
+        assertEquals(1, count("SELECT count(*) FROM adempiere.ad_org "
+                + "WHERE ad_org_id = " + org + " AND ad_client_id = " + company));
+        // Closed placement permits a separately governed deactivation, not
+        // historical identity recycling.
+        try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+            stmt.execute("UPDATE adempiere.ad_org SET isactive = 'N' WHERE ad_org_id = " + org);
+            stmt.execute("UPDATE adempiere.ad_client SET isactive = 'N' WHERE ad_client_id = " + company);
+            c.commit();
+        }
+        assertEquals(1, count("SELECT count(*) FROM adempiere.ad_client WHERE "
+                + "ad_client_id = " + company + " AND isactive = 'N'"));
+    }
+
+    @Test
+    void currentNativeCompanyCannotBeDeactivatedBehindOpenPlacement() throws Exception {
+        for (String mutation : new String[] {
+                "UPDATE adempiere.ad_org SET isactive='N' WHERE ad_org_id = 11",
+                "UPDATE adempiere.ad_client SET isactive='N' WHERE ad_client_id = 11"
+        }) {
+            try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+                SQLException denied = assertThrows(SQLException.class, () -> stmt.execute(mutation));
+                assertTrue(denied.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"), denied.getMessage());
+                c.rollback();
+            }
+        }
+        assertEquals(1, count("SELECT count(*) FROM adempiere.ad_org "
+                + "WHERE ad_org_id=11 AND ad_client_id=11 AND isactive='Y'"));
+        assertEquals(1, count("SELECT count(*) FROM adempiere.ad_client "
+                + "WHERE ad_client_id=11 AND isactive='Y'"));
+    }
+
+    @Test
+    void plannedFuturePlacementClosureCannotDisableCurrentNativeCompany() throws Exception {
+        // A placement window with a future effective_to is STILL ACTIVE.
+        // Closure scheduling must never create an early-deactivation gap.
+        try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+            stmt.execute("UPDATE baobab_native.native_placement SET effective_to = "
+                    + "clock_timestamp() + interval '1 hour' "
+                    + "WHERE ad_client_id = 11 AND ad_org_id = 11 AND effective_to IS NULL");
+            for (String mutation : new String[] {
+                    "UPDATE adempiere.ad_org SET isactive='N' WHERE ad_org_id = 11",
+                    "UPDATE adempiere.ad_client SET isactive='N' WHERE ad_client_id = 11"
+            }) {
+                // Isolate each expected denial with JDBC savepoints; a refusal
+                // aborts only the savepoint, not the outer test transaction.
+                var savepoint = c.setSavepoint();
+                SQLException denied = assertThrows(SQLException.class, () -> stmt.execute(mutation));
+                assertTrue(denied.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"));
+                c.rollback(savepoint);
+            }
+            c.rollback(); // Keep the shared fixture's original open placement.
+        }
+        assertEquals(1, count("SELECT count(*) FROM baobab_native.native_placement "
+                + "WHERE ad_client_id=11 AND ad_org_id=11 AND effective_to IS NULL"));
+    }
+
+    @Test
+    void nativeCompanyAndOrgCannotBeTruncatedWithoutHistoricalCustody() throws Exception {
+        for (String relation : new String[] {"adempiere.ad_client", "adempiere.ad_org"}) {
+            try (Connection c = transaction(); Statement stmt = c.createStatement()) {
+                SQLException denied = assertThrows(SQLException.class,
+                        () -> stmt.execute("TRUNCATE TABLE " + relation), relation);
+                assertTrue(denied.getMessage().contains("BAOBAB_NATIVE_FINANCE_DENIED"));
+                c.rollback();
+            }
+        }
+        assertEquals(1, count("SELECT count(*) FROM pg_trigger "
+                + "WHERE tgname='baobab_native_company_no_truncate' AND tgenabled='O'"));
+        assertEquals(1, count("SELECT count(*) FROM pg_trigger "
+                + "WHERE tgname='baobab_native_org_no_truncate' AND tgenabled='O'"));
+    }
+
+    @Test
     void f1NativeLedgerFactsRequireActualCommittedProvenanceAndBoundScope() throws Exception {
         // Gate B is real JDBC/PostgreSQL with deliberately SYNTHETIC CP facts.
         // It does NOT certify an F1 finance API, a current IAM/CP read grant or live iDempiere posting.
@@ -1658,4 +2068,5 @@ class NativeFinancePostgresGateBTest {
             c.rollback();
         }
     }
+
 }

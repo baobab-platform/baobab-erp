@@ -36,6 +36,30 @@ pass() { note "PASS  $1"; }
 fail() { note "FAIL  $1: $2"; FAILURES=$((FAILURES + 1)); }
 sql() { psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAq -c "SET search_path = adempiere, public; $1" | tail -n 1; }
 
+# Records independent, READ-ONLY PostgreSQL observations; the in-JVM actor
+# cannot supply this witness. No source amount, document status or CP
+# authority is inferred from a test driver's in-memory return value.
+finance_witness() { # native source table name, AD_Table_ID, native record id
+  local table=$1 table_id=$2 id=$3
+  local witness
+  witness=$(sql "SELECT jsonb_build_object(
+    'postgres_major', current_setting('server_version_num')::int / 10000,
+    'native_source', '$table',
+    'native_record_id', $id,
+    'native_fact_rows', count(*),
+    'native_account_ids', count(DISTINCT account_id),
+    'debits', coalesce(sum(amtacctdr), 0),
+    'credits', coalesce(sum(amtacctcr), 0),
+    'placed_client_scoped', coalesce(bool_and(ad_client_id = 11 AND ad_org_id = 11), false),
+    'immutable_fact_digest', md5(coalesce(string_agg(to_jsonb(f)::text, '|' ORDER BY f.fact_acct_id), '')),
+    'independent_cp_attributions', (
+       SELECT count(*) FROM baobab_native.finance_authority_attribution a
+        WHERE lower(a.source_table) = lower('$table') AND a.source_record_id = $id
+          AND a.decision_id IS NOT NULL
+    ))::text FROM fact_acct f WHERE f.ad_table_id = $table_id AND f.record_id = $id")
+  note "INDEPENDENT_PG17_FINANCIAL_READBACK $witness"
+}
+
 # --- TLS: a CI-generated CA trusted only by this JVM ---------------------------------------------
 mkdir -p "$WORK/tls" "$WORK/state" "$WORK/gate-d/requests" "$WORK/gate-d/results"
 chmod -R 0777 "$WORK/state" "$WORK/gate-d"
@@ -166,7 +190,9 @@ prop() { grep -E "^$2=" "$WORK/gate-d/results/$1.properties" | head -1 | cut -d=
 posted_ok() { # journal_id: CO, posted, balanced ledger, attributed by a CP decision
   local id=$1
   [ "$(sql "SELECT docstatus || posted FROM gl_journal WHERE gl_journal_id = $id")" = "COY" ] &&
-  [ "$(sql "SELECT count(*) > 0 AND sum(amtacctdr) = sum(amtacctcr) FROM fact_acct WHERE ad_table_id = 224 AND record_id = $id")" = "t" ] &&
+  [ "$(sql "SELECT count(*) > 0 AND sum(amtacctdr) = sum(amtacctcr) AND sum(amtacctdr) > 0
+     AND bool_and(ad_client_id = 11 AND ad_org_id = 11)
+     FROM fact_acct WHERE ad_table_id = 224 AND record_id = $id")" = "t" ] &&
   [ "$(sql "SELECT count(*) > 0 FROM baobab_native.finance_authority_attribution WHERE source_table = 'GL_Journal' AND source_record_id = $id AND decision_id IS NOT NULL AND operation_class = 'erp.gl-journal.post' AND finance_baseline_version = 1")" = "t" ]
 }
 not_posted() { # journal_id: never completed and no ledger
@@ -182,6 +208,7 @@ run valid authorized action=journal complete=true post=true || true
 J1=$(prop valid journal_id)
 if [ -n "$J1" ] && posted_ok "$J1"; then pass "valid authority: CO, posted, balanced Fact_Acct, attributed (journal $J1)"
 else fail "valid authority" "journal ${J1:-none} not completed/posted/attributed"; fi
+if [ -n "${J1:-}" ]; then finance_witness GL_Journal 224 "$J1"; fi
 
 # 2. No current mandate: even the draft is refused; nothing completes.
 before=$(co_count)
@@ -232,18 +259,29 @@ if [ -n "${J1:-}" ]; then
     && pass "retry after commit: Fact_Acct unchanged ($facts rows)" || fail "retry after commit" "ledger duplicated"
 fi
 
-# 7b. Background/batch posting: a forced repost runs in iDempiere's own posting transaction (the
-#     accounting-processor path). Under current authority the ledger is rebuilt, balanced and
-#     attributed afresh; once authority is revoked the repost is refused and the committed ledger
-#     is left exactly as it was (no partial delete).
+# 7b. Real iDempiere Doc.post(force=true) attempts to DELETE and rebuild
+#     committed Fact_Acct history. N0010 makes that unlawful even under a
+#     fresh CP posting mandate: historical reversal needs its own qualified
+#     operation. Replays must instead adopt the existing immutable result.
+#     Observe full persisted row hashes, not merely equal counts/sums.
 if [ -n "${J1:-}" ]; then
   ledger() { sql "SELECT count(*) || ':' || sum(amtacctdr) || ':' || sum(amtacctcr) FROM fact_acct WHERE ad_table_id = 224 AND record_id = $J1"; }
   attributions() { sql "SELECT count(DISTINCT txid) FROM baobab_native.finance_authority_attribution WHERE source_table = 'GL_Journal' AND source_record_id = $J1"; }
   before=$(ledger); txids=$(attributions)
+  ledger_hash() { sql "SELECT md5(coalesce(string_agg(to_jsonb(f)::text, '|' ORDER BY f.fact_acct_id), '')) FROM fact_acct f WHERE ad_table_id = 224 AND record_id = $J1"; }
+  attribution_hash() { sql "SELECT md5(coalesce(string_agg(to_jsonb(a)::text, '|' ORDER BY a.attribution_id), '')) FROM baobab_native.finance_authority_attribution a WHERE lower(source_table) = 'gl_journal' AND source_record_id = $J1"; }
+  # The hash uses the entire persisted financial fact; an equal balance cannot
+  # hide rewritten ledger IDs, accounts, currency, source or attribution.
+  history_before=$(ledger_hash)
+  authority_before=$(attribution_hash)
   run batch_repost authorized action=repost journal_id="$J1" force=true || true
-  if [ "$(ledger)" = "$before" ] && posted_ok "$J1" && [ "$(attributions)" -gt "$txids" ]; then
-    pass "background forced repost under authority: ledger rebuilt ($before), newly attributed"
-  else fail "background forced repost" "ledger $(ledger) vs $before, attributions $(attributions) vs $txids"; fi
+  if [ "$(ledger)" = "$before" ] && posted_ok "$J1" \
+     && [ "$(attributions)" = "$txids" ] \
+     && [ "$(ledger_hash)" = "$history_before" ] \
+     && [ "$(attribution_hash)" = "$authority_before" ] \
+     && [ "$(prop batch_repost post_error)" != "null" ]; then
+    pass "forced repost refused: immutable posted Fact_Acct and CP attribution independently unchanged ($before)"
+  else fail "forced repost" "immutable ledger or attribution changed or refusal missing"; fi
   run batch_repost_revoked revoked action=repost journal_id="$J1" force=true || true
   if [ "$(ledger)" = "$before" ] && [ "$(prop batch_repost_revoked post_error)" != "null" ]; then
     pass "background forced repost after revocation: refused, committed ledger intact"
@@ -252,6 +290,16 @@ fi
 
 # 8. Direct SQL bypass of the JVM: refused at COMMIT by the database fence. Each statement
 #    must really change one row before COMMIT, so a vacuous no-op can never pass.
+fenced_at_statement() { # label sql; N0010 intercepts the mutation itself
+  local out
+  out=$(psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -c "BEGIN" -c "$2" -c "COMMIT" 2>&1 || true)
+  echo "$out" | sed 's/^/    /' >> "$REPORT"
+  if echo "$out" | grep -q "ERROR:.*BAOBAB_NATIVE_FINANCE_DENIED"; then
+    pass "$1: denied by native PostgreSQL BEFORE trigger"
+  else
+    fail "$1" "not refused by the native PostgreSQL history guard"
+  fi
+}
 fenced() { # label sql expected-tag
   local out
   out=$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "BEGIN" -c "$2" -c "COMMIT" 2>&1 || true)
@@ -261,6 +309,15 @@ fenced() { # label sql expected-tag
   else fail "$1" "not refused by the COMMIT fence"; fi
 }
 if [ -n "${J1:-}" ]; then
+  facts_before=$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 224 AND record_id = $J1")
+  ledger_before=$(sql "SELECT md5(coalesce(string_agg(to_jsonb(f)::text, '|' ORDER BY f.fact_acct_id), '')) FROM fact_acct f WHERE ad_table_id = 224 AND record_id = $J1")
+  fenced_at_statement "direct SQL DELETE of committed Fact_Acct" "DELETE FROM adempiere.fact_acct
+    WHERE fact_acct_id = (SELECT min(fact_acct_id) FROM adempiere.fact_acct
+     WHERE ad_table_id = 224 AND record_id = $J1)"
+  [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 224 AND record_id = $J1")" = "$facts_before" ] \
+  && [ "$(sql "SELECT md5(coalesce(string_agg(to_jsonb(f)::text, '|' ORDER BY f.fact_acct_id), '')) FROM fact_acct f WHERE ad_table_id = 224 AND record_id = $J1")" = "$ledger_before" ] \
+  && pass "independent PostgreSQL readback: original committed Fact_Acct unaffected by direct DELETE" \
+  || fail "direct SQL committed ledger DELETE" "persisted ledger changed"
   fenced "direct SQL Fact_Acct insert" "INSERT INTO adempiere.fact_acct SELECT (jsonb_populate_record(f, jsonb_build_object(
       'fact_acct_id', (SELECT max(fact_acct_id) + 1 FROM adempiere.fact_acct),
       'fact_acct_uu', gen_random_uuid()::text, 'ad_table_id', 224, 'record_id', $J1))).*
@@ -282,13 +339,21 @@ drun() { local name=$1 mode=$2; shift 2; run "$name" "$mode" action=doc "$@"; }
 attributed() { # table id class
   [ "$(sql "SELECT count(*) > 0 FROM baobab_native.finance_authority_attribution WHERE lower(source_table) = lower('$1') AND source_record_id = $2 AND operation_class = '$3' AND decision_id IS NOT NULL")" = "t" ]
 }
-balanced() { # ad_table_id id
-  [ "$(sql "SELECT count(*) > 0 AND sum(amtacctdr) = sum(amtacctcr) FROM fact_acct WHERE ad_table_id = $1 AND record_id = $2")" = "t" ]
+balanced() { # ad_table_id id, verified by independent PostgreSQL connection
+  [ "$(sql "SELECT count(*) > 0 AND sum(amtacctdr) = sum(amtacctcr)
+    AND sum(amtacctdr) > 0
+    AND bool_and(ad_client_id = 11 AND ad_org_id = 11)
+    FROM fact_acct WHERE ad_table_id = $1 AND record_id = $2")" = "t" ] &&
+  [ "$(sql "SELECT count(*) = 0 FROM fact_acct f LEFT JOIN c_acctschema s
+     ON s.c_acctschema_id = f.c_acctschema_id
+     WHERE f.ad_table_id = $1 AND f.record_id = $2
+       AND (s.c_acctschema_id IS NULL OR s.ad_client_id <> 11)")" = "t" ]
 }
 doc_status() { sql "SELECT docstatus || posted FROM $1 WHERE $1_id = $2"; }
 doc_posted() { # relation table_id id class
   [ "$(doc_status "$1" "$3")" = "COY" ] && balanced "$2" "$3" && attributed "$1" "$3" "$4"
 }
+
 doc_refused() { # relation table_id id result-name
   [ "$(sql "SELECT count(*) FROM $1 WHERE $1_id = $3 AND docstatus IN ('CO','CL')")" = "0" ] &&
   [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = $2 AND record_id = $3")" = "0" ] && baobab_denied "$4"
@@ -306,6 +371,7 @@ if [ -n "$O" ]; then
   if [ -n "$S" ] && doc_posted m_inout 319 "$S" erp.shipment.complete; then
     pass "shipment: CO, posted, balanced Fact_Acct, attributed (shipment $S)"
   else fail "shipment" "shipment ${S:-none} not completed/posted/attributed"; fi
+  if [ -n "${S:-}" ]; then finance_witness M_InOut 319 "$S"; fi
   if [ -n "$S" ] && [ "$(cost_details "$S")" -gt 0 ] && [ "$(derived_rows "$S")" -gt 0 ] \
      && [ "$(sql "SELECT count(*) FROM baobab_native.finance_authority_attribution WHERE native_table = 'M_CostDetail' AND NOT (operation_class = 'erp.shipment.complete' AND source_table = 'M_InOut' AND source_record_id = $S) AND source_record_id = $S")" = "0" ] \
      && [ "$(sql "SELECT count(*) FROM baobab_native.finance_authority_attribution WHERE operation_class NOT IN ('erp.gl-journal.post','erp.customer-invoice.issue','erp.payment.record','erp.allocation.record','erp.shipment.complete','erp.sales-order.complete')")" = "0" ]; then
@@ -315,11 +381,13 @@ if [ -n "$O" ]; then
   if [ -n "$I" ] && doc_posted c_invoice 318 "$I" erp.customer-invoice.issue; then
     pass "customer invoice: CO, posted, balanced Fact_Acct, attributed (invoice $I)"
   else fail "customer invoice" "invoice ${I:-none} not completed/posted/attributed"; fi
+  if [ -n "${I:-}" ]; then finance_witness C_Invoice 318 "$I"; fi
   if [ -n "$I" ]; then
     drun rcpt authorized kind=payment invoice_id="$I" || true; R=$(prop rcpt id)
     if [ -n "$R" ] && doc_posted c_payment 335 "$R" erp.payment.record; then
       pass "receipt: CO, posted, balanced Fact_Acct, attributed (payment $R)"
     else fail "receipt" "payment ${R:-none} not completed/posted/attributed"; fi
+    if [ -n "${R:-}" ]; then finance_witness C_Payment 335 "$R"; fi
     AH=$(sql "SELECT max(c_allocationhdr_id) FROM c_allocationline WHERE c_payment_id = ${R:-0}")
     if [ -n "$AH" ] && [ "$(sql "SELECT docstatus FROM c_allocationhdr WHERE c_allocationhdr_id = $AH")" = "CO" ] \
        && attributed C_AllocationHdr "$AH" erp.allocation.record && [ "$(sql "SELECT ispaid FROM c_invoice WHERE c_invoice_id = $I")" = "Y" ]; then
@@ -368,14 +436,22 @@ else fail "injected shipment failure" "shipment ${SF:-?} facts ${FF:-?} costs ${
 # S5. Retry and background repost of the posted shipment.
 if [ -n "${S:-}" ]; then
   F0=$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $S"); C0=$(cost_details "$S"); D0=$(derived_rows "$S")
+  shipment_ledger_hash() { sql "SELECT md5(coalesce(string_agg(to_jsonb(f)::text, '|' ORDER BY f.fact_acct_id), '')) FROM fact_acct f WHERE ad_table_id = 319 AND record_id = $S"; }
+  shipment_cost_hash() { sql "SELECT md5(coalesce(string_agg(to_jsonb(cd)::text, '|' ORDER BY cd.m_costdetail_id), '')) FROM m_costdetail cd JOIN m_inoutline l ON l.m_inoutline_id = cd.m_inoutline_id WHERE l.m_inout_id = $S"; }
+  FH0=$(shipment_ledger_hash); CH0=$(shipment_cost_hash)
   run shp_retry authorized action=repostDoc table=M_InOut id="$S" || true
-  [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $S")" = "$F0" ] && [ "$(cost_details "$S")" = "$C0" ] \
-    && pass "shipment retry after commit: ledger ($F0) and costing ($C0) unchanged" || fail "shipment retry" "duplicated"
+  [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $S")" = "$F0" ] \
+    && [ "$(cost_details "$S")" = "$C0" ] \
+    && [ "$(shipment_ledger_hash)" = "$FH0" ] && [ "$(shipment_cost_hash)" = "$CH0" ] \
+    && pass "shipment replay adopts exact native ledger and cost fact identities unchanged" \
+    || fail "shipment replay" "ledger/cost identities mutated or duplicated"
   run shp_force authorized action=repostDoc table=M_InOut id="$S" force=true || true
-  if [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $S")" = "$F0" ] && balanced 319 "$S" \
-     && [ "$(cost_details "$S")" = "$C0" ]; then
-    pass "background forced shipment repost under authority: ledger rebuilt ($F0), cost detail not duplicated"
-  else fail "background forced shipment repost" "facts/costs changed ($(prop shp_force post_error))"; fi
+  if [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $S")" = "$F0" ] \
+     && [ "$(cost_details "$S")" = "$C0" ] && [ "$(derived_rows "$S")" = "$D0" ] \
+     && [ "$(shipment_ledger_hash)" = "$FH0" ] && [ "$(shipment_cost_hash)" = "$CH0" ] \
+     && [ "$(prop shp_force post_error)" != "null" ]; then
+    pass "forced shipment repost refused: native ledger and cost facts unchanged"
+  else fail "forced shipment repost" "ledger/cost changed or refusal missing ($(prop shp_force post_error))"; fi
   run shp_force_rev revoked action=repostDoc table=M_InOut id="$S" force=true || true
   [ "$(sql "SELECT count(*) FROM fact_acct WHERE ad_table_id = 319 AND record_id = $S")" = "$F0" ] && [ "$(cost_details "$S")" = "$C0" ] \
     && [ "$(prop shp_force_rev post_error)" != "null" ] \
@@ -437,10 +513,14 @@ if [ -n "${S:-}" ]; then
        WHERE l.m_inout_id = $S AND c.ad_client_id = 11 LIMIT 1)" "DELETE 1"
 fi
 if [ -n "${A:-}" ] && [ -n "${VI:-}" ]; then
-  fenced "direct SQL re-point of a completed allocation to a vendor invoice" "INSERT INTO adempiere.c_allocationline
+  allocation_before=$(sql "SELECT count(*) FROM c_allocationline WHERE c_allocationhdr_id = $A")
+  fenced_at_statement "direct SQL re-point of a completed allocation to a vendor invoice" "INSERT INTO adempiere.c_allocationline
       SELECT (jsonb_populate_record(al, jsonb_build_object('c_allocationline_id', (SELECT max(c_allocationline_id) + 1
         FROM adempiere.c_allocationline), 'c_allocationline_uu', gen_random_uuid()::text, 'c_invoice_id', $VI))).*
-        FROM adempiere.c_allocationline al WHERE al.c_allocationhdr_id = $A LIMIT 1" "INSERT 0 1"
+        FROM adempiere.c_allocationline al WHERE al.c_allocationhdr_id = $A LIMIT 1"
+  [ "$(sql "SELECT count(*) FROM c_allocationline WHERE c_allocationhdr_id = $A")" = "$allocation_before" ] \
+    && pass "forbidden allocation re-point preserves native source rows" \
+    || fail "forbidden allocation re-point" "source history mutated"
 fi
 
 note "Gate D failures: $FAILURES"

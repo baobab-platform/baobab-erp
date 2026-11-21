@@ -243,6 +243,57 @@ def verified(compose: Compose, state: dict, run: Path) -> dict:
     if cp_count != str(len(decisions)):
         raise RuntimeError("DEV09_SECOND_NATIVE_GL_NO_CURRENT_CP_DECISION")
 
+    # Independent readback through PostgreSQL (not the JVM driver return
+    # value) before and after actual iDempiere second-company replay. These
+    # hashes preserve record identities, amounts, account/client/org/currency
+    # and original CP attribution; equal row counts alone are insufficient.
+    def immutable_snapshot():
+        return {
+            "ledger": compose.scalar("erpdb", "postgres", "idempiere", f"""
+                SELECT md5(coalesce(string_agg(to_jsonb(f)::text, '|' ORDER BY f.fact_acct_id), ''))
+                FROM adempiere.fact_acct f
+                WHERE f.ad_table_id=224 AND f.record_id={journal_id}
+                  AND f.ad_client_id={client} AND f.ad_org_id={org}
+            """),
+            "attribution": compose.scalar("erpdb", "postgres", "idempiere", f"""
+                SELECT md5(coalesce(string_agg(to_jsonb(a)::text, '|' ORDER BY a.attribution_id), ''))
+                FROM baobab_native.finance_authority_attribution a
+                WHERE lower(a.source_table)='gl_journal'
+                  AND a.source_record_id={journal_id}
+                  AND a.operation_class='erp.gl-journal.post'
+            """),
+            "posted": compose.scalar("erpdb", "postgres", "idempiere", f"""
+                SELECT docstatus || posted FROM adempiere.gl_journal
+                WHERE gl_journal_id={journal_id} AND ad_client_id={client} AND ad_org_id={org}
+            """),
+        }
+
+    original = immutable_snapshot()
+    if original["posted"] != "COY" or not original["ledger"] or not original["attribution"]:
+        raise RuntimeError("DEV09_SECOND_NATIVE_ORIGINAL_FINANCE_WITNESS_INVALID")
+    replay = Erp(compose, str(run)).request(
+        "dev09-company-b-journal-replay", timeout=300, action="repost",
+        client=client, org=org, profile="DEV09_SECOND_COMPANY_ONLY",
+        journal_id=journal_id, force="false")
+    if replay.get("post_error") not in (None, "", "null") or replay.get("error"):
+        raise RuntimeError("DEV09_SECOND_NATIVE_REPLAY_NOT_IDEMPOTENT")
+    if immutable_snapshot() != original:
+        raise RuntimeError("DEV09_SECOND_NATIVE_REPLAY_MUTATED_FINANCE_HISTORY")
+
+    # Forced Doc.post() in genuine iDempiere attempts to DELETE the already
+    # committed Fact_Acct rows. N0010 must reject it (an approved reversal
+    # is a distinct future operation class), without making Posted='I' or
+    # recording new authority/GL history.
+    forced = Erp(compose, str(run)).request(
+        "dev09-company-b-journal-forced-repost", timeout=300, action="repost",
+        client=client, org=org, profile="DEV09_SECOND_COMPANY_ONLY",
+        journal_id=journal_id, force="true")
+    if (forced.get("post_error") in (None, "", "null")
+            and not forced.get("error")):
+        raise RuntimeError("DEV09_SECOND_NATIVE_DESTRUCTIVE_REPOST_NOT_REFUSED")
+    if immutable_snapshot() != original:
+        raise RuntimeError("DEV09_SECOND_NATIVE_FORCED_REPOST_MUTATED_HISTORY")
+
     return {
         "schema": "dev09-independent-native-company.v1",
         "native_company_and_org_rows_observed": True,
@@ -255,6 +306,8 @@ def verified(compose: Compose, state: dict, run: Path) -> dict:
         "second_company_native_jvm_posting_qualified": True,
         "second_company_posting_runtime_acceptance": True,
         "second_company_cp_decision_and_balanced_fact_acct": True,
+        "second_company_idempotent_replay_verified_by_independent_pg17_readback": True,
+        "second_company_destructive_repost_refused_without_status_corruption": True,
         "protected_qualified": False,
     }
 
