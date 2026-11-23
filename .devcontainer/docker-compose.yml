@@ -11,9 +11,6 @@ services:
       DB_USER: adempiere
       DB_PASS: dev-only-password
       DATABASE_URL: postgresql://adempiere:dev-only-password@postgres:5432/idempiere
-    depends_on:
-      postgres:
-        condition: service_healthy
 
   postgres:
     image: postgres:17-alpine
