@@ -5,6 +5,9 @@
   "workspaceFolder": "/workspaces/baobab-erp",
   "shutdownAction": "stopCompose",
   "remoteUser": "vscode",
-  "postCreateCommand": "baobab-verify --contract && bash scripts/dev/bootstrap.sh",
-  "postStartCommand": "bash scripts/dev/services.sh"
+  "postCreateCommand": "printf 'ERP Codespace ready; run bash scripts/dev/bootstrap.sh when needed\\n'",
+  "runServices": [],
+  "waitFor": "postCreateCommand",
+  "init": true,
+  "updateRemoteUserUID": true
 }
